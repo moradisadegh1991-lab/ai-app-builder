@@ -1,0 +1,238 @@
+#!/usr/bin/env bash
+# Idea2App deploy agent — installed to /usr/local/bin/idea2app by install.sh.
+#
+# Pulls the project from GitHub (read-only deploy key), builds it, runs it and
+# reports the result to the Idea2App platform. What it builds comes from the
+# repository's idea2app.json:
+#   web: true      npm run build → dist/, served by Caddy
+#   backend: true  PostgreSQL + db/schema.sql + `npm run server` (Hono API on
+#                  127.0.0.1:3000) as systemd service idea2app-app, /api via Caddy
+set -euo pipefail
+
+ETC=/etc/idea2app
+ENV_FILE=$ETC/agent.env
+DB_ENV=$ETC/db.env
+DATA=/var/lib/idea2app
+APP_DIR=/opt/idea2app/app
+LOG=$DATA/last-deploy.log
+PORT=3000
+
+[ "$(id -u)" = 0 ] || { echo "با root اجرا کنید: sudo idea2app $*" >&2; exit 1; }
+[ -f "$ENV_FILE" ] || { echo "$ENV_FILE نیست؛ ابتدا نصب‌کننده را اجرا کنید." >&2; exit 1; }
+set -a
+# shellcheck source=/dev/null
+. "$ENV_FILE"
+set +a
+
+# Never depend on the caller's working directory (it may be /root or a path
+# user idea2app cannot read).
+cd /
+
+as_app() { runuser -u idea2app -- env HOME="$DATA" PATH=/usr/local/bin:/usr/bin:/bin "$@"; }
+# Runs a command as idea2app inside the project checkout.
+in_app() { as_app bash -c 'cd "$0" && exec "$@"' "$APP_DIR" "$@"; }
+git_app() {
+  as_app env GIT_SSH_COMMAND="ssh -i $ETC/deploy_key -o IdentitiesOnly=yes -o UserKnownHostsFile=$ETC/known_hosts -o StrictHostKeyChecking=yes" git "$@"
+}
+manifest() { jq -r ".$1 // empty" "$APP_DIR/idea2app.json" 2>/dev/null || true; }
+site_url() { echo "https://$DOMAIN"; }
+
+# Sends status to the platform. Never fails the caller.
+report() {
+  local status="$1" message="${2:-}" heartbeat="${3:-false}" commit="" log=""
+  [ -d "$APP_DIR/.git" ] && commit=$(git -C "$APP_DIR" rev-parse HEAD 2>/dev/null || true)
+  [ -f "$LOG" ] && [ "$heartbeat" = false ] && log=$(tail -c 6000 "$LOG")
+  local body
+  body=$(jq -nc --arg status "$status" --arg message "$message" --arg commit "$commit" \
+    --arg url "$(site_url)" --arg log "$log" --argjson heartbeat "$heartbeat" \
+    '{status: $status, message: $message, commit: $commit, url: $url, log: $log, heartbeat: $heartbeat}')
+  curl -fsS --max-time 20 -X POST "$PLATFORM/api/agent/report" \
+    -H "authorization: Bearer $AGENT_SECRET" -H 'content-type: application/json' -d "$body" >/dev/null 2>&1 || true
+}
+
+fetch_code() {
+  local attempt
+  if [ ! -d "$APP_DIR/.git" ]; then
+    # A new deploy key can take a few seconds to become active on GitHub.
+    for attempt in 1 2 3 4 5; do
+      git_app clone --depth 1 -b "$BRANCH" "$REPO" "$APP_DIR" && return 0
+      sleep $((attempt * 5))
+    done
+    return 1
+  fi
+  git_app -C "$APP_DIR" fetch --depth 1 origin "$BRANCH"
+  as_app git -C "$APP_DIR" reset --hard FETCH_HEAD
+  as_app git -C "$APP_DIR" clean -fdq -e node_modules -e dist
+}
+
+ensure_postgres() {
+  if ! command -v psql >/dev/null; then
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq postgresql >/dev/null
+  fi
+  systemctl enable --now postgresql >/dev/null 2>&1
+  if [ ! -f "$DB_ENV" ]; then
+    local pass; pass=$(openssl rand -hex 24)
+    runuser -u postgres -- psql -q -v ON_ERROR_STOP=1 \
+      -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'app') THEN CREATE ROLE app LOGIN; END IF; END \$\$;" \
+      -c "ALTER ROLE app PASSWORD '$pass';"
+    runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_database WHERE datname = 'app'" | grep -q 1 \
+      || runuser -u postgres -- createdb -O app app
+    umask 027
+    printf 'DATABASE_URL=postgres://app:%s@127.0.0.1:5432/app\n' "$pass" > "$DB_ENV"
+    umask 022
+    chown root:idea2app "$DB_ENV"; chmod 640 "$DB_ENV"
+  fi
+}
+
+write_service() {
+  cat > /etc/systemd/system/idea2app-app.service <<UNIT
+[Unit]
+Description=Idea2App project API
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+User=idea2app
+Group=idea2app
+WorkingDirectory=$APP_DIR
+EnvironmentFile=$DB_ENV
+Environment=NODE_ENV=production HOST=127.0.0.1 PORT=$PORT HOME=$DATA
+ExecStart=/usr/local/bin/npm run server
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+  systemctl daemon-reload
+  systemctl enable idea2app-app >/dev/null 2>&1
+  systemctl restart idea2app-app
+  local _
+  for _ in $(seq 1 30); do
+    curl -fs -o /dev/null --max-time 3 "http://127.0.0.1:$PORT/api/health" && return 0
+    sleep 2
+  done
+  echo "API بالا نیامد:"; journalctl -u idea2app-app -n 40 --no-pager
+  return 1
+}
+
+write_caddy() {
+  local web="$1" backend="$2" names="$DOMAIN"
+  # Second name on another DNS service: some networks cannot resolve sslip.io.
+  case "$DOMAIN" in *.sslip.io) names="$DOMAIN, ${DOMAIN%.sslip.io}.nip.io";; esac
+  {
+    echo "# Written by idea2app — run 'sudo idea2app deploy' rather than editing by hand."
+    echo "$names {"
+    echo "	encode gzip"
+    if [ "$backend" = true ]; then
+      echo "	handle /api/* {"
+      echo "		reverse_proxy 127.0.0.1:$PORT"
+      echo "	}"
+    fi
+    if [ "$web" = true ]; then
+      echo "	handle {"
+      echo "		root * $APP_DIR/dist"
+      echo "		try_files {path} /index.html"
+      echo "		file_server"
+      echo "	}"
+    else
+      echo "	handle {"
+      echo "		reverse_proxy 127.0.0.1:$PORT"
+      echo "	}"
+    fi
+    echo "}"
+  } > /etc/caddy/Caddyfile.new
+  caddy validate --config /etc/caddy/Caddyfile.new --adapter caddyfile >/dev/null
+  mv /etc/caddy/Caddyfile.new /etc/caddy/Caddyfile
+  systemctl enable caddy >/dev/null 2>&1
+  systemctl reload-or-restart caddy
+}
+
+do_deploy() {
+  echo "== دریافت کد از GitHub ($BRANCH)"
+  fetch_code
+  local web backend
+  web=$(manifest web); backend=$(manifest backend)
+  [ -n "$web" ] || { echo "idea2app.json در مخزن نیست."; return 1; }
+  echo "== نصب وابستگی‌ها"
+  in_app npm install --no-audit --no-fund --loglevel=error
+  if [ "$web" = true ]; then
+    echo "== Build وب‌سایت"
+    in_app npm run build
+    chmod -R a+rX "$APP_DIR/dist"
+  fi
+  if [ "$backend" = true ]; then
+    echo "== دیتابیس PostgreSQL"
+    ensure_postgres
+    local schema; schema=$(manifest schema)
+    if [ -n "$schema" ] && [ -f "$APP_DIR/$schema" ]; then
+      runuser -u idea2app -- bash -c 'set -a; . "$0"; set +a; psql "$DATABASE_URL" -q -v ON_ERROR_STOP=1 -f "$1"' "$DB_ENV" "$APP_DIR/$schema"
+    fi
+    echo "== اجرای API"
+    write_service
+  fi
+  echo "== HTTPS با Caddy ($DOMAIN)"
+  write_caddy "$web" "$backend"
+  echo "== تمام: $(site_url)"
+}
+
+deploy() {
+  exec 9>/run/idea2app.lock
+  flock -n 9 || { echo "یک استقرار دیگر در حال اجراست." >&2; return 0; }
+  report deploying "در حال استقرار"
+  set +e
+  ( set -e; do_deploy ) > "$LOG" 2>&1
+  local rc=$?
+  set -e
+  local commit; commit=$(git -C "$APP_DIR" rev-parse HEAD 2>/dev/null || true)
+  if [ $rc -eq 0 ]; then
+    echo "$commit" > "$DATA/deployed-commit"; rm -f "$DATA/failed-commit"
+    report online "مستقر شد"
+    echo "[ ok ] $(site_url)"
+  else
+    echo "$commit" > "$DATA/failed-commit"
+    report error "استقرار ناموفق بود"
+    tail -n 30 "$LOG" >&2
+    return 1
+  fi
+}
+
+# Runs from the timer: deploy only when GitHub has a commit we have not tried.
+sync() {
+  local remote deployed failed
+  remote=$(git_app ls-remote "$REPO" "refs/heads/$BRANCH" 2>/dev/null | cut -f1 || true)
+  deployed=$(cat "$DATA/deployed-commit" 2>/dev/null || true)
+  failed=$(cat "$DATA/failed-commit" 2>/dev/null || true)
+  if [ -n "$remote" ] && [ "$remote" != "$deployed" ] && [ "$remote" != "$failed" ]; then
+    deploy
+  elif [ -n "$failed" ] && [ "$remote" = "$failed" ]; then
+    report error "آخرین Commit ناموفق بود؛ منتظر Commit جدید" true
+  else
+    report online "فعال" true
+  fi
+}
+
+cmd="${1:-help}"; shift || true
+case "$cmd" in
+  deploy)  rm -f "$DATA/failed-commit"; deploy ;;
+  sync)    sync ;;
+  status)  echo "نشانی:   $(site_url)"
+           echo "Commit:  $(cat "$DATA/deployed-commit" 2>/dev/null || echo '-')"
+           systemctl --no-pager is-active caddy idea2app-app 2>/dev/null | paste -sd' ' | sed 's/^/سرویس‌ها: /'
+           systemctl --no-pager list-timers idea2app-sync.timer | sed -n '1,2p' ;;
+  log)     cat "$LOG" 2>/dev/null || echo "هنوز استقراری انجام نشده." ;;
+  logs)    journalctl -u idea2app-app -f -n 100 ;;
+  restart) systemctl restart idea2app-app 2>/dev/null || true; systemctl reload caddy; echo "[ ok ]" ;;
+  *) cat >&2 <<'HELP'
+idea2app status     نشانی، Commit مستقرشده و وضعیت سرویس‌ها
+idea2app deploy     دریافت آخرین نسخه از GitHub، Build و اجرا (همین حالا)
+idea2app log        گزارش آخرین استقرار
+idea2app logs       گزارش زنده API (Ctrl+C برای خروج)
+idea2app restart    راه‌اندازی دوباره API و Caddy
+idea2app sync       همان کاری که تایمر هر ۲ دقیقه انجام می‌دهد
+HELP
+  ;;
+esac
