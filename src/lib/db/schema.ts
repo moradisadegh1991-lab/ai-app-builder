@@ -50,7 +50,8 @@ const timestamps = {
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
   email: text("email").notNull().unique(),
-  // Set when the user connects GitHub (login itself is by e-mail code).
+  // Set when the user signs in with, or connects, Google / GitHub (e-mail code login always works too).
+  googleId: text("google_id").unique(),
   githubId: bigint("github_id", { mode: "number" }).unique(),
   githubLogin: text("github_login"),
   name: text("name"),

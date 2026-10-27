@@ -56,13 +56,16 @@ async function signedRedirect(token: string, path: string, accept: string): Prom
 
 // ------------------------------------------------------------------ OAuth
 
+/** Connecting GitHub: the platform creates repositories and runs workflows for the user. */
 export const GITHUB_SCOPES = "repo workflow read:user user:email";
+/** Signing in only proves identity, so it asks for no repository access. */
+export const GITHUB_LOGIN_SCOPES = "read:user user:email";
 
-export function authorizeUrl(state: string): string {
+export function authorizeUrl(state: string, scope: string = GITHUB_SCOPES): string {
   const params = new URLSearchParams({
     client_id: env.githubClientId(),
     redirect_uri: `${env.appUrl()}/api/auth/github/callback`,
-    scope: GITHUB_SCOPES,
+    scope,
     state,
     allow_signup: "true",
   });
@@ -97,6 +100,27 @@ export interface GitHubUser {
 
 export function getAuthenticatedUser(token: string) {
   return gh<GitHubUser>(token, "GET", "/user");
+}
+
+export interface GitHubEmail {
+  email: string;
+  primary: boolean;
+  verified: boolean;
+}
+
+/**
+ * The address to identify a user by: their primary verified e-mail (GitHub returns
+ * it even when it is hidden on the profile). A noreply address is never used —
+ * it cannot receive login codes or receipts.
+ */
+export function pickVerifiedEmail(emails: GitHubEmail[]): string | null {
+  const usable = emails.filter((e) => e.verified && !e.email.toLowerCase().endsWith("@users.noreply.github.com"));
+  const chosen = usable.find((e) => e.primary) ?? usable[0];
+  return chosen ? chosen.email.toLowerCase() : null;
+}
+
+export async function getVerifiedEmail(token: string): Promise<string | null> {
+  return pickVerifiedEmail(await gh<GitHubEmail[]>(token, "GET", "/user/emails"));
 }
 
 // ------------------------------------------------------------ repositories

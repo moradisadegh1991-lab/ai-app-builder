@@ -1,7 +1,16 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { EmailLogin } from "@/components/EmailLogin";
+import { enabledSocialProviders } from "@/lib/auth/providers";
 import { getCurrentUser } from "@/lib/session";
+
+const ERRORS: Record<string, string> = {
+  oauth_state: "نشست ورود منقضی شد؛ دوباره تلاش کنید.",
+  oauth_failed: "ورود ناموفق بود؛ دوباره تلاش کنید.",
+  no_verified_email: "حساب شما ایمیل تأییدشده‌ای ندارد. ایمیلتان را در آن سرویس تأیید کنید یا با کد ایمیل وارد شوید.",
+  account_conflict: "این ایمیل قبلاً به حساب دیگری از همین سرویس وصل شده است.",
+  provider_disabled: "این روش ورود فعال نیست.",
+};
 
 const STEPS = [
   { title: "وب‌سایت یا اپ؟", text: "نوع محصول و این‌که روی گوشی بماند یا سرور لازم دارد را انتخاب می‌کنید." },
@@ -11,9 +20,10 @@ const STEPS = [
   { title: "سرور", text: "VPS خودت با ایجنت خودکار، VPS رایگان، یا Vercel + Neon رایگان." },
 ];
 
-export default async function LandingPage() {
+export default async function LandingPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const user = await getCurrentUser().catch(() => null);
   if (user) redirect("/dashboard");
+  const { error } = await searchParams;
 
   return (
     <main className="mx-auto flex max-w-5xl flex-col gap-12 px-4 py-14">
@@ -38,8 +48,13 @@ export default async function LandingPage() {
             </Link>
           </p>
         </div>
-        <div className="flex justify-center">
-          <EmailLogin />
+        <div className="flex flex-col items-center gap-3">
+          {error && ERRORS[error] && (
+            <p className="w-full max-w-sm rounded-xl bg-red-50 px-4 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
+              {ERRORS[error]}
+            </p>
+          )}
+          <EmailLogin providers={enabledSocialProviders()} />
         </div>
       </section>
 

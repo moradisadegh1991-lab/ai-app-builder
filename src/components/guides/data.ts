@@ -48,11 +48,26 @@ const vpsOnlineStep: GuideStep = {
 export const GUIDES: Record<GuideId, Guide> = {
   login: {
     id: "login",
-    title: "ثبت‌نام و ورود با کد ایمیل",
-    summary: "بدون رمز عبور: یک کد ۶ رقمی به ایمیل شما فرستاده می‌شود.",
+    title: "ثبت‌نام و ورود (Google، GitHub یا کد ایمیل)",
+    summary: "بدون رمز عبور: با حساب Google یا GitHub، یا با یک کد ۶ رقمی که به ایمیل شما فرستاده می‌شود.",
     steps: [
       {
-        title: "ایمیل را وارد کنید",
+        title: "روش ورود را انتخاب کنید",
+        body: "با «ادامه با Google» یا «ادامه با GitHub» یک‌کلیکی وارد می‌شوید و حساب خودکار ساخته می‌شود. اگر قبلاً با همان ایمیل ثبت‌نام کرده باشید، حساب‌ها یکی می‌شوند. اگر نمی‌خواهید، از مراحل بعد برای ورود با کد ایمیل استفاده کنید.",
+        mock: {
+          kind: "browser",
+          url: PLATFORM,
+          body: [
+            { t: "heading", label: "ورود یا ثبت‌نام" },
+            { t: "button", label: "ادامه با Google", variant: "secondary", hl: 1 },
+            { t: "button", label: "ادامه با GitHub", variant: "secondary", hl: 2 },
+            { t: "text", label: "یا با ایمیل", muted: true },
+          ],
+        },
+        tip: "ورود با GitHub فقط هویت شما را می‌خواند. دسترسی به Repositoryها بعداً و جداگانه، در مرحله «اتصال GitHub» پروژه، از شما پرسیده می‌شود.",
+      },
+      {
+        title: "یا ایمیل را وارد کنید",
         body: "در صفحه اول، ایمیل خود را بنویسید و «ارسال کد» را بزنید. اگر حساب ندارید، با همین کار ساخته می‌شود.",
         mock: {
           kind: "browser",
