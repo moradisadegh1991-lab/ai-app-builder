@@ -27,8 +27,8 @@ GitHub خود کاربر ذخیره و با GitHub Actions ساخته می‌ش�
 | بخش | پیاده‌سازی |
 | --- | --- |
 | رابط کاربری و API | Next.js 16 (App Router) + TypeScript + Tailwind CSS 4، فارسی و راست‌به‌چپ |
-| ورود | کد ۶ رقمی ایمیل (Resend یا SMTP)، ۱۰ دقیقه اعتبار، ۵ تلاش، محدودیت ارسال؛ فقط Hash کد ذخیره می‌شود |
-| GitHub | اتصال OAuth پس از ورود (`repo workflow`)؛ توکن رمزنگاری‌شده |
+| ورود | **Google**، **GitHub** یا کد ۶ رقمی ایمیل (Resend یا SMTP؛ ۱۰ دقیقه اعتبار، ۵ تلاش، محدودیت ارسال؛ فقط Hash کد ذخیره می‌شود) |
+| اتصال GitHub | مرحله جدا و پس از ورود (`repo workflow`)؛ توکن رمزنگاری‌شده. ورود با GitHub فقط هویت را می‌خواند (`read:user user:email`) و توکن آن ذخیره نمی‌شود |
 | هوش مصنوعی | `src/lib/ai`: سه Provider، خروجی JSON با Zod، ثبت مصرف توکن |
 | اشتراک | رایگان / پلاس / پرو / مکس با سقف توکن در پنجره ۵ ساعته و ۷ روزه؛ مدل‌های اقتصادی در طرح رایگان |
 | پرداخت | زرین‌پال (تومان) و Stripe Checkout (دلار) + Webhook امضاشده |
@@ -88,6 +88,13 @@ curl -fsSL https://<platform>/agent/install.sh | sudo IDEA2APP_URL=https://<plat
   اضافه می‌شوند.
 - پرداخت‌ها سمت سرور تأیید می‌شوند (verify زرین‌پال، بازخوانی Checkout Session و امضای Webhook در Stripe) و هر پرداخت فقط
   یک بار اشتراک فعال می‌کند.
+
+### ورود با Google و GitHub
+
+- حساب‌ها با **ایمیل تأییدشده** یکی می‌شوند: کسی که با کد ایمیل ثبت‌نام کرده و بعد با Google یا GitHub همان ایمیل وارد شود، همان حساب را می‌بیند. ایمیل تأییدنشده هرگز برای ادغام استفاده نمی‌شود و ورود رد می‌شود.
+- GitHub ایمیل اصلی تأییدشده را حتی وقتی در پروفایل پنهان است برمی‌گرداند؛ آدرس `noreply` پذیرفته نمی‌شود.
+- دکمه Google فقط وقتی دیده می‌شود که `GOOGLE_CLIENT_ID` و `GOOGLE_CLIENT_SECRET` تنظیم باشند.
+- ساخت کلید Google: Google Cloud Console ← APIs & Services ← **OAuth consent screen** (نوع External، نام برنامه و ایمیل پشتیبانی؛ scopeهای `openid`، `email`، `profile`) ← **Credentials ← Create credentials ← OAuth client ID ← Web application** با Authorized redirect URI برابر `https://<دامنه>/api/auth/google/callback`. تا وقتی برنامه در حالت Testing است فقط کاربران تست‌شده وارد می‌شوند؛ برای همه، Publish app را بزنید.
 
 ## راه‌اندازی محلی
 

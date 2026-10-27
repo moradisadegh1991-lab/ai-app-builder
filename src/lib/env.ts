@@ -19,6 +19,10 @@ export const env = {
   sessionSecret: () => required("SESSION_SECRET"),
   githubClientId: () => required("GITHUB_CLIENT_ID"),
   githubClientSecret: () => required("GITHUB_CLIENT_SECRET"),
+  githubConfigured: () => Boolean(optional("GITHUB_CLIENT_ID") && optional("GITHUB_CLIENT_SECRET")),
+  // Google sign-in is optional; the button only appears when both are set.
+  googleClientId: () => optional("GOOGLE_CLIENT_ID"),
+  googleClientSecret: () => optional("GOOGLE_CLIENT_SECRET"),
   openaiKey: () => optional("OPENAI_API_KEY"),
   anthropicKey: () => optional("ANTHROPIC_API_KEY"),
   geminiKey: () => optional("GEMINI_API_KEY"),

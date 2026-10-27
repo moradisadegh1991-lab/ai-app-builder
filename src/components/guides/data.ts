@@ -48,11 +48,26 @@ const vpsOnlineStep: GuideStep = {
 export const GUIDES: Record<GuideId, Guide> = {
   login: {
     id: "login",
-    title: "ثبت‌نام و ورود با کد ایمیل",
-    summary: "بدون رمز عبور: یک کد ۶ رقمی به ایمیل شما فرستاده می‌شود.",
+    title: "ثبت‌نام و ورود (Google، GitHub یا کد ایمیل)",
+    summary: "بدون رمز عبور: با حساب Google یا GitHub، یا با یک کد ۶ رقمی که به ایمیل شما فرستاده می‌شود.",
     steps: [
       {
-        title: "ایمیل را وارد کنید",
+        title: "روش ورود را انتخاب کنید",
+        body: "با «ادامه با Google» یا «ادامه با GitHub» یک‌کلیکی وارد می‌شوید و حساب خودکار ساخته می‌شود. اگر قبلاً با همان ایمیل ثبت‌نام کرده باشید، حساب‌ها یکی می‌شوند. اگر نمی‌خواهید، از مراحل بعد برای ورود با کد ایمیل استفاده کنید.",
+        mock: {
+          kind: "browser",
+          url: PLATFORM,
+          body: [
+            { t: "heading", label: "ورود یا ثبت‌نام" },
+            { t: "button", label: "ادامه با Google", variant: "secondary", hl: 1 },
+            { t: "button", label: "ادامه با GitHub", variant: "secondary", hl: 2 },
+            { t: "text", label: "یا با ایمیل", muted: true },
+          ],
+        },
+        tip: "ورود با GitHub فقط هویت شما را می‌خواند. دسترسی به Repositoryها بعداً و جداگانه، در مرحله «اتصال GitHub» پروژه، از شما پرسیده می‌شود.",
+      },
+      {
+        title: "یا ایمیل را وارد کنید",
         body: "در صفحه اول، ایمیل خود را بنویسید و «ارسال کد» را بزنید. اگر حساب ندارید، با همین کار ساخته می‌شود.",
         mock: {
           kind: "browser",
@@ -276,7 +291,7 @@ export const GUIDES: Record<GuideId, Guide> = {
     id: "oracle",
     title: "VPS رایگان دائمی Oracle Cloud (Always Free)",
     summary:
-      "سخاوتمندانه‌ترین VPS رایگان: سرور ARM تا ۴ هسته و ۲۴ گیگ رم، بدون تاریخ انقضا. Idea2App فقط یک اسکریپت می‌دهد که هنگام ساخت سرور در Oracle قرار می‌دهید؛ بقیه کار خودکار است.",
+      "بهترین VPS رایگان: سرور ARM تا ۲ هسته و ۱۲ گیگ رم (مطابق مستندات فعلی Oracle)، بدون تاریخ انقضا. Idea2App فقط یک اسکریپت می‌دهد که هنگام ساخت سرور در Oracle قرار می‌دهید؛ بقیه کار خودکار است.",
     steps: [
       {
         title: "ساخت حساب Oracle Cloud",
@@ -306,7 +321,7 @@ export const GUIDES: Record<GuideId, Guide> = {
       },
       {
         title: "سیستم‌عامل و نوع سرور",
-        body: "در بخش Image and shape، روی Edit بزنید. Image را Canonical Ubuntu 24.04 و Shape را از Ampere، VM.Standard.A1.Flex انتخاب کنید (۱ تا ۴ OCPU و ۶ تا ۲۴ گیگ رم، همه Always Free).",
+        body: "در بخش Image and shape، روی Edit بزنید. Image را Canonical Ubuntu 24.04 و Shape را از Ampere، VM.Standard.A1.Flex انتخاب کنید (حداکثر ۲ OCPU و ۱۲ گیگ رم در مجموع همه سرورهای A1، رایگان همیشگی).",
         mock: {
           kind: "browser",
           url: "cloud.oracle.com/compute/instances/create",
@@ -316,7 +331,7 @@ export const GUIDES: Record<GuideId, Guide> = {
             { t: "select", label: "Shape", value: "VM.Standard.A1.Flex · 2 OCPU · 12 GB · Always Free-eligible", hl: 2 },
           ],
         },
-        tip: "اگر پیام Out of capacity دیدید، یک Availability Domain دیگر یا ۱ OCPU را امتحان کنید، یا چند ساعت بعد دوباره تلاش کنید.",
+        tip: "اگر پیام Out of capacity دیدید، یک Availability Domain دیگر یا ۱ OCPU را امتحان کنید، یا چند ساعت بعد دوباره تلاش کنید. توجه: Oracle سروری را که ۷ روز پیوسته CPU، شبکه و حافظه‌اش همه زیر ۲۰٪ بماند ممکن است پس بگیرد؛ برای سایت کم‌بازدید این خطر هست.",
       },
       {
         title: "کلید SSH را ذخیره کنید",
