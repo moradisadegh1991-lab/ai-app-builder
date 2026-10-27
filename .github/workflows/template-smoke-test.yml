@@ -1,0 +1,51 @@
+# Renders each app template with a fixed sample App (no AI involved) and runs
+# the exact same scripts/ci-build-android.sh that generated repositories use,
+# proving the templates still produce an installable APK.
+name: Template APK smoke test
+
+on:
+  pull_request:
+    paths:
+      - "src/lib/templates/**"
+      - "scripts/**"
+      - ".github/workflows/template-smoke-test.yml"
+  push:
+    branches: [main]
+    paths:
+      - "src/lib/templates/**"
+      - "scripts/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        template: [capacitor, expo]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - run: npm ci
+      - name: Render sample project
+        run: npx tsx scripts/render-sample-app.ts ${{ matrix.template }} "$RUNNER_TEMP/sample"
+      - name: Build APK with the generated build script
+        working-directory: ${{ runner.temp }}/sample
+        run: bash scripts/ci-build-android.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sample-${{ matrix.template }}-apk
+          path: ${{ runner.temp }}/sample/dist-apk/app.apk
+          if-no-files-found: error
+          retention-days: 3
