@@ -1,5 +1,5 @@
 import { BUILD_SCRIPT_PATH } from "./common";
-import { escapeHtml, type TemplateContext } from "./capacitor";
+import { escapeHtml, type TemplateContext } from "./vite";
 import type { GeneratedFile } from "./types";
 
 const BUILD_SCRIPT = `#!/usr/bin/env bash
@@ -37,6 +37,7 @@ export function expoFiles(ctx: TemplateContext, needsBackend: boolean): Generate
               start: "expo start",
               android: "expo run:android",
               typecheck: "tsc --noEmit",
+              ...ctx.scripts,
             },
             dependencies: {
               expo: "~58.0.0",
@@ -92,9 +93,10 @@ registerRootComponent(App);
       path: "src/lib/api.ts",
       content: `// Base URL of the Vercel backend (empty when the app has no backend).
 export const API_URL: string = (process.env.EXPO_PUBLIC_API_URL ?? "").replace(/\\/+$/, "");
+export const API_AVAILABLE = API_URL !== "";
 
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
-  if (!API_URL) throw new Error("Backend is not configured for this build");
+  if (!API_AVAILABLE) throw new Error("Backend is not configured for this build");
   const response = await fetch(\`\${API_URL}\${path}\`, {
     ...init,
     headers: { "content-type": "application/json", ...(init.headers ?? {}) },

@@ -1,5 +1,5 @@
-import { and, count, eq, gte } from "drizzle-orm";
 import type { z } from "zod";
+import { activePlan, usageSummary } from "../billing/subscription";
 import { db, schema } from "../db";
 import { env } from "../env";
 import { HttpError } from "../http";
@@ -22,6 +22,13 @@ const defaultModels: Record<AiProviderId, () => string> = {
   gemini: env.geminiModel,
 };
 
+// Free-plan users get the providers' smaller, cheaper models on central keys.
+const economyModels: Record<AiProviderId, () => string> = {
+  openai: env.openaiEconomyModel,
+  anthropic: env.anthropicEconomyModel,
+  gemini: env.geminiEconomyModel,
+};
+
 export function isAiProvider(value: string): value is AiProviderId {
   return (AI_PROVIDERS as readonly string[]).includes(value);
 }
@@ -32,7 +39,7 @@ interface ResolvedKey {
   model: string;
 }
 
-/** A user's own key always wins; otherwise the platform key (with quota) is used. */
+/** A user's own key always wins; otherwise the platform key, within the plan's limits. */
 async function resolveKey(userId: string, provider: AiProviderId): Promise<ResolvedKey> {
   const own = await getIntegration(userId, provider);
   if (own) {
@@ -45,48 +52,47 @@ async function resolveKey(userId: string, provider: AiProviderId): Promise<Resol
       `کلید ${AI_PROVIDER_LABELS[provider]} روی پلتفرم تنظیم نشده است. در صفحه تنظیمات کلید شخصی خود را وارد کنید.`,
     );
   }
-  return { apiKey: platformKey, usedPlatformKey: true, model: defaultModels[provider]() };
+  const { plan } = await activePlan(userId);
+  const model = plan.modelTier === "economy" ? economyModels[provider]() : defaultModels[provider]();
+  return { apiKey: platformKey, usedPlatformKey: true, model };
 }
 
-function startOfTodayUtc(): Date {
-  const now = new Date();
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+function formatReset(iso: string | null) {
+  if (!iso) return "";
+  const date = new Date(iso);
+  return ` (آزاد شدن: ${date.toLocaleString("fa-IR", { timeZone: "Asia/Tehran", dateStyle: "short", timeStyle: "short" })})`;
 }
 
-export async function platformUsageToday(userId: string): Promise<number> {
-  const [row] = await db()
-    .select({ value: count() })
-    .from(schema.usageRecords)
-    .where(
-      and(
-        eq(schema.usageRecords.userId, userId),
-        eq(schema.usageRecords.usedPlatformKey, true),
-        gte(schema.usageRecords.createdAt, startOfTodayUtc()),
-      ),
-    );
-  return row?.value ?? 0;
-}
-
-async function assertQuota(userId: string) {
-  const limit = env.aiDailyRequestLimit();
-  if ((await platformUsageToday(userId)) >= limit) {
+/** Blocks a call when the 5-hour or weekly token window of the plan is used up. */
+async function assertWithinPlan(userId: string) {
+  const usage = await usageSummary(userId);
+  const hint = "برای سقف بیشتر طرح را ارتقا دهید یا کلید API شخصی وارد کنید.";
+  if (usage.window.used >= usage.window.limit) {
     throw new HttpError(
       429,
-      `سهمیه روزانه استفاده از کلید مرکزی (${limit} درخواست) تمام شده است. فردا دوباره تلاش کنید یا کلید شخصی وارد کنید.`,
+      `سقف مصرف ۵ ساعته طرح «${usage.plan.name}» پر شده است${formatReset(usage.window.resetsAt)}. ${hint}`,
+    );
+  }
+  if (usage.week.used >= usage.week.limit) {
+    throw new HttpError(
+      429,
+      `سقف مصرف هفتگی طرح «${usage.plan.name}» پر شده است${formatReset(usage.week.resetsAt)}. ${hint}`,
     );
   }
 }
 
 /** Lists providers with where their key would come from, for the UI. */
 export async function providerAvailability(userId: string) {
+  const { plan } = await activePlan(userId);
   return Promise.all(
     AI_PROVIDERS.map(async (id) => {
       const own = await getIntegration(userId, id);
       const source: "user" | "platform" | null = own ? "user" : platformKeys[id]() ? "platform" : null;
+      const platformModel = plan.modelTier === "economy" ? economyModels[id]() : defaultModels[id]();
       return {
         id,
         label: AI_PROVIDER_LABELS[id],
-        model: own?.metadata.model || defaultModels[id](),
+        model: own ? own.metadata.model || defaultModels[id]() : platformModel,
         available: source !== null,
         source,
       };
@@ -107,11 +113,11 @@ export interface StructuredCallOptions<T> {
 
 /**
  * Runs one model call that must return JSON matching `schema`, enforcing the
- * platform quota and recording token usage for cost control.
+ * plan's usage windows and recording token usage for cost control.
  */
 export async function generateStructured<T>(options: StructuredCallOptions<T>): Promise<{ data: T; model: string }> {
   const key = await resolveKey(options.userId, options.provider);
-  if (key.usedPlatformKey) await assertQuota(options.userId);
+  if (key.usedPlatformKey) await assertWithinPlan(options.userId);
 
   const result = await providerClients[options.provider]({
     apiKey: key.apiKey,

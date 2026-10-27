@@ -19,5 +19,4 @@ export interface ProviderInfo {
 
 export interface ProvidersResponse {
   providers: ProviderInfo[];
-  quota: { usedToday: number; dailyLimit: number };
 }

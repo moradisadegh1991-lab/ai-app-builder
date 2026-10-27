@@ -12,13 +12,14 @@ import * as vercel from "./integrations/vercel";
 import {
   currentGeneration,
   latestBuild,
+  projectAgent,
   projectDeployment,
   requireGitHubToken,
   requireRepo,
   updateProject,
 } from "./projects";
 import { appSpecSchema, type AppSpec } from "./spec";
-import { WORKFLOW_FILE, renderProject, slugify } from "./templates";
+import { renderProject, slugify, workflowFile } from "./templates";
 
 const GENERATION_LOCK_MS = 6 * 60_000;
 
@@ -67,7 +68,7 @@ export async function generateSpec(user: schema.User, project: schema.Project, f
       provider,
       purpose: "spec",
       system: SPEC_SYSTEM,
-      prompt: specPrompt(project.idea, feedback, project.spec ?? undefined),
+      prompt: specPrompt(project.idea, specContext(project), feedback, project.spec ?? undefined),
       schema: appSpecSchema,
       maxOutputTokens: 8000,
     });
@@ -75,6 +76,9 @@ export async function generateSpec(user: schema.User, project: schema.Project, f
       .update(schema.generationJobs)
       .set({ status: "succeeded", model, finishedAt: new Date() })
       .where(eq(schema.generationJobs.id, job.id));
+    // The user's own choice (phone-only vs cloud) wins over the model's guess.
+    const forced = specContext(project).backend;
+    if (forced !== null) data.needsBackend = forced;
     return updateProject(project.id, {
       spec: data,
       name: data.appName,
@@ -87,9 +91,19 @@ export async function generateSpec(user: schema.User, project: schema.Project, f
   }
 }
 
+/** Apps follow the user's phone-only / cloud choice; websites let the AI decide. */
+function specContext(project: schema.Project) {
+  return {
+    kind: project.kind,
+    backend: project.kind === "app" ? project.needsCloud : null,
+  } as const;
+}
+
 export async function approveSpec(project: schema.Project, edited?: AppSpec) {
   const spec = edited ? appSpecSchema.parse(edited) : project.spec;
   if (!spec) throw new HttpError(400, "ابتدا نیازمندی‌ها را تولید کنید.");
+  const forced = specContext(project).backend;
+  if (forced !== null) spec.needsBackend = forced;
   return updateProject(project.id, {
     spec,
     name: spec.appName,
@@ -205,7 +219,7 @@ export async function syncBuild(user: schema.User, project: schema.Project) {
 
   const run = build.runId
     ? await github.getWorkflowRun(token, owner, repo, build.runId)
-    : await github.findWorkflowRun(token, owner, repo, WORKFLOW_FILE, build.commitSha, build.createdAt);
+    : await github.findWorkflowRun(token, owner, repo, workflowFile(project.template), build.commitSha, build.createdAt);
   if (!run) return build;
 
   const update: Partial<schema.BuildJob> = {
@@ -217,7 +231,7 @@ export async function syncBuild(user: schema.User, project: schema.Project) {
     updatedAt: new Date(),
   };
 
-  if (run.status === "completed" && run.conclusion === "success") {
+  if (run.status === "completed" && run.conclusion === "success" && project.template !== "web") {
     const [asset, artifact] = await Promise.all([
       github.findReleaseApk(token, owner, repo, `build-${run.run_number}`),
       github.findRunArtifact(token, owner, repo, run.id),
@@ -242,7 +256,7 @@ export async function rebuild(user: schema.User, project: schema.Project) {
   const { owner, repo } = requireRepo(project);
   if (!project.lastCommitSha) throw new HttpError(400, "هنوز کدی در GitHub ثبت نشده است.");
   const token = await requireGitHubToken(user.id);
-  await github.dispatchWorkflow(token, owner, repo, WORKFLOW_FILE, "main");
+  await github.dispatchWorkflow(token, owner, repo, workflowFile(project.template), "main");
   await db()
     .insert(schema.buildJobs)
     .values({ projectId: project.id, commitSha: project.lastCommitSha, trigger: "dispatch" });
@@ -263,8 +277,20 @@ export async function downloadApkUrl(user: schema.User, project: schema.Project)
 /** Sends the failed build log to the AI, re-renders the project and pushes the fix. */
 export async function autoFix(user: schema.User, project: schema.Project, providerOverride?: string) {
   assertNotBusy(project);
+  // The failure can come from the GitHub Actions build or from the VPS deploy.
   const build = await syncBuild(user, project);
-  if (!build || build.conclusion !== "failure") throw new HttpError(400, "آخرین Build ناموفق نیست.");
+  const agent = await projectAgent(project.id);
+  let failureLog: string;
+  let label: string;
+  if (build?.conclusion === "failure") {
+    failureLog = build.failureLog ?? "(log unavailable)";
+    label = `failed build #${build.runNumber ?? ""}`.trim();
+  } else if (agent?.status === "error" && agent.lastLog) {
+    failureLog = agent.lastLog;
+    label = "failed VPS deploy";
+  } else {
+    throw new HttpError(400, "خطای فعالی برای اصلاح وجود ندارد.");
+  }
   const generation = await currentGeneration(project);
   if (!generation?.files || !generation.aiFiles || !project.spec) throw new HttpError(400, "کد قبلی پیدا نشد.");
 
@@ -281,7 +307,7 @@ export async function autoFix(user: schema.User, project: schema.Project, provid
       provider,
       purpose: "fix",
       system: codeSystemPrompt(project.template, spec.needsBackend),
-      prompt: fixPrompt(spec, generation.files, build.failureLog ?? "(log unavailable)", editable),
+      prompt: fixPrompt(spec, generation.files, failureLog, editable),
       schema: codeOutputSchema,
       maxOutputTokens: 64000,
     });
@@ -289,7 +315,7 @@ export async function autoFix(user: schema.User, project: schema.Project, provid
     for (const file of data.files) merged.set(file.path, file);
     const libraries = data.libraries.length ? data.libraries : (generation.libraries ?? []);
     const updated = await saveGeneration(project, job.id, model, spec, [...merged.values()], libraries, data.notes);
-    return await pushToGitHub(user, updated, `fix: AI repair of failed build #${build.runNumber ?? ""}`.trim());
+    return await pushToGitHub(user, updated, `fix: AI repair of ${label}`);
   } catch (error) {
     await failJob(job.id, project.id, error, "pushed");
     throw error;
@@ -349,15 +375,15 @@ export async function provisionCloud(user: schema.User, project: schema.Project)
       if (schemaSql) await runSchema(databaseUrl, schemaSql);
     }
 
-    const isCapacitor = project.template === "capacitor";
+    const hasWeb = project.template !== "expo";
     const vercelProject = deployment!.vercelProjectId
       ? await vercel.getVercelProject(vercelAuth.secret, teamId, deployment!.vercelProjectId)
       : await vercel.createVercelProject(vercelAuth.secret, teamId, {
           name: slugify(project.slug),
           repoFullName: `${owner}/${repo}`,
-          framework: isCapacitor ? "vite" : null,
-          buildCommand: isCapacitor ? undefined : "echo 'API only'",
-          outputDirectory: isCapacitor ? undefined : "public",
+          framework: hasWeb ? "vite" : null,
+          buildCommand: hasWeb ? undefined : "echo 'API only'",
+          outputDirectory: hasWeb ? undefined : "public",
         });
     await db()
       .update(schema.deployments)
@@ -409,15 +435,24 @@ export async function syncDeployment(user: schema.User, project: schema.Project)
   }
   if (state.readyState !== "READY" || !state.productionUrl) return deployment;
 
-  const { owner, repo } = requireRepo(project);
-  const token = await requireGitHubToken(user.id);
-  await github.setRepositoryVariable(token, owner, repo, "API_URL", state.productionUrl);
   const [updated] = await db()
     .update(schema.deployments)
     .set({ status: "ready", url: state.productionUrl, updatedAt: new Date() })
     .where(eq(schema.deployments.id, deployment.id))
     .returning();
-  // The APK reads API_URL at build time, so rebuild it now.
-  await rebuild(user, project);
+  await connectBackendUrl(user, project, state.productionUrl);
   return updated!;
+}
+
+/**
+ * Points an Android app at its live backend: the APK reads API_URL at build
+ * time, so the repository variable is set and the APK rebuilt. Websites call
+ * their own /api and need nothing.
+ */
+export async function connectBackendUrl(user: schema.User, project: schema.Project, url: string) {
+  if (project.kind !== "app" || !project.spec?.needsBackend) return;
+  const { owner, repo } = requireRepo(project);
+  const token = await requireGitHubToken(user.id);
+  await github.setRepositoryVariable(token, owner, repo, "API_URL", url);
+  await rebuild(user, project);
 }

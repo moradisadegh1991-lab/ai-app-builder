@@ -12,6 +12,13 @@ const spec = appSpecSchema.parse({
 });
 
 const app = { path: "src/App.tsx", content: "export default function App() { return null; }" };
+const server = { path: "server/app.ts", content: "export const app = null;" };
+
+function file(files: { path: string; content: string; executable?: boolean }[], path: string) {
+  const found = files.find((f) => f.path === path);
+  if (!found) throw new Error(`missing ${path}`);
+  return found;
+}
 
 describe("slugify / package id", () => {
   it("creates safe slugs", () => {
@@ -27,7 +34,7 @@ describe("slugify / package id", () => {
 });
 
 describe("sanitizeAiFiles", () => {
-  const locked = new Set(["package.json", "src/main.tsx"]);
+  const locked = new Set(["package.json", "src/main.tsx", "server/base.ts"]);
 
   it("rejects path traversal and absolute paths", () => {
     const result = sanitizeAiFiles(
@@ -48,6 +55,7 @@ describe("sanitizeAiFiles", () => {
         { path: "package.json", content: "{}" },
         { path: "src/main.tsx", content: "" },
         { path: ".github/workflows/x.yml", content: "" },
+        { path: "api/index.ts", content: "" },
       ],
       false,
       locked,
@@ -55,18 +63,17 @@ describe("sanitizeAiFiles", () => {
     expect(result.files.map((f) => f.path)).toEqual(["src/App.tsx"]);
   });
 
-  it("only accepts backend files when the app needs a backend", () => {
-    const files = [app, { path: "api/items.ts", content: "" }, { path: "db/schema.sql", content: "" }];
-    expect(sanitizeAiFiles("capacitor", files, false, locked).files).toHaveLength(1);
-    expect(sanitizeAiFiles("capacitor", files, true, locked).files).toHaveLength(3);
-    expect(
-      sanitizeAiFiles("capacitor", [app, { path: "api/_lib/db.ts", content: "" }], true, locked).files,
-    ).toHaveLength(1);
+  it("only accepts backend files when the product has a backend", () => {
+    const files = [app, server, { path: "db/schema.sql", content: "" }];
+    expect(sanitizeAiFiles("web", [app, { path: "db/schema.sql", content: "" }], false, locked).files).toHaveLength(1);
+    expect(sanitizeAiFiles("web", files, true, locked).files).toHaveLength(3);
+    expect(sanitizeAiFiles("web", [...files, { path: "server/base.ts", content: "" }], true, locked).files).toHaveLength(3);
   });
 
-  it("requires the entry file", () => {
+  it("requires the entry files", () => {
     expect(() => sanitizeAiFiles("capacitor", [{ path: "src/other.tsx", content: "" }], false, locked)).toThrow();
     expect(() => sanitizeAiFiles("expo", [app], false, locked)).toThrow();
+    expect(() => sanitizeAiFiles("web", [app], true, locked)).toThrow(/server\/app\.ts/);
   });
 });
 
@@ -82,15 +89,14 @@ describe("renderProject", () => {
     const paths = files.map((f) => f.path);
     expect(paths).toContain(".github/workflows/build-android.yml");
     expect(paths).toContain("capacitor.config.json");
-    expect(files.find((f) => f.path === "scripts/ci-build-android.sh")?.executable).toBe(true);
+    expect(file(files, "scripts/ci-build.sh").executable).toBe(true);
 
-    const pkg = JSON.parse(files.find((f) => f.path === "package.json")!.content);
+    const pkg = JSON.parse(file(files, "package.json").content);
     expect(pkg.dependencies.recharts).toBeDefined();
     expect(pkg.dependencies["left-pad"]).toBeUndefined();
     expect(warnings.some((w) => w.includes("left-pad"))).toBe(true);
-
-    const config = JSON.parse(files.find((f) => f.path === "capacitor.config.json")!.content);
-    expect(config.appId).toBe("com.idea2app.expense_tracker");
+    expect(JSON.parse(file(files, "capacitor.config.json").content).appId).toBe("com.idea2app.expense_tracker");
+    expect(JSON.parse(file(files, "idea2app.json").content)).toMatchObject({ web: true, backend: false });
   });
 
   it("adds Android permissions for device plugins", () => {
@@ -101,22 +107,37 @@ describe("renderProject", () => {
       aiFiles: [app],
       requestedLibraries: ["@capacitor/camera"],
     });
-    expect(files.find((f) => f.path === "android-permissions.txt")?.content).toContain("android.permission.CAMERA");
+    expect(file(files, "android-permissions.txt").content).toContain("android.permission.CAMERA");
   });
 
-  it("adds backend helpers and the Neon driver when a backend is needed", () => {
+  it("adds the shared Hono + PostgreSQL backend when needed", () => {
     const { files } = renderProject({
       template: "capacitor",
       slug: "shared-app",
       spec: { ...spec, needsBackend: true },
-      aiFiles: [app, { path: "api/items.ts", content: "export function GET() {}" }],
+      aiFiles: [app, server, { path: "db/schema.sql", content: "CREATE TABLE IF NOT EXISTS t (id int);" }],
       requestedLibraries: [],
     });
     const paths = files.map((f) => f.path);
-    expect(paths).toContain("api/_lib/db.ts");
-    expect(paths).toContain("api/items.ts");
-    const pkg = JSON.parse(files.find((f) => f.path === "package.json")!.content);
-    expect(pkg.dependencies["@neondatabase/serverless"]).toBeDefined();
+    for (const path of ["server/base.ts", "server/db.ts", "server/node.ts", "api/index.ts", "vercel.json", "server/app.ts"]) {
+      expect(paths).toContain(path);
+    }
+    const pkg = JSON.parse(file(files, "package.json").content);
+    expect(pkg.dependencies).toMatchObject({ hono: expect.any(String), postgres: expect.any(String), tsx: expect.any(String) });
+    expect(pkg.scripts.server).toBe("tsx server/node.ts");
+    expect(JSON.parse(file(files, "idea2app.json").content)).toMatchObject({ backend: true, schema: "db/schema.sql" });
+  });
+
+  it("renders a website with a build-only workflow", () => {
+    const { files } = renderProject({ template: "web", slug: "cafe-site", spec, aiFiles: [app], requestedLibraries: [] });
+    const paths = files.map((f) => f.path);
+    expect(paths).toContain(".github/workflows/build-web.yml");
+    expect(paths).not.toContain(".github/workflows/build-android.yml");
+    expect(paths).not.toContain("capacitor.config.json");
+    const pkg = JSON.parse(file(files, "package.json").content);
+    expect(pkg.dependencies["@capacitor/core"]).toBeUndefined();
+    // A website calls its own /api, so the client does not require API_URL.
+    expect(file(files, "src/lib/api.ts").content).toContain("API_AVAILABLE = true");
   });
 
   it("renders an Expo project", () => {
@@ -127,8 +148,8 @@ describe("renderProject", () => {
       aiFiles: [{ path: "App.tsx", content: "export default function App() { return null; }" }],
       requestedLibraries: [],
     });
-    const appJson = JSON.parse(files.find((f) => f.path === "app.json")!.content);
-    expect(appJson.expo.android.package).toBe("com.idea2app.native_app");
-    expect(files.find((f) => f.path === "scripts/ci-build-android.sh")!.content).toContain("expo prebuild");
+    expect(JSON.parse(file(files, "app.json").content).expo.android.package).toBe("com.idea2app.native_app");
+    expect(file(files, "scripts/ci-build.sh").content).toContain("expo prebuild");
+    expect(JSON.parse(file(files, "idea2app.json").content)).toMatchObject({ web: false });
   });
 });

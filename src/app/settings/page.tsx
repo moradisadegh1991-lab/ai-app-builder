@@ -1,19 +1,31 @@
 import { Header } from "@/components/Header";
 import { SettingsForm } from "@/components/SettingsForm";
-import { platformUsageToday, providerAvailability } from "@/lib/ai";
-import { env } from "@/lib/env";
+import { UsageMeter } from "@/components/UsageMeter";
+import { GuideToggle } from "@/components/guides/Guide";
+import { providerAvailability } from "@/lib/ai";
+import { usageSummary } from "@/lib/billing/subscription";
 import { listIntegrations } from "@/lib/integrations/store";
 import { requirePageUser } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
-export default async function SettingsPage() {
+const GITHUB_MESSAGES: Record<string, { text: string; ok: boolean }> = {
+  connected: { text: "GitHub با موفقیت متصل شد.", ok: true },
+  already_linked: { text: "این حساب GitHub قبلاً به کاربر دیگری وصل شده است.", ok: false },
+  state_error: { text: "نشست اتصال منقضی شد؛ دوباره تلاش کنید.", ok: false },
+  failed: { text: "اتصال GitHub ناموفق بود؛ دوباره تلاش کنید.", ok: false },
+};
+
+export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ github?: string }> }) {
   const user = await requirePageUser();
-  const [integrations, providers, usedToday] = await Promise.all([
+  const { github } = await searchParams;
+  const [integrations, providers, usage] = await Promise.all([
     listIntegrations(user.id),
     providerAvailability(user.id),
-    platformUsageToday(user.id),
+    usageSummary(user.id),
   ]);
+  const githubConnected = integrations.some((i) => i.provider === "github");
+  const message = github ? GITHUB_MESSAGES[github] : undefined;
 
   return (
     <>
@@ -22,30 +34,54 @@ export default async function SettingsPage() {
         <div>
           <h1 className="text-2xl font-extrabold">اتصال‌ها و کلیدها</h1>
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            همه کلیدها با AES-256-GCM رمزنگاری و فقط سمت سرور استفاده می‌شوند؛ هیچ‌وقت به مرورگر برگردانده نمی‌شوند.
+            حساب: <span dir="ltr" className="font-mono">{user.email}</span>. همه کلیدها با AES-256-GCM رمزنگاری و فقط سمت
+            سرور استفاده می‌شوند و هیچ‌وقت به مرورگر برگردانده نمی‌شوند.
           </p>
         </div>
 
-        <section className="card text-sm">
-          <h2 className="mb-2 font-bold">GitHub</h2>
-          <p>
-            متصل به حساب <span dir="ltr" className="font-mono">@{user.githubLogin}</span> از طریق ورود OAuth (دسترسی
-            ساخت Repository و Workflow).
+        {message && (
+          <p
+            className={`rounded-xl px-4 py-3 text-sm ${
+              message.ok ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200" : "bg-red-50 text-red-800 dark:bg-red-950 dark:text-red-200"
+            }`}
+          >
+            {message.text}
           </p>
-        </section>
+        )}
 
-        <section className="card text-sm">
-          <h2 className="mb-2 font-bold">سهمیه کلید مرکزی هوش مصنوعی</h2>
-          <p>
-            امروز {usedToday.toLocaleString("fa-IR")} از {env.aiDailyRequestLimit().toLocaleString("fa-IR")} درخواست
-            مصرف شده است. با وارد کردن کلید شخصی، سهمیه اعمال نمی‌شود.
+        <UsageMeter usage={usage} />
+
+        <section className="card flex flex-col gap-3 text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-bold">GitHub</h2>
+            {githubConnected ? (
+              <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                متصل <span dir="ltr">@{user.githubLogin}</span>
+              </span>
+            ) : (
+              <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                متصل نیست
+              </span>
+            )}
+          </div>
+          <p className="text-slate-600 dark:text-slate-400">
+            کد هر پروژه در یک Repository خصوصی در حساب GitHub خودتان ذخیره و همان‌جا با GitHub Actions ساخته می‌شود.
           </p>
+          <div>
+            <a href="/api/auth/github" className={githubConnected ? "btn-secondary" : "btn-primary"}>
+              {githubConnected ? "اتصال دوباره / تغییر حساب" : "اتصال GitHub"}
+            </a>
+          </div>
+          <GuideToggle id="github" />
         </section>
 
         <SettingsForm
-          initial={integrations.map((i) => ({ provider: i.provider, secretHint: i.secretHint, metadata: i.metadata }))}
+          initial={integrations
+            .filter((i) => i.provider !== "github")
+            .map((i) => ({ provider: i.provider, secretHint: i.secretHint, metadata: i.metadata }))}
           providers={providers}
         />
+        <GuideToggle id="vercel-neon" label="آموزش تصویری: گرفتن توکن Vercel و کلید Neon" />
       </main>
     </>
   );

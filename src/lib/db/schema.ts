@@ -23,7 +23,11 @@ export const integrationProvider = pgEnum("integration_provider", [
   "gemini",
 ]);
 
-export const appTemplate = pgEnum("app_template", ["capacitor", "expo"]);
+export const appTemplate = pgEnum("app_template", ["capacitor", "expo", "web"]);
+export const projectKind = pgEnum("project_kind", ["app", "website"]);
+// none = runs only on the phone; vps = user's own or a free VPS with the deploy agent; vercel = Vercel + Neon free tiers.
+export const hostingTarget = pgEnum("hosting_target", ["none", "vps", "vercel"]);
+export const planId = pgEnum("plan_id", ["free", "plus", "pro", "max"]);
 
 export const projectStatus = pgEnum("project_status", [
   "draft",
@@ -45,13 +49,29 @@ const timestamps = {
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
-  githubId: bigint("github_id", { mode: "number" }).notNull().unique(),
-  githubLogin: text("github_login").notNull(),
+  email: text("email").notNull().unique(),
+  // Set when the user connects GitHub (login itself is by e-mail code).
+  githubId: bigint("github_id", { mode: "number" }).unique(),
+  githubLogin: text("github_login"),
   name: text("name"),
-  email: text("email"),
   avatarUrl: text("avatar_url"),
   ...timestamps,
 });
+
+// One-time login codes. Only a hash of the code is stored.
+export const emailCodes = pgTable(
+  "email_codes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    email: text("email").notNull(),
+    codeHash: text("code_hash").notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("email_codes_email_idx").on(t.email, t.createdAt)],
+);
 
 export const integrations = pgTable(
   "integrations",
@@ -81,7 +101,13 @@ export const projects = pgTable(
     name: text("name").notNull(),
     slug: text("slug").notNull(),
     idea: text("idea").notNull(),
+    kind: projectKind("kind").notNull().default("app"),
     template: appTemplate("template").notNull().default("capacitor"),
+    // Whether the user asked for a server/database (cloud) part.
+    needsCloud: boolean("needs_cloud").notNull().default(false),
+    hosting: hostingTarget("hosting").notNull().default("none"),
+    // own | oracle | gcp | aws — which VPS guide to show.
+    vpsProvider: text("vps_provider"),
     aiProvider: text("ai_provider").notNull(),
     status: projectStatus("status").notNull().default("draft"),
     spec: jsonb("spec").$type<AppSpec>(),
@@ -167,6 +193,72 @@ export const deployments = pgTable(
   (t) => [uniqueIndex("deployments_project_idx").on(t.projectId)],
 );
 
+export const vpsAgents = pgTable(
+  "vps_agents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    // Hash of the one-time token used by the installer to register.
+    registrationTokenHash: text("registration_token_hash"),
+    registrationExpiresAt: timestamp("registration_expires_at", { withTimezone: true }),
+    // Hash of the long-lived secret the agent uses for status reports.
+    secretHash: text("secret_hash"),
+    // pending | online | deploying | error
+    status: text("status").notNull().default("pending"),
+    hostname: text("hostname"),
+    ip: text("ip"),
+    url: text("url"),
+    deployKeyId: bigint("deploy_key_id", { mode: "number" }),
+    deployedCommit: text("deployed_commit"),
+    lastMessage: text("last_message"),
+    lastLog: text("last_log"),
+    lastReportAt: timestamp("last_report_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("vps_agents_project_idx").on(t.projectId)],
+);
+
+export const subscriptions = pgTable(
+  "subscriptions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    plan: planId("plan").notNull(),
+    currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }).notNull(),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("subscriptions_user_idx").on(t.userId)],
+);
+
+export const payments = pgTable(
+  "payments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    plan: planId("plan").notNull(),
+    // zarinpal | stripe
+    provider: text("provider").notNull(),
+    amount: integer("amount").notNull(),
+    // IRT (toman) | usd (cents)
+    currency: text("currency").notNull(),
+    // Zarinpal authority or Stripe checkout session id.
+    reference: text("reference"),
+    // Zarinpal ref_id or Stripe payment intent id, after verification.
+    receipt: text("receipt"),
+    // pending | paid | failed
+    status: text("status").notNull().default("pending"),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [index("payments_user_idx").on(t.userId), uniqueIndex("payments_reference_idx").on(t.provider, t.reference)],
+);
+
 export const usageRecords = pgTable(
   "usage_records",
   {
@@ -193,3 +285,7 @@ export type BuildJob = typeof buildJobs.$inferSelect;
 export type Deployment = typeof deployments.$inferSelect;
 export type IntegrationProvider = (typeof integrationProvider.enumValues)[number];
 export type AppTemplate = (typeof appTemplate.enumValues)[number];
+export type ProjectKind = (typeof projectKind.enumValues)[number];
+export type HostingTarget = (typeof hostingTarget.enumValues)[number];
+export type PlanId = (typeof planId.enumValues)[number];
+export type VpsAgent = typeof vpsAgents.$inferSelect;

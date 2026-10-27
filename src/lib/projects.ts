@@ -52,9 +52,18 @@ export async function projectDeployment(projectId: string) {
   return deployment ?? null;
 }
 
+export async function projectAgent(projectId: string) {
+  const [agent] = await db()
+    .select()
+    .from(schema.vpsAgents)
+    .where(eq(schema.vpsAgents.projectId, projectId))
+    .limit(1);
+  return agent ?? null;
+}
+
 export async function requireGitHubToken(userId: string): Promise<string> {
   const github = await getIntegration(userId, "github");
-  if (!github) throw new HttpError(400, "حساب GitHub متصل نیست. دوباره وارد شوید.");
+  if (!github) throw new HttpError(400, "حساب GitHub متصل نیست. از صفحه «اتصال‌ها و کلیدها» GitHub را وصل کنید.");
   return github.secret;
 }
 
@@ -67,17 +76,22 @@ export function requireRepo(project: schema.Project) {
 
 /** Client-safe project view, used by pages and API responses. */
 export async function projectView(project: schema.Project) {
-  const [generation, build, deployment] = await Promise.all([
+  const [generation, build, deployment, agent] = await Promise.all([
     currentGeneration(project),
     latestBuild(project.id),
     projectDeployment(project.id),
+    projectAgent(project.id),
   ]);
   return {
     id: project.id,
     name: project.name,
     slug: project.slug,
     idea: project.idea,
+    kind: project.kind,
     template: project.template,
+    needsCloud: project.needsCloud,
+    hosting: project.hosting,
+    vpsProvider: project.vpsProvider,
     aiProvider: project.aiProvider,
     status: project.status,
     spec: project.spec,
@@ -120,6 +134,21 @@ export async function projectView(project: schema.Project) {
       : null,
     deployment: deployment
       ? { status: deployment.status, url: deployment.url, error: deployment.error, hasDatabase: Boolean(deployment.neonProjectId) }
+      : null,
+    vps: agent
+      ? {
+          // "pending" until the installer registers; heartbeats arrive every ~2 minutes after that.
+          status: agent.secretHash ? agent.status : "pending",
+          registered: Boolean(agent.secretHash),
+          url: agent.url,
+          hostname: agent.hostname,
+          ip: agent.ip,
+          deployedCommit: agent.deployedCommit,
+          lastMessage: agent.lastMessage,
+          lastLog: agent.lastLog,
+          lastReportAt: agent.lastReportAt?.toISOString() ?? null,
+          stale: agent.lastReportAt ? Date.now() - agent.lastReportAt.getTime() > 10 * 60_000 : false,
+        }
       : null,
     createdAt: project.createdAt.toISOString(),
     updatedAt: project.updatedAt.toISOString(),

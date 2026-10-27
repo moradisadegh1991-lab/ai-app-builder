@@ -18,9 +18,77 @@ export function androidPackageId(slug: string): string {
   return `com.idea2app.${segment}`;
 }
 
-export const WORKFLOW_PATH = ".github/workflows/build-android.yml";
-export const WORKFLOW_FILE = "build-android.yml";
-export const BUILD_SCRIPT_PATH = "scripts/ci-build-android.sh";
+export const BUILD_SCRIPT_PATH = "scripts/ci-build.sh";
+export const MANIFEST_PATH = "idea2app.json";
+
+export function workflowFile(template: AppTemplate): string {
+  return template === "web" ? "build-web.yml" : "build-android.yml";
+}
+
+export function workflowPath(template: AppTemplate): string {
+  return `.github/workflows/${workflowFile(template)}`;
+}
+
+/**
+ * Read by the VPS deploy agent to know what to build and run.
+ * web: build the site into dist/ and serve it. backend: run `npm run server`
+ * (Hono API on 127.0.0.1:3000) with PostgreSQL and db/schema.sql.
+ */
+export function projectManifest(template: AppTemplate, needsBackend: boolean): string {
+  return (
+    JSON.stringify(
+      {
+        template,
+        web: template !== "expo",
+        webDir: "dist",
+        backend: needsBackend,
+        serverScript: "server",
+        schema: "db/schema.sql",
+      },
+      null,
+      2,
+    ) + "\n"
+  );
+}
+
+const WEB_WORKFLOW = `name: Build website
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-build-\${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Build website
+        run: bash ${BUILD_SCRIPT_PATH}
+
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: website-dist
+          path: dist
+          if-no-files-found: error
+          retention-days: 7
+`;
 
 /**
  * GitHub Actions workflow committed to every generated repository. The build
@@ -28,6 +96,7 @@ export const BUILD_SCRIPT_PATH = "scripts/ci-build-android.sh";
  * smoke test can run exactly the same steps.
  */
 export function buildWorkflow(template: AppTemplate, slug: string): string {
+  if (template === "web") return WEB_WORKFLOW;
   return `name: Build Android APK
 
 on:

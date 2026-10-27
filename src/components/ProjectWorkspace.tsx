@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import type { ProjectView } from "@/lib/projects";
 import type { AppSpec } from "@/lib/spec";
 import { api, type ProviderInfo, type ProvidersResponse } from "./api";
+import { GuideToggle } from "./guides/Guide";
+import type { GuideId } from "./guides/data";
 import { StatusBadge } from "./StatusBadge";
 
 type Busy = null | "spec" | "approve" | "code" | "github" | "rebuild" | "fix" | "cloud";
@@ -11,14 +13,20 @@ type Busy = null | "spec" | "approve" | "code" | "github" | "rebuild" | "fix" | 
 const BUSY_MESSAGES: Record<Exclude<Busy, null>, string> = {
   spec: "هوش مصنوعی در حال تحلیل ایده است (معمولاً کمتر از یک دقیقه)…",
   approve: "در حال ذخیره…",
-  code: "هوش مصنوعی در حال نوشتن کد اپ است؛ ممکن است تا ۴ دقیقه طول بکشد…",
+  code: "هوش مصنوعی در حال نوشتن کد است؛ ممکن است تا ۴ دقیقه طول بکشد…",
   github: "در حال ساخت Repository و ثبت کد در GitHub…",
   rebuild: "در حال شروع Build جدید…",
   fix: "هوش مصنوعی در حال بررسی گزارش خطا و اصلاح کد است…",
   cloud: "در حال ساخت دیتابیس Neon و پروژه Vercel…",
 };
 
-export function ProjectWorkspace({ initialProject }: { initialProject: ProjectView }) {
+export function ProjectWorkspace({
+  initialProject,
+  githubConnected,
+}: {
+  initialProject: ProjectView;
+  githubConnected: boolean;
+}) {
   const [project, setProject] = useState(initialProject);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [provider, setProvider] = useState(initialProject.aiProvider);
@@ -76,8 +84,23 @@ export function ProjectWorkspace({ initialProject }: { initialProject: ProjectVi
     return () => clearInterval(timer);
   }, [deploying, base]);
 
+  // Poll the project while the VPS agent installs or deploys (it reports to the platform).
+  const vpsBusy = project.vps !== null && (project.vps.status === "pending" || project.vps.status === "deploying");
+  useEffect(() => {
+    if (!vpsBusy) return;
+    const timer = setInterval(() => {
+      api<{ project: ProjectView }>(base)
+        .then((data) => setProject(data.project))
+        .catch(() => undefined);
+    }, 10_000);
+    return () => clearInterval(timer);
+  }, [vpsBusy, base]);
+
   const specApproved = Boolean(project.specApprovedAt);
   const hasCode = Boolean(project.generation?.files.length) && project.generation?.kind !== "spec";
+  const isWebsite = project.kind === "website";
+  const product = isWebsite ? "سایت" : "اپ";
+  const deployFailed = project.vps?.status === "error";
 
   return (
     <div className="flex flex-col gap-6">
@@ -130,7 +153,7 @@ export function ProjectWorkspace({ initialProject }: { initialProject: ProjectVi
         />
       </Step>
 
-      <Step number={2} title="تولید کد اپلیکیشن" done={hasCode} locked={!specApproved}>
+      <Step number={2} title={`تولید کد ${product}`} done={hasCode} locked={!specApproved}>
         <CodeStep
           project={project}
           disabled={busy !== null || !specApproved}
@@ -138,9 +161,15 @@ export function ProjectWorkspace({ initialProject }: { initialProject: ProjectVi
         />
       </Step>
 
-      <Step number={3} title="GitHub و ساخت APK" done={project.build?.conclusion === "success"} locked={!hasCode}>
+      <Step
+        number={3}
+        title={isWebsite ? "GitHub و Build سایت" : "GitHub و ساخت APK"}
+        done={project.build?.conclusion === "success"}
+        locked={!hasCode}
+      >
         <BuildStep
           project={project}
+          githubConnected={githubConnected}
           disabled={busy !== null || !hasCode}
           onPush={() => run("github", `${base}/github`, "POST")}
           onRebuild={() => run("rebuild", `${base}/build`, "POST")}
@@ -148,14 +177,40 @@ export function ProjectWorkspace({ initialProject }: { initialProject: ProjectVi
         />
       </Step>
 
-      <Step
-        number={4}
-        title="سرویس ابری: Neon + Vercel (اختیاری)"
-        done={project.deployment?.status === "ready"}
-        locked={!project.repo}
-      >
-        <CloudStep project={project} disabled={busy !== null || !project.repo} onProvision={() => run("cloud", `${base}/cloud`, "POST")} />
-      </Step>
+      {project.hosting === "none" ? (
+        <Step number={4} title="اجرا روی گوشی" done={project.build?.conclusion === "success"} locked={!hasCode}>
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            این اپ محلی است و همه داده‌ها روی گوشی ذخیره می‌شوند؛ به سرور یا فضای ابری نیاز ندارد. فقط APK را نصب کنید.
+          </p>
+          <div className="mt-3">
+            <GuideToggle id="install-apk" />
+          </div>
+        </Step>
+      ) : project.hosting === "vercel" ? (
+        <Step number={4} title="اجرا روی Vercel + Neon (رایگان)" done={project.deployment?.status === "ready"} locked={!project.repo}>
+          <CloudStep
+            project={project}
+            disabled={busy !== null || !project.repo}
+            onProvision={() => run("cloud", `${base}/cloud`, "POST")}
+          />
+        </Step>
+      ) : (
+        <Step
+          number={4}
+          title={project.vpsProvider === "own" ? "اجرا روی VPS خودتان" : "اجرا روی VPS رایگان"}
+          done={project.vps?.status === "online"}
+          locked={!project.repo}
+        >
+          <VpsStep
+            project={project}
+            disabled={busy !== null || !project.repo}
+            onChange={setProject}
+            onError={setError}
+            onFix={() => run("fix", `${base}/fix`, "POST", { provider })}
+            canFix={deployFailed}
+          />
+        </Step>
+      )}
     </div>
   );
 }
@@ -336,7 +391,7 @@ function CodeStep({ project, disabled, onGenerate }: { project: ProjectView; dis
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-3">
         <button className="btn-primary" disabled={disabled} onClick={onGenerate}>
-          {files.length ? "تولید دوباره کد" : "تولید کد اپلیکیشن"}
+          {files.length ? "تولید دوباره کد" : "تولید کد"}
         </button>
         {project.generation && (
           <span className="text-xs text-slate-500">
@@ -382,21 +437,26 @@ function CodeStep({ project, disabled, onGenerate }: { project: ProjectView; dis
 
 // ----------------------------------------------------------------- build
 
-const BUILD_STATUS: Record<string, string> = {
-  waiting: "در انتظار شروع Workflow…",
-  queued: "در صف GitHub Actions…",
-  in_progress: "در حال ساخت APK (معمولاً ۵ تا ۱۵ دقیقه)…",
-  completed: "پایان یافت",
-};
+function buildStatusText(status: string, isWebsite: boolean) {
+  const map: Record<string, string> = {
+    waiting: "در انتظار شروع Workflow…",
+    queued: "در صف GitHub Actions…",
+    in_progress: isWebsite ? "در حال Build سایت (حدود ۱ تا ۳ دقیقه)…" : "در حال ساخت APK (معمولاً ۵ تا ۱۵ دقیقه)…",
+    completed: "پایان یافت",
+  };
+  return map[status] ?? status;
+}
 
 function BuildStep({
   project,
+  githubConnected,
   disabled,
   onPush,
   onRebuild,
   onFix,
 }: {
   project: ProjectView;
+  githubConnected: boolean;
   disabled: boolean;
   onPush: () => void;
   onRebuild: () => void;
@@ -404,6 +464,23 @@ function BuildStep({
 }) {
   const build = project.build;
   const pushedCurrent = project.status === "pushed";
+  const isWebsite = project.kind === "website";
+
+  if (!githubConnected) {
+    return (
+      <div className="flex flex-col gap-3 text-sm">
+        <p className="rounded-lg bg-amber-50 p-3 text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+          برای ذخیره کد و ساخت {isWebsite ? "سایت" : "APK"}، ابتدا حساب GitHub خود را متصل کنید (رایگان).
+        </p>
+        <div>
+          <a href="/api/auth/github" className="btn-primary">
+            اتصال GitHub
+          </a>
+        </div>
+        <GuideToggle id="github" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -430,7 +507,7 @@ function BuildStep({
                     : build.conclusion === "cancelled"
                       ? "⏹ لغو شد"
                       : "❌ ناموفق"
-                  : BUILD_STATUS[build.status] ?? build.status}
+                  : buildStatusText(build.status, isWebsite)}
               </div>
               <div className="text-xs text-slate-500" dir="ltr">
                 commit {build.commitSha.slice(0, 7)}
@@ -450,16 +527,25 @@ function BuildStep({
             </div>
           </div>
 
-          {build.conclusion === "success" && build.downloadable && (
-            <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg bg-emerald-50 p-3 dark:bg-emerald-950">
-              <a href={`/api/projects/${project.id}/apk`} className="btn-primary bg-emerald-600 hover:bg-emerald-700">
-                ⬇️ دانلود فایل APK
-              </a>
-              <span className="text-xs text-emerald-800 dark:text-emerald-300">
-                {build.apkName}
-                {build.apkSizeBytes ? ` · ${(build.apkSizeBytes / 1024 / 1024).toFixed(1)} MB` : ""} — نسخه آزمایشی با
-                امضای Debug؛ برای نصب، «نصب از منابع ناشناس» را فعال کنید.
-              </span>
+          {build.conclusion === "success" && isWebsite && (
+            <p className="mt-4 rounded-lg bg-emerald-50 p-3 text-xs text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+              کد سایت سالم Build شد. انتشار روی اینترنت در مرحله بعد انجام می‌شود.
+            </p>
+          )}
+
+          {build.conclusion === "success" && !isWebsite && build.downloadable && (
+            <div className="mt-4 flex flex-col gap-3 rounded-lg bg-emerald-50 p-3 dark:bg-emerald-950">
+              <div className="flex flex-wrap items-center gap-3">
+                <a href={`/api/projects/${project.id}/apk`} className="btn-primary bg-emerald-600 hover:bg-emerald-700">
+                  ⬇️ دانلود فایل APK
+                </a>
+                <span className="text-xs text-emerald-800 dark:text-emerald-300">
+                  {build.apkName}
+                  {build.apkSizeBytes ? ` · ${(build.apkSizeBytes / 1024 / 1024).toFixed(1)} MB` : ""} — نسخه آزمایشی با
+                  امضای Debug
+                </span>
+              </div>
+              <GuideToggle id="install-apk" />
             </div>
           )}
 
@@ -484,17 +570,23 @@ function BuildStep({
 function CloudStep({ project, disabled, onProvision }: { project: ProjectView; disabled: boolean; onProvision: () => void }) {
   const deployment = project.deployment;
   const needsBackend = project.spec?.needsBackend;
+  const isWebsite = project.kind === "website";
 
   return (
     <div className="flex flex-col gap-3 text-sm">
       <p className="text-slate-600 dark:text-slate-400">
         {needsBackend
-          ? "این اپ به سرور نیاز دارد: یک دیتابیس PostgreSQL اختصاصی در Neon ساخته می‌شود، schema.sql اجرا می‌شود، API روی Vercel مستقر می‌شود و آدرس آن در Build بعدی APK قرار می‌گیرد."
-          : "این اپ بدون سرور کار می‌کند. در صورت تمایل می‌توانی نسخه وب آن را روی Vercel منتشر کنی."}
+          ? `یک دیتابیس PostgreSQL اختصاصی در Neon ساخته و schema.sql اجرا می‌شود، سپس ${isWebsite ? "سایت و API" : "API"} روی Vercel مستقر می‌شود${
+              isWebsite ? "." : " و نشانی آن در Build بعدی APK قرار می‌گیرد."
+            }`
+          : isWebsite
+            ? "سایت روی Vercel منتشر می‌شود و یک نشانی ‎*.vercel.app‎ با HTTPS می‌گیرد."
+            : "این اپ بدون سرور کار می‌کند."}
       </p>
       <p className="text-xs text-slate-500">
         پیش‌نیاز: توکن Vercel{needsBackend ? " و کلید Neon" : ""} در صفحه «اتصال‌ها و کلیدها» و نصب اپ GitHub روی حساب Vercel.
       </p>
+      <GuideToggle id="vercel-neon" />
 
       {deployment ? (
         <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
@@ -520,8 +612,230 @@ function CloudStep({ project, disabled, onProvision }: { project: ProjectView; d
       ) : (
         <div>
           <button className="btn-primary" disabled={disabled} onClick={onProvision}>
-            {needsBackend ? "ساخت دیتابیس Neon و استقرار روی Vercel" : "انتشار نسخه وب روی Vercel"}
+            {needsBackend ? "ساخت دیتابیس Neon و استقرار روی Vercel" : "انتشار روی Vercel"}
           </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------- vps
+
+interface InstallInstructions {
+  token: string;
+  command: string;
+  cloudInit: string;
+  expiresAt: string;
+}
+
+const VPS_GUIDES: Record<string, GuideId> = { own: "own-vps", oracle: "oracle", gcp: "gcp", aws: "aws" };
+
+const VPS_STATUS: Record<string, { text: string; className: string }> = {
+  pending: { text: "⏳ منتظر اجرای نصب‌کننده روی سرور", className: "text-amber-700 dark:text-amber-300" },
+  deploying: { text: "🔄 در حال استقرار…", className: "text-sky-700 dark:text-sky-300" },
+  online: { text: "✅ فعال", className: "text-emerald-700 dark:text-emerald-300" },
+  error: { text: "❌ استقرار ناموفق", className: "text-red-700 dark:text-red-300" },
+};
+
+function CopyBox({ label, value }: { label: string; value: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div>
+      <div className="mb-1 flex items-center justify-between">
+        <span className="text-xs font-medium">{label}</span>
+        <button
+          type="button"
+          className="btn-secondary min-h-0 px-2 py-1 text-xs"
+          onClick={() => {
+            navigator.clipboard.writeText(value).then(() => {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 2000);
+            });
+          }}
+        >
+          {copied ? "کپی شد ✓" : "کپی"}
+        </button>
+      </div>
+      <pre dir="ltr" className="overflow-x-auto rounded-lg bg-slate-950 p-3 text-left text-xs whitespace-pre-wrap break-all text-emerald-300">
+        {value}
+      </pre>
+    </div>
+  );
+}
+
+function VpsStep({
+  project,
+  disabled,
+  onChange,
+  onError,
+  onFix,
+  canFix,
+}: {
+  project: ProjectView;
+  disabled: boolean;
+  onChange: (project: ProjectView) => void;
+  onError: (message: string | null) => void;
+  onFix: () => void;
+  canFix: boolean;
+}) {
+  const [install, setInstall] = useState<InstallInstructions | null>(null);
+  const [busy, setBusy] = useState(false);
+  const vps = project.vps;
+  const own = project.vpsProvider === "own";
+  const guide = VPS_GUIDES[project.vpsProvider ?? "own"] ?? "own-vps";
+
+  async function createCommand() {
+    setBusy(true);
+    onError(null);
+    try {
+      const data = await api<{ install: InstallInstructions; project: ProjectView }>(`/api/projects/${project.id}/vps`, {
+        method: "POST",
+      });
+      setInstall(data.install);
+      onChange(data.project);
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function disconnect() {
+    if (!confirm("اتصال این سرور حذف شود؟ کلید استقرار از GitHub پاک می‌شود؛ خود سرور دست نمی‌خورد.")) return;
+    setBusy(true);
+    try {
+      const data = await api<{ project: ProjectView }>(`/api/projects/${project.id}/vps`, { method: "DELETE" });
+      setInstall(null);
+      onChange(data.project);
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const status = vps ? VPS_STATUS[vps.status] ?? { text: vps.status, className: "" } : null;
+
+  return (
+    <div className="flex flex-col gap-4 text-sm">
+      <p className="text-slate-600 dark:text-slate-400">
+        ایجنت Idea2App روی سرور نصب می‌شود: کد را با یک کلید فقط‌خواندنی از GitHub می‌گیرد، Build می‌کند
+        {project.spec?.needsBackend ? "، PostgreSQL و API را راه می‌اندازد" : ""}، با HTTPS منتشر می‌کند و هر ۲ دقیقه
+        Commit جدید را بررسی و خودکار مستقر می‌کند.
+      </p>
+
+      <GuideToggle id={guide} />
+
+      {vps && vps.registered && status && (
+        <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className={`font-medium ${status.className}`}>{status.text}</div>
+            <div className="text-xs text-slate-500" dir="ltr">
+              {vps.hostname} {vps.ip ? `· ${vps.ip}` : ""}
+            </div>
+          </div>
+          {vps.lastMessage && <div className="mt-1 text-xs text-slate-500">{vps.lastMessage}</div>}
+          {vps.url && vps.status === "online" && (
+            <a href={vps.url} target="_blank" rel="noreferrer" className="mt-2 inline-block text-brand-600 underline" dir="ltr">
+              {vps.url}
+            </a>
+          )}
+          <div className="mt-2 text-xs text-slate-500">
+            {vps.deployedCommit && (
+              <span dir="ltr" className="font-mono">
+                commit {vps.deployedCommit.slice(0, 7)} ·{" "}
+              </span>
+            )}
+            {vps.lastReportAt && `آخرین گزارش: ${new Date(vps.lastReportAt).toLocaleString("fa-IR", { timeZone: "Asia/Tehran" })}`}
+          </div>
+          {vps.stale && (
+            <p className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+              بیش از ۱۰ دقیقه است که سرور گزارشی نفرستاده؛ ممکن است خاموش یا بدون اینترنت باشد. روی سرور بزنید:{" "}
+              <code dir="ltr">sudo idea2app status</code>
+            </p>
+          )}
+          {vps.lastLog && (
+            <details className="mt-3">
+              <summary className="cursor-pointer text-xs text-slate-500">گزارش آخرین استقرار</summary>
+              <pre dir="ltr" className="mt-2 max-h-64 overflow-auto rounded-lg bg-slate-950 p-3 text-left text-[11px] text-slate-200">
+                {vps.lastLog}
+              </pre>
+            </details>
+          )}
+          {canFix && (
+            <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg bg-red-50 p-3 dark:bg-red-950">
+              <button className="btn-primary" disabled={disabled} onClick={onFix}>
+                🛠 اصلاح خودکار خطا با هوش مصنوعی
+              </button>
+              <span className="text-xs text-red-800 dark:text-red-300">
+                گزارش استقرار برای مدل ارسال می‌شود؛ کد اصلاح‌شده Commit و روی سرور خودکار دوباره مستقر می‌شود.
+              </span>
+            </div>
+          )}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button className="btn-secondary" disabled={disabled || busy} onClick={createCommand}>
+              نصب روی سرور دیگر / نصب دوباره
+            </button>
+            <button className="btn-danger" disabled={busy} onClick={disconnect}>
+              قطع اتصال سرور
+            </button>
+          </div>
+        </div>
+      )}
+
+      {(!vps || !vps.registered) && !install && (
+        <div className="flex flex-col gap-2">
+          {vps && !vps.registered && (
+            <p className="text-xs text-amber-700 dark:text-amber-300">
+              {VPS_STATUS.pending!.text}. اگر دستور قبلی را ندارید، دستور تازه بسازید (دستور قبلی باطل می‌شود).
+            </p>
+          )}
+          <div>
+            <button className="btn-primary" disabled={disabled || busy} onClick={createCommand}>
+              {busy ? "در حال ساخت…" : own ? "ساخت دستور نصب" : "ساخت اسکریپت نصب خودکار"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {install && (
+        <div className="flex flex-col gap-4 rounded-xl border border-brand-500/40 p-4">
+          <p className="text-xs text-slate-600 dark:text-slate-400">
+            این دستور یک توکن یک‌بارمصرف دارد و تا{" "}
+            {new Date(install.expiresAt).toLocaleString("fa-IR", { timeZone: "Asia/Tehran" })} معتبر است. آن را با کسی به اشتراک
+            نگذارید. بعد از اجرا، این صفحه خودکار وضعیت سرور را نشان می‌دهد.
+          </p>
+          {own ? (
+            <>
+              <CopyBox label="روی سرور (با SSH) این دستور را اجرا کنید:" value={install.command} />
+              <details>
+                <summary className="cursor-pointer text-xs text-slate-500">
+                  سرور را تازه می‌سازید؟ اسکریپت cloud-init / user-data
+                </summary>
+                <div className="mt-2">
+                  <CopyBox label="cloud-init" value={install.cloudInit} />
+                </div>
+              </details>
+            </>
+          ) : (
+            <>
+              <CopyBox
+                label={`این اسکریپت را هنگام ساخت سرور در ${
+                  { oracle: "Initialization script (Oracle)", gcp: "Startup script (Google Cloud)", aws: "User data (AWS)" }[
+                    project.vpsProvider ?? "oracle"
+                  ] ?? "cloud-init"
+                } قرار دهید:`}
+                value={install.cloudInit}
+              />
+              <details>
+                <summary className="cursor-pointer text-xs text-slate-500">سرور را قبلاً ساخته‌اید؟ دستور SSH</summary>
+                <div className="mt-2">
+                  <CopyBox label="روی سرور اجرا کنید:" value={install.command} />
+                </div>
+              </details>
+            </>
+          )}
         </div>
       )}
     </div>

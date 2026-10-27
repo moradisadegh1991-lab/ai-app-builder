@@ -15,6 +15,13 @@ export const ALLOWED_LIBRARIES: Record<AppTemplate, Record<string, string>> = {
     "@capacitor/local-notifications": "^8.3.1",
     "@capacitor/share": "^8.0.3",
   },
+  web: {
+    "react-router-dom": "^7.18.0",
+    "lucide-react": "^1.62.0",
+    recharts: "^3.10.0",
+    "date-fns": "^4.4.0",
+    zustand: "^5.0.16",
+  },
   expo: {
     "@react-native-async-storage/async-storage": "2.2.0",
     "react-native-safe-area-context": "~5.10.1",
@@ -32,6 +39,13 @@ export const LIBRARY_DESCRIPTIONS: Record<AppTemplate, string> = {
     "zustand (state)",
     "@capacitor/preferences (native key-value storage)",
     "@capacitor/haptics, @capacitor/camera, @capacitor/local-notifications, @capacitor/share (device features)",
+  ].join("\n- "),
+  web: [
+    "react-router-dom (routing; use BrowserRouter only if every route is reachable from /, otherwise HashRouter)",
+    "lucide-react (icons)",
+    "recharts (charts)",
+    "date-fns (dates)",
+    "zustand (state)",
   ].join("\n- "),
   expo: [
     "@react-native-async-storage/async-storage (persistent storage)",

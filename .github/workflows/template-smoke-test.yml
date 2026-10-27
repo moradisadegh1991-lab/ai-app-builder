@@ -1,32 +1,44 @@
-# Renders each app template with a fixed sample App (no AI involved) and runs
-# the exact same scripts/ci-build-android.sh that generated repositories use,
-# proving the templates still produce an installable APK.
-name: Template APK smoke test
+# Renders each template with fixed sample code (no AI involved) and runs the
+# exact build script generated repositories use, plus an end-to-end run of the
+# VPS deploy agent on a real Ubuntu machine.
+name: Template smoke test
 
 on:
   pull_request:
     paths:
       - "src/lib/templates/**"
       - "scripts/**"
+      - "public/agent/**"
       - ".github/workflows/template-smoke-test.yml"
   push:
     branches: [main]
     paths:
       - "src/lib/templates/**"
       - "scripts/**"
+      - "public/agent/**"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  build-apk:
+  build:
+    name: build (${{ matrix.template }}${{ matrix.backend && ' + backend' || '' }})
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        template: [capacitor, expo]
+        include:
+          - template: capacitor
+            artifact: dist-apk/app.apk
+          - template: expo
+            artifact: dist-apk/app.apk
+          - template: web
+            artifact: dist
+          - template: capacitor
+            backend: true
+            artifact: dist-apk/app.apk
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -34,18 +46,83 @@ jobs:
           node-version: "22"
           cache: npm
       - uses: actions/setup-java@v4
+        if: matrix.template != 'web'
         with:
           distribution: temurin
           java-version: "21"
       - run: npm ci
       - name: Render sample project
-        run: npx tsx scripts/render-sample-app.ts ${{ matrix.template }} "$RUNNER_TEMP/sample"
-      - name: Build APK with the generated build script
+        run: npx tsx scripts/render-sample-app.ts ${{ matrix.template }} "$RUNNER_TEMP/sample" ${{ matrix.backend && '--backend' || '' }}
+      - name: Build with the generated build script
         working-directory: ${{ runner.temp }}/sample
-        run: bash scripts/ci-build-android.sh
+        run: bash scripts/ci-build.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: sample-${{ matrix.template }}-apk
-          path: ${{ runner.temp }}/sample/dist-apk/app.apk
+          name: sample-${{ matrix.template }}${{ matrix.backend && '-backend' || '' }}
+          path: ${{ runner.temp }}/sample/${{ matrix.artifact }}
           if-no-files-found: error
           retention-days: 3
+
+  agent-scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax
+        run: bash -n public/agent/install.sh && bash -n public/agent/idea2app
+      - name: ShellCheck
+        run: shellcheck --severity=warning public/agent/install.sh public/agent/idea2app
+
+  # Installs the deploy agent on this runner (a real Ubuntu VM with systemd)
+  # against a fake platform and a local Git repository, then checks the site,
+  # the API with PostgreSQL, and automatic redeploy of a new commit.
+  agent-e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Sample website with backend in a local Git repository
+        run: |
+          npx tsx scripts/render-sample-app.ts web "$RUNNER_TEMP/site" --backend
+          cd "$RUNNER_TEMP/site"
+          git init -q -b main && git add -A
+          git -c user.name=ci -c user.email=ci@example.com commit -qm "sample"
+          sudo git clone -q --bare "$RUNNER_TEMP/site" /opt/sample.git
+          sudo chmod -R a+rX /opt/sample.git
+          # The agent's user reads this root-owned local repository (on a real
+          # server it pulls from GitHub over SSH instead).
+          sudo git config --system --add safe.directory '*'
+      - name: Start fake platform
+        run: |
+          node scripts/fake-platform.mjs 8787 file:///opt/sample.git "$RUNNER_TEMP/reports.jsonl" &
+          sleep 1
+      - name: Run the installer
+        run: |
+          curl -fsSL http://127.0.0.1:8787/agent/install.sh \
+            | sudo IDEA2APP_URL=http://127.0.0.1:8787 IDEA2APP_TOKEN=test-token DOMAIN=localhost bash
+      - name: Site, API and database answer over HTTPS
+        run: |
+          curl -fsSk https://localhost/ | grep -q '<div id="root">'
+          curl -fsSk https://localhost/api/health | grep -q '"ok":true'
+          curl -fsSk -X POST https://localhost/api/messages -H 'content-type: application/json' -d '{"name":"ci","body":"hello"}' | grep -q hello
+          curl -fsSk https://localhost/api/messages | grep -q hello
+          tail -n 1 "$RUNNER_TEMP/reports.jsonl" | jq -e '.status == "online"'
+      - name: A new commit is deployed by sync
+        run: |
+          cd "$RUNNER_TEMP/site"
+          sed -i 's/دفتر یادبود/دفتر یادبود ۲/' src/App.tsx
+          git -c user.name=ci -c user.email=ci@example.com commit -qam "update"
+          sudo git push -q /opt/sample.git main
+          sudo /usr/local/bin/idea2app sync
+          test "$(sudo cat /var/lib/idea2app/deployed-commit)" = "$(git rev-parse HEAD)"
+          sudo idea2app status
+      - name: Agent log on failure
+        if: failure()
+        run: |
+          sudo cat /var/lib/idea2app/last-deploy.log || true
+          cat "$RUNNER_TEMP/reports.jsonl" || true
+          sudo journalctl -u idea2app-app -u caddy -n 80 --no-pager || true

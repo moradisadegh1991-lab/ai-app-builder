@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { Header } from "@/components/Header";
 import { ProjectWorkspace } from "@/components/ProjectWorkspace";
 import { HttpError } from "@/lib/http";
+import { getIntegration } from "@/lib/integrations/store";
 import { getOwnedProject, projectView } from "@/lib/projects";
 import { requirePageUser } from "@/lib/session";
 
@@ -19,7 +20,10 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     <>
       <Header user={user} />
       <main className="mx-auto max-w-6xl px-4 py-8">
-        <ProjectWorkspace initialProject={await projectView(project)} />
+        <ProjectWorkspace
+          initialProject={await projectView(project)}
+          githubConnected={Boolean(await getIntegration(user.id, "github"))}
+        />
       </main>
     </>
   );

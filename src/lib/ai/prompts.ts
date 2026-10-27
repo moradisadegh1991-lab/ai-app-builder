@@ -16,9 +16,9 @@ export type CodeOutput = z.infer<typeof codeOutputSchema>;
 
 // ---------------------------------------------------------------- spec
 
-export const SPEC_SYSTEM = `You are a senior mobile product designer and software architect.
-Turn the user's app idea into a concise, buildable requirements document for a FIRST VERSION (MVP) of an Android app.
-Keep scope realistic for a single-codebase app generated in one pass: at most 8 screens.
+export const SPEC_SYSTEM = `You are a senior product designer and software architect.
+Turn the user's idea into a concise, buildable requirements document for a FIRST VERSION (MVP) of the product type stated in the request (an Android app or a website).
+Keep scope realistic for a single codebase generated in one pass: at most 8 screens/pages.
 Respond with ONE JSON object only, matching exactly this TypeScript type:
 {
   "appName": string,               // short, in the user's language
@@ -28,7 +28,7 @@ Respond with ONE JSON object only, matching exactly this TypeScript type:
   "screens": { "name": string, "purpose": string, "elements": string[] }[],
   "features": string[],
   "dataModel": { "entity": string, "fields": { "name": string, "type": string }[] }[],
-  "needsBackend": boolean,         // true ONLY if data must be shared between users/devices or needs a server
+  "needsBackend": boolean,         // follow the backend instruction in the request
   "backendReason": string,
   "devicePermissions": string[],   // Android permission constants such as "CAMERA"; empty if none
   "designNotes": string,
@@ -36,14 +36,37 @@ Respond with ONE JSON object only, matching exactly this TypeScript type:
 }
 Write all human-readable text in the app's UI language.`;
 
-export function specPrompt(idea: string, feedback?: string, previous?: AppSpec): string {
-  let prompt = `App idea:\n"""\n${idea}\n"""`;
+export interface SpecContext {
+  kind: "app" | "website";
+  /** true = must have a backend, false = must not, null = decide from the idea. */
+  backend: boolean | null;
+}
+
+export function specPrompt(idea: string, context: SpecContext, feedback?: string, previous?: AppSpec): string {
+  const product =
+    context.kind === "website"
+      ? "Product type: a responsive WEBSITE (mobile and desktop)."
+      : "Product type: an ANDROID APP.";
+  const backend =
+    context.backend === true
+      ? "Backend: REQUIRED — the user wants a server and cloud database; set needsBackend to true."
+      : context.backend === false
+        ? "Backend: NOT ALLOWED — everything runs on the phone and data stays on the device; set needsBackend to false."
+        : "Backend: decide — set needsBackend to true ONLY if data must be shared between visitors/devices, stored server-side, or sent by forms; a static site sets it to false.";
+  let prompt = `${product}\n${backend}\n\nIdea:\n"""\n${idea}\n"""`;
   if (previous) prompt += `\n\nPrevious requirements (JSON):\n${JSON.stringify(previous)}`;
   if (feedback) prompt += `\n\nRevise the requirements according to this feedback from the user:\n"""\n${feedback}\n"""`;
   return prompt;
 }
 
 // ---------------------------------------------------------------- code
+
+const WEB_RULES = `Stack: a responsive WEBSITE with React 19 + TypeScript + Vite + Tailwind CSS v4.
+Template files that ALREADY EXIST (do not output them): package.json, vite.config.ts, index.html, src/main.tsx (renders <App /> from "./App"), src/index.css (imports Tailwind; theme color available as bg-primary / text-primary), src/lib/storage.ts (exports loadJSON<T>(key, fallback) and saveJSON(key, value) over localStorage), src/lib/api.ts (exports apiFetch<T>(path, init) that calls the site's own /api).
+You MUST output src/App.tsx with a default export. Put other code under src/ (e.g. src/components/, src/pages/, src/types.ts). Static assets (SVG only) may go in public/.
+Design a polished, modern, responsive layout (header/nav, hero or main content, footer) that works on phones and desktops. Use semantic HTML and good accessibility.
+If you use react-router-dom, use HashRouter.
+Use only relative imports (no "@/" alias).`;
 
 const CAPACITOR_RULES = `Stack: React 19 + TypeScript + Vite + Tailwind CSS v4, packaged as an Android app with Capacitor 8.
 Template files that ALREADY EXIST (do not output them): package.json, vite.config.ts, index.html, src/main.tsx (renders <App /> from "./App"), src/index.css (imports Tailwind; theme color available as bg-primary / text-primary), src/lib/storage.ts (exports loadJSON<T>(key, fallback) and saveJSON(key, value) over localStorage), src/lib/api.ts (exports API_URL and apiFetch<T>(path, init)).
@@ -60,21 +83,27 @@ Implement navigation with simple component state (tabs/screens) — no navigatio
 For Persian UI use textAlign: "right" and writingDirection: "rtl" in styles.
 Use only relative imports.`;
 
-const BACKEND_RULES = `This app HAS a backend deployed on Vercel with a Neon PostgreSQL database:
-- Output db/schema.sql with idempotent DDL (CREATE TABLE IF NOT EXISTS ...). It is executed once on the new database.
-- Output Vercel Functions as api/<name>.ts using the Web standard signature, e.g.
-    import { sql } from "./_lib/db"; import { json, error, preflight, readBody } from "./_lib/http";
-    export function OPTIONS() { return preflight(); }
-    export async function GET(request: Request) { const rows = await sql\`SELECT * FROM items\`; return json(rows); }
-  sql is the @neondatabase/serverless tagged template (parameters are interpolated safely). api/_lib/* already exists.
-- In the app, call the backend with apiFetch("/api/<name>") and handle API_URL being empty (show a friendly message).`;
+const BACKEND_RULES = `This product HAS a backend: a Hono API with a PostgreSQL database. It runs on a VPS (Node) or on Vercel with the same code.
+- Output db/schema.sql with idempotent DDL (CREATE TABLE IF NOT EXISTS ...). It runs on every deploy, so it must be safe to re-run.
+- Output server/app.ts that exports the Hono app:
+    import { createApi } from "./base";
+    import { sql } from "./db";
+    export const app = createApi(); // already has basePath("/api"), CORS and GET /api/health
+    app.get("/items", async (c) => c.json(await sql\`SELECT * FROM items ORDER BY id DESC\`));
+    app.post("/items", async (c) => { const body = await c.req.json<{ title: string }>(); const [row] = await sql\`INSERT INTO items (title) VALUES (\${body.title}) RETURNING *\`; return c.json(row, 201); });
+  sql is the postgres.js tagged template (values are sent as parameters, never concatenate SQL). server/base.ts, server/db.ts and server/node.ts already exist. You may add helpers under server/.
+  Validate request bodies; return JSON errors with proper status codes.
+- In the client, call the backend with apiFetch("/api/<route>") and, when API_AVAILABLE is false (Android build without a server yet), show a friendly message instead of failing.`;
 
-const OFFLINE_RULES = `This app has NO backend: store all data on the device (localStorage helpers on Capacitor, AsyncStorage on Expo if listed in libraries, otherwise in-memory state).`;
+const OFFLINE_RULES = `This product has NO backend: store data in the browser/device (localStorage helpers on Capacitor and websites, AsyncStorage on Expo if listed in libraries, otherwise in-memory state). Do not output server/ or db/ files.`;
+
+const TEMPLATE_RULES: Record<AppTemplate, string> = { capacitor: CAPACITOR_RULES, expo: EXPO_RULES, web: WEB_RULES };
 
 export function codeSystemPrompt(template: AppTemplate, needsBackend: boolean): string {
-  return `You are an expert mobile engineer. Generate the complete, working source code of an Android app from an approved requirements document.
+  const product = template === "web" ? "a website" : "an Android app";
+  return `You are an expert full-stack engineer. Generate the complete, working source code of ${product} from an approved requirements document.
 
-${template === "capacitor" ? CAPACITOR_RULES : EXPO_RULES}
+${TEMPLATE_RULES[template]}
 
 ${needsBackend ? BACKEND_RULES : OFFLINE_RULES}
 
@@ -101,7 +130,7 @@ export function fixPrompt(spec: AppSpec, files: GeneratedFile[], buildLog: strin
   const sources = files
     .map((f) => `--- ${f.path}${editablePaths.has(f.path) ? "" : " (template, read-only)"}\n${f.content}`)
     .join("\n\n");
-  return `The Android build of this app FAILED in GitHub Actions. Fix the source code so the build succeeds.
+  return `The build of this project FAILED (GitHub Actions or the deploy server). Fix the source code so the build succeeds.
 Only output files you change or add (full new content), and only files that are not marked read-only.
 Keep "libraries" as the full list of optional libraries the fixed app needs.
 

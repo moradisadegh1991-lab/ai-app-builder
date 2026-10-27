@@ -1,123 +1,164 @@
 # Idea2App AI
 
-پلتفرمی که ایده کاربر را با هوش مصنوعی (OpenAI، Claude، Gemini) به یک اپلیکیشن اندروید تبدیل می‌کند، سورس را در GitHub
-کاربر ذخیره می‌کند، با GitHub Actions فایل APK می‌سازد و در صورت نیاز دیتابیس Neon و API روی Vercel راه‌اندازی می‌کند.
+پلتفرمی که ایده کاربر را با هوش مصنوعی (OpenAI، Claude، Gemini) به **وب‌سایت** یا **اپ اندروید** تبدیل می‌کند. سورس در
+GitHub خود کاربر ذخیره و با GitHub Actions ساخته می‌شود (APK یا Build سایت) و بسته به انتخاب کاربر، روی VPS خودش، یک VPS
+رایگان یا Vercel + Neon اجرا می‌شود. هر مرحله آموزش تصویری دارد.
 
-## جریان کار
+## جریان کار کاربر
 
 ```
-ایده ──► نیازمندی‌ها (AI، قابل ویرایش و تأیید) ──► تولید کد (AI + قالب ثابت)
-     ──► Repository خصوصی در GitHub کاربر (یک Commit)
-     ──► GitHub Actions: npm build ► Gradle ► APK (Artifact + Release)
-     ──► [Build ناموفق] ► لاگ خطا به AI ► اصلاح خودکار ► Build دوباره
-     ──► [اختیاری] Neon (PostgreSQL + schema.sql) + Vercel (API) ► API_URL ► Build دوباره APK
+ثبت‌نام با کد ایمیل (طرح رایگان خودکار)
+  │
+  ├─ «چه می‌خواهید بسازید؟»  وب‌سایت │ اپ اندروید
+  │      اپ ─► «سرور لازم دارد؟»  فقط روی گوشی (محلی) │ با سرور و دیتابیس
+  │
+  ├─ (اگر سرور لازم است) «کجا اجرا شود؟»
+  │      VPS خودم ─────► دستور یک‌خطی نصب ایجنت (SSH)
+  │      VPS رایگان ───► Oracle / Google / AWS + آموزش تصویری + اسکریپت cloud-init
+  │      Vercel + Neon ─► کاملاً خودکار، بدون کارت بانکی
+  │
+  ├─ نیازمندی‌ها (AI، قابل ویرایش و تأیید) ─► تولید کد (AI + قالب ثابت)
+  ├─ Repository خصوصی در GitHub کاربر ─► GitHub Actions: APK یا Build سایت
+  ├─ [خطا] لاگ Build یا لاگ استقرار سرور ─► اصلاح خودکار با AI ─► Commit و Build دوباره
+  └─ استقرار: ایجنت VPS هر Commit جدید را خودکار مستقر می‌کند │ Vercel + Neon
+     (برای اپ‌های دارای سرور، نشانی API در Build بعدی APK قرار می‌گیرد)
 ```
 
 | بخش | پیاده‌سازی |
 | --- | --- |
 | رابط کاربری و API | Next.js 16 (App Router) + TypeScript + Tailwind CSS 4، فارسی و راست‌به‌چپ |
-| دیتابیس پلتفرم | Neon PostgreSQL + Drizzle ORM (`src/lib/db/schema.ts`، Migration در `drizzle/`) |
-| ورود و GitHub | GitHub OAuth (scopeها: `repo workflow read:user user:email`)؛ توکن رمزنگاری‌شده ذخیره می‌شود |
-| هوش مصنوعی | `src/lib/ai`: لایه مشترک سه Provider، خروجی JSON اعتبارسنجی‌شده با Zod، ثبت مصرف توکن |
-| کلیدهای AI | کلید مرکزی با سهمیه روزانه هر کاربر **یا** کلید شخصی کاربر (بدون سهمیه) |
-| قالب اپ | React + Vite + Tailwind + **Capacitor 8** (پیش‌فرض) یا **React Native / Expo SDK 58** |
-| Build | `.github/workflows/build-android.yml` در هر Repository تولیدشده + `scripts/ci-build-android.sh` |
-| ابر (اختیاری) | Neon API (ساخت پروژه + اجرای `db/schema.sql`) و Vercel API (پروژه متصل به Repo + `DATABASE_URL`) |
+| ورود | کد ۶ رقمی ایمیل (Resend یا SMTP)، ۱۰ دقیقه اعتبار، ۵ تلاش، محدودیت ارسال؛ فقط Hash کد ذخیره می‌شود |
+| GitHub | اتصال OAuth پس از ورود (`repo workflow`)؛ توکن رمزنگاری‌شده |
+| هوش مصنوعی | `src/lib/ai`: سه Provider، خروجی JSON با Zod، ثبت مصرف توکن |
+| اشتراک | رایگان / پلاس / پرو / مکس با سقف توکن در پنجره ۵ ساعته و ۷ روزه؛ مدل‌های اقتصادی در طرح رایگان |
+| پرداخت | زرین‌پال (تومان) و Stripe Checkout (دلار) + Webhook امضاشده |
+| قالب‌ها | وب‌سایت (React + Vite + Tailwind)، Capacitor 8 (اندروید)، Expo SDK 58 (اندروید) |
+| بک‌اند اپ‌ها | Hono + PostgreSQL (postgres.js)؛ همان کد روی VPS (Node + systemd) و روی Vercel (Function) |
+| ایجنت VPS | `public/agent/install.sh` + دستور `idea2app` (الگوی ایجنت پروژه EPC) |
+| دیتابیس پلتفرم | PostgreSQL + Drizzle (Neon با درایور HTTP، هر PostgreSQL دیگر با TCP) |
 
-### تصمیم‌های امنیتی
+### طرح‌ها (`src/lib/billing/plans.ts`)
 
-- همه توکن‌ها و کلیدها (GitHub، Vercel، Neon، کلید شخصی AI و Connection String دیتابیس‌ها) با **AES-256-GCM** رمزنگاری می‌شوند و
-  هرگز به مرورگر برنمی‌گردند.
-- دانلود APK از Repository خصوصی از طریق سرور انجام می‌شود (Redirect به لینک امضاشده کوتاه‌عمر GitHub).
-- هوش مصنوعی فقط اجازه نوشتن در مسیرهای مجاز (`src/`، `App.tsx`، `api/`، `db/schema.sql`) را دارد؛ فایل‌های قالب، Workflow و
-  `package.json` در اختیار پلتفرم است. مسیرهای مشکوک (`..`، مسیر مطلق) و فایل‌های بزرگ رد می‌شوند.
-- کتابخانه‌های npm فقط از یک فهرست مجاز با نسخه‌های تست‌شده اضافه می‌شوند (`src/lib/templates/libraries.ts`).
-- کوکی نشست امضاشده (JWT HS256)، `httpOnly` و `SameSite=Lax`؛ OAuth با پارامتر `state` در برابر CSRF محافظت می‌شود.
+| طرح | قیمت | هر ۵ ساعت | هر هفته | مدل‌ها | پروژه |
+| --- | --- | --- | --- | --- | --- |
+| رایگان | ۰ | ۱۰۰ هزار توکن | ۳۰۰ هزار | اقتصادی (GPT-5 mini، Claude Haiku، Gemini Flash) | ۲ |
+| پلاس | ۲۰ دلار | ۱۵۰ هزار | ۴۰۰ هزار | اصلی (GPT-5، Claude Opus، Gemini Pro) | ۱۰ |
+| پرو | ۱۰۰ دلار | ۶۰۰ هزار | ۲ میلیون | اصلی | ۵۰ |
+| مکس | ۲۰۰ دلار | ۱.۵ میلیون | ۵ میلیون | اصلی | نامحدود |
+
+- الگو گرفته از ChatGPT (Free/Plus/Pro)، Claude (Free/Pro/Max 5x/Max 20x) و Gemini. سقف هفتگی طوری تنظیم شده که هزینه API
+  یک طرح کاملاً مصرف‌شده نزدیک قیمت آن بماند. اعداد را در همین فایل تغییر دهید.
+- قیمت تومانی = قیمت دلاری × `USD_TO_TOMAN` (گرد به هزار تومان).
+- هر خرید ۳۰ روز اعتبار دارد و تمدید خودکار ندارد. خرید دوباره همان طرح اعتبار را تمدید و خرید طرح دیگر از همان لحظه جایگزین
+  می‌کند.
+- سقف‌ها فقط برای کلیدهای مرکزی است؛ کاربری که کلید API شخصی وارد کند محدودیت توکن ندارد (سقف تعداد پروژه می‌ماند).
+
+### ایجنت VPS
+
+کاربر در صفحه پروژه «ساخت دستور نصب» را می‌زند و این دستور را روی سرور اجرا می‌کند:
+
+```bash
+curl -fsSL https://<platform>/agent/install.sh | sudo IDEA2APP_URL=https://<platform> IDEA2APP_TOKEN=<one-time> bash
+```
+
+برای VPS رایگان همین را به‌صورت اسکریپت cloud-init می‌گیرد و هنگام ساخت سرور در Oracle (Initialization script)، Google
+(Startup script) یا AWS (User data) قرار می‌دهد؛ سرور در اولین روشن شدن خودش نصب می‌شود.
+
+نصب‌کننده:
+
+1. Node 22 (با بررسی checksum)، Caddy، swap روی سرورهای کم‌رم، کاربر سیستمی `idea2app` را نصب می‌کند.
+2. **کلید SSH را روی خود سرور می‌سازد**؛ فقط کلید عمومی با توکن یک‌بارمصرف (۲۴ ساعته) به پلتفرم فرستاده می‌شود و پلتفرم آن را
+   به‌عنوان **Deploy key فقط‌خواندنی** به Repository اضافه می‌کند. کلید میزبان github.com با اثرانگشت رسمی بررسی می‌شود.
+3. یک secret دائمی برای گزارش وضعیت می‌گیرد (فقط Hash آن در پلتفرم ذخیره می‌شود).
+4. کد را می‌گیرد و طبق `idea2app.json` مستقر می‌کند: Build سایت در `dist/` و سرو با Caddy؛ برای بک‌اند PostgreSQL، اجرای
+   `db/schema.sql` و سرویس systemd `idea2app-app` (پشت Caddy روی `/api`).
+5. HTTPS خودکار روی دامنه دلخواه (`DOMAIN=`) یا `‎<ip>.sslip.io` (و نام دوم `nip.io`).
+6. تایمر `idea2app-sync` هر ۲ دقیقه GitHub را بررسی و هر Commit جدید را مستقر می‌کند. Commitی که شکست بخورد دوباره تلاش
+   نمی‌شود تا Commit بعدی برسد. هر تیک یک heartbeat به پلتفرم می‌فرستد.
+
+روی سرور: `sudo idea2app status | deploy | log | logs | restart`. فایروال Oracle (iptables) و ufw خودکار باز می‌شوند.
+
+### امنیت
+
+- همه توکن‌ها و کلیدها (GitHub، Vercel، Neon، کلید شخصی AI، Connection String دیتابیس‌ها) با **AES-256-GCM** رمزنگاری
+  می‌شوند و هرگز به مرورگر برنمی‌گردند. کد ورود، توکن نصب و secret ایجنت فقط به‌صورت Hash ذخیره می‌شوند.
+- دانلود APK از Repository خصوصی از طریق سرور انجام می‌شود (لینک امضاشده کوتاه‌عمر GitHub).
+- هوش مصنوعی فقط در مسیرهای مجاز (`src/`، `App.tsx`، `public/`، `server/`، `db/schema.sql`) می‌نویسد. فایل‌های قالب، Workflow،
+  `package.json`، `server/base.ts|db.ts|node.ts` و `api/index.ts` در اختیار پلتفرم است. کتابخانه‌های npm فقط از فهرست مجاز
+  اضافه می‌شوند.
+- پرداخت‌ها سمت سرور تأیید می‌شوند (verify زرین‌پال، بازخوانی Checkout Session و امضای Webhook در Stripe) و هر پرداخت فقط
+  یک بار اشتراک فعال می‌کند.
 
 ## راه‌اندازی محلی
 
-پیش‌نیاز: Node.js 22 یا بالاتر.
+پیش‌نیاز: Node.js 22 و یک PostgreSQL (Neon یا محلی).
 
 ```bash
 npm install
 cp .env.example .env.local      # ویندوز: Copy-Item .env.example .env.local
 ```
 
-مقادیر `.env.local` را پر کنید:
-
-1. **DATABASE_URL** — در [Neon](https://console.neon.tech) یک پروژه بسازید و Connection String (Pooled) را کپی کنید.
-2. **ENCRYPTION_KEY** و **SESSION_SECRET** — هر کدام را جداگانه بسازید:
-   ```bash
-   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-   ```
-3. **GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET** — در GitHub → Settings → Developer settings → OAuth Apps یک OAuth App بسازید:
-   - Homepage URL: `http://localhost:3000`
-   - Authorization callback URL: `http://localhost:3000/api/auth/github/callback`
-4. حداقل یکی از **OPENAI_API_KEY**، **ANTHROPIC_API_KEY**، **GEMINI_API_KEY** (یا بعداً کاربر کلید شخصی وارد کند).
-
-ساخت جداول و اجرا:
+در `.env.local` حداقل این‌ها را پر کنید: `DATABASE_URL`، `ENCRYPTION_KEY`، `SESSION_SECRET` (هر کدام با
+`node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`)، `GITHUB_CLIENT_ID/SECRET` (OAuth App با
+Callback `http://localhost:3000/api/auth/github/callback`) و یک کلید AI. در حالت توسعه، اگر سرویس ایمیل تنظیم نشده باشد،
+کد ورود در ترمینال چاپ می‌شود.
 
 ```bash
-npm run db:push     # یا اجرای drizzle/0000_init.sql روی دیتابیس
+npm run db:push     # یا اجرای drizzle/0000_init.sql و drizzle/0001_*.sql به ترتیب
 npm run dev
 ```
 
-- برنامه: http://localhost:3000
-- بررسی سلامت سرویس: http://localhost:3000/api/health
+بررسی سلامت: http://localhost:3000/api/health
 
-## استقرار روی Vercel
+## استقرار پلتفرم روی Vercel
 
-1. این Repository را در Vercel، Import کنید (Framework: Next.js).
-2. همه متغیرهای `.env.example` را در Settings → Environment Variables وارد کنید و `APP_URL` را آدرس نهایی بگذارید
-   (مثلاً `https://idea2app.vercel.app`).
-3. در OAuth App گیت‌هاب، Callback URL را به `https://<domain>/api/auth/github/callback` تغییر دهید.
-4. Routeهای تولید کد تا ۳۰۰ ثانیه اجرا می‌شوند (`maxDuration`)؛ Fluid Compute در Vercel باید فعال باشد (پیش‌فرض پروژه‌های جدید).
+1. Repository را در Vercel Import کنید (Framework: Next.js) و Fluid Compute را فعال نگه دارید (Routeهای AI تا ۳۰۰ ثانیه).
+2. متغیرهای `.env.example` را وارد کنید و `APP_URL` را نشانی نهایی بگذارید.
+3. Callback در OAuth App گیت‌هاب: `https://<domain>/api/auth/github/callback`.
+4. زرین‌پال: Callback خودکار `https://<domain>/api/billing/zarinpal/callback` است (دامنه باید در پنل زرین‌پال ثبت باشد).
+5. Stripe: Webhook با رویداد `checkout.session.completed` روی `https://<domain>/api/billing/stripe/webhook`.
 
-## پیش‌نیازهای کاربر نهایی
+خود پلتفرم را روی VPS هم می‌توان اجرا کرد: با PostgreSQL محلی (درایور TCP خودکار انتخاب می‌شود)، `npm run build` و
+`npm start` پشت Caddy.
 
-| قابلیت | نیاز |
-| --- | --- |
-| تولید اپ و APK | فقط ورود با GitHub (Actions برای Repositoryهای خصوصی سهمیه دقیقه رایگان ماهانه دارد) |
-| استقرار API | توکن Vercel در صفحه «اتصال‌ها و کلیدها» + نصب اپ GitHub روی حساب Vercel با دسترسی به Repositoryها |
-| دیتابیس | کلید API نئون کاربر، یا `NEON_API_KEY` مرکزی پلتفرم |
-
-## نکات APK
-
-- APK تولیدی با کلید **Debug** امضا شده و برای تست و نصب مستقیم است. برای Google Play باید Keystore انتشار در GitHub Secrets
-  تعریف و مرحله `assembleRelease`/`bundleRelease` با امضای واقعی اضافه شود.
-- پوشه `android/` در Repository نگه‌داری نمی‌شود و در هر Build با Capacitor/Expo Prebuild ساخته می‌شود؛ مجوزهای اندروید از
-  `android-permissions.txt` (Capacitor) یا `app.json` (Expo) اعمال می‌شوند.
-
-## توسعه
+## توسعه و تست
 
 ```bash
 npm run typecheck
-npm test                         # تست رمزنگاری، پارس خروجی AI و اعتبارسنجی/رندر قالب‌ها
-npm run render:sample -- capacitor ./out/sample   # رندر یک پروژه نمونه بدون AI
+npm test                                              # رمزنگاری، پارس AI، قالب‌ها، طرح‌ها، امضای Stripe، ایجنت
+npm run render:sample -- web ./out/site --backend    # رندر پروژه نمونه بدون AI
 ```
 
-Workflow `Template APK smoke test` هر دو قالب را با یک اپ نمونه رندر می‌کند و با همان اسکریپت Build پروژه‌های تولیدی، APK
-واقعی می‌سازد؛ بنابراین هر تغییر در قالب‌ها پیش از Merge روی GitHub Actions آزمایش می‌شود.
+Workflow `Template smoke test` روی GitHub Actions:
+
+- APK واقعی از قالب‌های Capacitor (با و بدون بک‌اند) و Expo، و Build سایت را با همان اسکریپت پروژه‌های تولیدی می‌سازد.
+- اسکریپت‌های ایجنت را با ShellCheck بررسی می‌کند.
+- **ایجنت را انتها‌به‌انتها روی یک Ubuntu واقعی نصب می‌کند** (با یک پلتفرم ساختگی و مخزن محلی) و بررسی می‌کند سایت، API و
+  PostgreSQL از HTTPS جواب می‌دهند و Commit جدید خودکار مستقر می‌شود.
 
 ## ساختار پوشه‌ها
 
 ```
+public/agent/          نصب‌کننده و دستور idea2app (ایجنت VPS)
 src/
-  app/                 صفحات (landing، dashboard، projects/[id]، settings) و API Routeها
-  components/          رابط کاربری کلاینت (ProjectWorkspace، SettingsForm، …)
+  app/                 صفحات (ورود، داشبورد، پروژه، اشتراک، آموزش‌ها، تنظیمات) و API Routeها
+  components/          رابط کاربری؛ guides/ = آموزش‌های تصویری (MockScreen + داده مراحل)
   lib/
-    ai/                Providerها، Promptها، سهمیه و ثبت مصرف
-    db/                Schema و اتصال Drizzle/Neon
+    ai/                Providerها، Promptها، اعمال سقف طرح و ثبت مصرف
+    auth/              کد ورود ایمیلی
+    billing/           طرح‌ها، سقف مصرف، زرین‌پال و Stripe
+    agent/             ثبت ایجنت، Deploy key، گزارش وضعیت
     integrations/      GitHub، Vercel، Neon و ذخیره رمزنگاری‌شده اتصال‌ها
-    templates/         قالب Capacitor، قالب Expo، Workflow و اعتبارسنجی فایل‌های AI
-    pipeline.ts        Orchestrator: نیازمندی ► کد ► GitHub ► Build ► اصلاح ► ابر
-scripts/               رندر پروژه نمونه برای Smoke test
-drizzle/               Migration SQL
+    templates/         قالب وب‌سایت، Capacitor، Expo، بک‌اند Hono و اعتبارسنجی فایل‌های AI
+    pipeline.ts        Orchestrator: نیازمندی ► کد ► GitHub ► Build ► اصلاح ► استقرار
+scripts/               رندر پروژه نمونه و پلتفرم ساختگی برای تست ایجنت
+drizzle/               Migrationها
 tests/                 تست‌های Vitest
 ```
 
-## محدودیت‌های فعلی و گام‌های بعدی
+## محدودیت‌ها
 
-- هر مرحله AI در یک درخواست HTTP اجرا می‌شود؛ برای مقیاس بالا بهتر است به صف کار (مثلاً Vercel Queues / Inngest) منتقل شود.
-- ساخت AAB امضاشده برای Google Play، پلن‌های پولی و تیم‌های چندنفره هنوز پیاده‌سازی نشده‌اند.
-- کیفیت کد تولیدی به مدل بستگی دارد؛ مسیر «اصلاح خودکار» خطاهای Build را با ارسال لاگ به مدل رفع می‌کند.
+- هر مرحله AI در یک درخواست HTTP اجرا می‌شود (تا ۳۰۰ ثانیه)؛ برای مقیاس بالا بهتر است به صف کار منتقل شود.
+- APKها با کلید Debug امضا می‌شوند؛ نسخه امضاشده برای Google Play هنوز پیاده نشده است.
+- Oracle، Google و AWS برای ثبت‌نام کارت بانکی بین‌المللی می‌خواهند؛ Vercel + Neon بدون کارت کار می‌کند.
+- آموزش‌های تصویری تصاویر نمادین‌اند (نه اسکرین‌شات واقعی) و ممکن است با تغییر ظاهر کنسول این سرویس‌ها کمی متفاوت شوند.

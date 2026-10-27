@@ -21,8 +21,8 @@ export default async function DashboardPage() {
       <Header user={user} />
       <main className="mx-auto flex max-w-6xl flex-col gap-8 px-4 py-8">
         <div>
-          <h1 className="text-2xl font-extrabold">سلام {user.name ?? user.githubLogin} 👋</h1>
-          <p className="text-slate-600 dark:text-slate-400">ایده‌ات را بنویس تا قدم‌به‌قدم به APK برسیم.</p>
+          <h1 className="text-2xl font-extrabold">سلام {user.name ?? user.githubLogin ?? user.email.split("@")[0]} 👋</h1>
+          <p className="text-slate-600 dark:text-slate-400">ایده‌ات را بنویس تا قدم‌به‌قدم به وب‌سایت یا اپ آماده برسیم.</p>
         </div>
 
         <NewProjectForm />
@@ -41,7 +41,10 @@ export default async function DashboardPage() {
                   </div>
                   <p className="line-clamp-2 text-sm text-slate-600 dark:text-slate-400">{project.idea}</p>
                   <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
-                    <span>{project.template === "capacitor" ? "Capacitor" : "Expo"}</span>
+                    <span>
+                      {project.kind === "website" ? "🌐 وب‌سایت" : "📱 اپ"} ·{" "}
+                      {project.hosting === "vps" ? "VPS" : project.hosting === "vercel" ? "Vercel" : "محلی"}
+                    </span>
                     <span>{project.updatedAt.toLocaleDateString("fa-IR")}</span>
                   </div>
                 </Link>

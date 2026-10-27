@@ -284,3 +284,19 @@ export function releaseAssetDownloadUrl(token: string, owner: string, repo: stri
 export function artifactDownloadUrl(token: string, owner: string, repo: string, artifactId: number) {
   return signedRedirect(token, `/repos/${owner}/${repo}/actions/artifacts/${artifactId}/zip`, "application/vnd.github+json");
 }
+
+// ------------------------------------------------------------- deploy keys
+
+/** Adds a read-only SSH deploy key (used by the VPS agent to pull the code). */
+export async function addDeployKey(token: string, owner: string, repo: string, title: string, key: string) {
+  const data = await gh<{ id: number }>(token, "POST", `/repos/${owner}/${repo}/keys`, { title, key, read_only: true });
+  return data.id;
+}
+
+export async function deleteDeployKey(token: string, owner: string, repo: string, keyId: number) {
+  try {
+    await gh(token, "DELETE", `/repos/${owner}/${repo}/keys/${keyId}`);
+  } catch (error) {
+    if (!(error instanceof GitHubError) || error.status !== 404) throw error;
+  }
+}
