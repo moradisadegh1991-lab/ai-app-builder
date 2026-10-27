@@ -226,7 +226,7 @@ export function NewProjectForm() {
                   onClick={() => setVpsProvider("oracle")}
                   icon="🟥"
                   title="Oracle Cloud"
-                  text="Always Free: سرور ARM تا ۴ هسته و ۲۴ گیگ رم، دائمی."
+                  text="Always Free: سرور ARM تا ۲ هسته و ۱۲ گیگ رم، دائمی (ممکن است سرور کم‌مصرف پس گرفته شود)."
                   badge="پیشنهادی"
                 />
                 <Choice
