@@ -7,6 +7,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const checks: Record<string, boolean> = {
     database: false,
+    appUrl: Boolean(process.env.APP_URL),
     encryptionKey: Boolean(process.env.ENCRYPTION_KEY),
     sessionSecret: Boolean(process.env.SESSION_SECRET),
     githubOAuth: Boolean(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET),
@@ -22,6 +23,6 @@ export async function GET() {
   } catch {
     checks.database = false;
   }
-  const ok = checks.database && checks.encryptionKey && checks.sessionSecret && checks.githubOAuth;
+  const ok = checks.database && checks.appUrl && checks.encryptionKey && checks.sessionSecret && checks.githubOAuth;
   return NextResponse.json({ ok, checks }, { status: ok ? 200 : 503 });
 }
