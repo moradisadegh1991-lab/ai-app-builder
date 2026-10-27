@@ -24,7 +24,13 @@ set -a
 . "$ENV_FILE"
 set +a
 
+# Never depend on the caller's working directory (it may be /root or a path
+# user idea2app cannot read).
+cd /
+
 as_app() { runuser -u idea2app -- env HOME="$DATA" PATH=/usr/local/bin:/usr/bin:/bin "$@"; }
+# Runs a command as idea2app inside the project checkout.
+in_app() { as_app bash -c 'cd "$0" && exec "$@"' "$APP_DIR" "$@"; }
 git_app() {
   as_app env GIT_SSH_COMMAND="ssh -i $ETC/deploy_key -o IdentitiesOnly=yes -o UserKnownHostsFile=$ETC/known_hosts -o StrictHostKeyChecking=yes" git "$@"
 }
@@ -152,10 +158,10 @@ do_deploy() {
   web=$(manifest web); backend=$(manifest backend)
   [ -n "$web" ] || { echo "idea2app.json در مخزن نیست."; return 1; }
   echo "== نصب وابستگی‌ها"
-  as_app npm install --no-audit --no-fund --loglevel=error
+  in_app npm install --no-audit --no-fund --loglevel=error
   if [ "$web" = true ]; then
     echo "== Build وب‌سایت"
-    as_app npm run build
+    in_app npm run build
     chmod -R a+rX "$APP_DIR/dist"
   fi
   if [ "$backend" = true ]; then
