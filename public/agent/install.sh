@@ -113,7 +113,7 @@ if [ -f "$ETC/agent.env" ] && [ -z "$TOKEN" ]; then
   ok "از قبل متصل است ($ETC/agent.env)"
 else
   [ -n "$TOKEN" ] || die "IDEA2APP_TOKEN خالی است. دستور را از صفحه پروژه کپی کنید."
-  body=$(jq -n --arg token "$TOKEN" --arg key "$(cat "$ETC/deploy_key.pub")" --arg host "$(hostname)" --arg ip "$ip" \
+  body=$(jq -nc --arg token "$TOKEN" --arg key "$(cat "$ETC/deploy_key.pub")" --arg host "$(hostname)" --arg ip "$ip" \
     '{token: $token, publicKey: $key, hostname: $host, ip: $ip}')
   resp=$(curl -sS --max-time 60 -X POST "$PLATFORM/api/agent/register" -H 'content-type: application/json' -d "$body") \
     || die "به $PLATFORM دسترسی نیست."

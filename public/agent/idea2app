@@ -43,7 +43,7 @@ report() {
   [ -d "$APP_DIR/.git" ] && commit=$(git -C "$APP_DIR" rev-parse HEAD 2>/dev/null || true)
   [ -f "$LOG" ] && [ "$heartbeat" = false ] && log=$(tail -c 6000 "$LOG")
   local body
-  body=$(jq -n --arg status "$status" --arg message "$message" --arg commit "$commit" \
+  body=$(jq -nc --arg status "$status" --arg message "$message" --arg commit "$commit" \
     --arg url "$(site_url)" --arg log "$log" --argjson heartbeat "$heartbeat" \
     '{status: $status, message: $message, commit: $commit, url: $url, log: $log, heartbeat: $heartbeat}')
   curl -fsS --max-time 20 -X POST "$PLATFORM/api/agent/report" \

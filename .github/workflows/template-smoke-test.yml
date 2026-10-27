@@ -110,7 +110,7 @@ jobs:
           curl -fsSk https://localhost/api/health | grep -q '"ok":true'
           curl -fsSk -X POST https://localhost/api/messages -H 'content-type: application/json' -d '{"name":"ci","body":"hello"}' | grep -q hello
           curl -fsSk https://localhost/api/messages | grep -q hello
-          tail -n 1 "$RUNNER_TEMP/reports.jsonl" | jq -e '.status == "online"'
+          jq -se 'map(select(.heartbeat == false)) | last | .status == "online"' "$RUNNER_TEMP/reports.jsonl"
       - name: A new commit is deployed by sync
         run: |
           cd "$RUNNER_TEMP/site"
