@@ -34,6 +34,12 @@ export const env = {
   // Google sign-in is optional; the button only appears when both are set.
   googleClientId: () => optional("GOOGLE_CLIENT_ID"),
   googleClientSecret: () => optional("GOOGLE_CLIENT_SECRET"),
+  // Comma-separated e-mails of developer accounts that get the unlimited plan.
+  unlimitedEmails: () =>
+    (optional("UNLIMITED_EMAILS") ?? "")
+      .split(",")
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean),
   // Optional OpenAI-compatible gateway (e.g. Liara AI) that serves all three providers with one key.
   aiGatewayBaseUrl: () => optional("AI_GATEWAY_BASE_URL")?.replace(/\/+$/, ""),
   aiGatewayKey: () => optional("AI_GATEWAY_API_KEY"),

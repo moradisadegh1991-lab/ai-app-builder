@@ -1,14 +1,23 @@
 import { and, eq, gte, sql } from "drizzle-orm";
 import { db, schema } from "../db";
 import type { PlanId } from "../db/schema";
-import { PERIOD_DAYS, PLANS, WINDOW_HOURS, type Plan } from "./plans";
+import { env } from "../env";
+import { DEVELOPER_PLAN, PERIOD_DAYS, PLANS, WINDOW_HOURS, type Plan } from "./plans";
 
 export interface ActivePlan {
   plan: Plan;
   currentPeriodEnd: Date | null;
 }
 
+async function isUnlimitedUser(userId: string) {
+  const emails = env.unlimitedEmails();
+  if (emails.length === 0) return false;
+  const [user] = await db().select({ email: schema.users.email }).from(schema.users).where(eq(schema.users.id, userId)).limit(1);
+  return Boolean(user && emails.includes(user.email.toLowerCase()));
+}
+
 export async function activePlan(userId: string): Promise<ActivePlan> {
+  if (await isUnlimitedUser(userId)) return { plan: DEVELOPER_PLAN, currentPeriodEnd: null };
   const [sub] = await db()
     .select()
     .from(schema.subscriptions)

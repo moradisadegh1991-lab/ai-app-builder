@@ -88,6 +88,22 @@ export const PLANS: Record<PlanId, Plan> = {
   },
 };
 
+/** Token limits at or above this are shown as "unlimited". */
+export const UNLIMITED_TOKENS = 1_000_000_000_000;
+
+/** For developer accounts listed in UNLIMITED_EMAILS: flagship models, no token or project limits. */
+export const DEVELOPER_PLAN: Plan = {
+  id: "max",
+  name: "توسعه‌دهنده",
+  tagline: "حساب توسعه‌دهنده؛ بدون محدودیت",
+  priceUsd: 0,
+  windowTokens: UNLIMITED_TOKENS,
+  weeklyTokens: UNLIMITED_TOKENS,
+  modelTier: "standard",
+  maxProjects: null,
+  features: ["همه امکانات مکس", "بدون سقف توکن و پروژه"],
+};
+
 export const PAID_PLANS = (["plus", "pro", "max"] as const).map((id) => PLANS[id]);
 
 export function isPaidPlan(value: string): value is Exclude<PlanId, "free"> {
