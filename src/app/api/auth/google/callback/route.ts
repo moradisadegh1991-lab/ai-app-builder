@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { consumeOAuth } from "@/lib/auth/oauth-state";
+import { consumeOAuth, oauthFailureRedirect } from "@/lib/auth/oauth-state";
 import { signInWithIdentity } from "@/lib/auth/social";
 import { env } from "@/lib/env";
 import { HttpError } from "@/lib/http";
@@ -8,9 +8,11 @@ import { createSession } from "@/lib/session";
 
 export async function GET(request: NextRequest) {
   const app = env.appUrl();
-  const mode = await consumeOAuth("google", request.nextUrl.searchParams.get("state"));
+  const check = await consumeOAuth("google", request.nextUrl.searchParams.get("state"));
   const code = request.nextUrl.searchParams.get("code");
-  if (mode !== "login" || !code) return NextResponse.redirect(`${app}/?error=oauth_state`);
+  if (!check.ok || check.mode !== "login" || !code) {
+    return NextResponse.redirect(oauthFailureRedirect(app, check, request.nextUrl.searchParams.get("error")));
+  }
 
   try {
     const profile = await fetchGoogleProfile(code);

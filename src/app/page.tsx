@@ -5,7 +5,11 @@ import { enabledSocialProviders } from "@/lib/auth/providers";
 import { getCurrentUser } from "@/lib/session";
 
 const ERRORS: Record<string, string> = {
-  oauth_state: "نشست ورود منقضی شد؛ دوباره تلاش کنید.",
+  oauth_state: "پاسخ ورود ناقص بود (کد بازگشتی نیامد)؛ دوباره تلاش کنید.",
+  oauth_no_cookie:
+    "مرورگر کوکی ورود را برنگرداند. ورود را از همین آدرس سایت شروع کنید (نه از آدرس Deployment یا Preview)، کوکی‌ها را مسدود نکرده باشید و دوباره تلاش کنید.",
+  oauth_mismatch: "نشست ورود با پاسخ برنگشته یکی نبود (احتمالاً چند تب یا درخواست همزمان)؛ یک بار دیگر تلاش کنید.",
+  provider_denied: "سرویس ورود درخواست را نپذیرفت یا لغو شد",
   oauth_failed: "ورود ناموفق بود؛ دوباره تلاش کنید.",
   no_verified_email: "حساب شما ایمیل تأییدشده‌ای ندارد. ایمیلتان را در آن سرویس تأیید کنید یا با کد ایمیل وارد شوید.",
   account_conflict: "این ایمیل قبلاً به حساب دیگری از همین سرویس وصل شده است.",
@@ -20,10 +24,14 @@ const STEPS = [
   { title: "سرور", text: "VPS خودت با ایجنت خودکار، VPS رایگان، یا Vercel + Neon رایگان." },
 ];
 
-export default async function LandingPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+export default async function LandingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string; detail?: string }>;
+}) {
   const user = await getCurrentUser().catch(() => null);
   if (user) redirect("/dashboard");
-  const { error } = await searchParams;
+  const { error, detail } = await searchParams;
 
   return (
     <main className="mx-auto flex max-w-5xl flex-col gap-12 px-4 py-14">
@@ -52,6 +60,12 @@ export default async function LandingPage({ searchParams }: { searchParams: Prom
           {error && ERRORS[error] && (
             <p className="w-full max-w-sm rounded-xl bg-red-50 px-4 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
               {ERRORS[error]}
+              {error === "provider_denied" && detail && /^[a-z_]{1,40}$/.test(detail) && (
+                <>
+                  {" "}
+                  (<span dir="ltr">{detail}</span>)
+                </>
+              )}
             </p>
           )}
           <EmailLogin providers={enabledSocialProviders()} />

@@ -14,7 +14,18 @@ function optional(name: string): string | undefined {
 
 export const env = {
   databaseUrl: () => required("DATABASE_URL"),
-  appUrl: () => (optional("APP_URL") ?? "http://localhost:3000").replace(/\/+$/, ""),
+  // OAuth, payment and agent URLs are built from this, so a wrong value (e.g. the
+  // localhost default in production) breaks sign-in with redirect_uri_mismatch.
+  appUrl: () => {
+    const url = optional("APP_URL");
+    if (!url) {
+      if (process.env.NODE_ENV === "production") {
+        throw new Error("APP_URL is not set. Set it to the public address of this site, e.g. https://idea2app.vercel.app");
+      }
+      return "http://localhost:3000";
+    }
+    return url.replace(/\/+$/, "");
+  },
   encryptionKey: () => required("ENCRYPTION_KEY"),
   sessionSecret: () => required("SESSION_SECRET"),
   githubClientId: () => required("GITHUB_CLIENT_ID"),
