@@ -10,8 +10,9 @@ export async function GET() {
     // Migrations applied (0002 adds users.google_id); sign-in fails with a database error when this is false.
     schema: false,
     appUrl: Boolean(process.env.APP_URL),
-    encryptionKey: Boolean(process.env.ENCRYPTION_KEY),
-    sessionSecret: Boolean(process.env.SESSION_SECRET),
+    // Valid, not just present: AES-256 needs exactly 32 bytes (base64); session tokens need 32+ characters.
+    encryptionKey: Buffer.from(process.env.ENCRYPTION_KEY ?? "", "base64").length === 32,
+    sessionSecret: (process.env.SESSION_SECRET ?? "").length >= 32,
     githubOAuth: Boolean(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET),
     // Optional: the Google button only shows when both are set.
     googleLogin: Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),

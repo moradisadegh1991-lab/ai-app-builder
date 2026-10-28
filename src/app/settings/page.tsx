@@ -17,9 +17,9 @@ const GITHUB_MESSAGES: Record<string, { text: string; ok: boolean }> = {
   failed: { text: "اتصال GitHub ناموفق بود؛ دوباره تلاش کنید.", ok: false },
 };
 
-export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ github?: string }> }) {
+export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ github?: string; detail?: string }> }) {
   const user = await requirePageUser();
-  const { github } = await searchParams;
+  const { github, detail } = await searchParams;
   const [integrations, providers, usage] = await Promise.all([
     listIntegrations(user.id),
     providerAvailability(user.id),
@@ -47,6 +47,12 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             }`}
           >
             {message.text}
+            {!message.ok && detail && /^[a-z0-9_]{1,60}$/.test(detail) && (
+              <>
+                {" "}
+                (<span dir="ltr">{detail}</span>)
+              </>
+            )}
           </p>
         )}
 
