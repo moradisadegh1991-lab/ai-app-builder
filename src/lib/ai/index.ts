@@ -5,7 +5,7 @@ import { env } from "../env";
 import { HttpError } from "../http";
 import { getIntegration } from "../integrations/store";
 import { extractJsonObject } from "./json";
-import { providerClients } from "./providers";
+import { callProvider } from "./providers";
 import { AI_PROVIDERS, AI_PROVIDER_LABELS, type AiProviderId } from "./types";
 
 export { AI_PROVIDERS, AI_PROVIDER_LABELS, type AiProviderId };
@@ -29,12 +29,23 @@ const economyModels: Record<AiProviderId, () => string> = {
   gemini: env.geminiEconomyModel,
 };
 
+// Vendor prefix of model IDs on OpenAI-compatible gateways, e.g. "google/gemini-3.7-flash".
+const gatewayVendors: Record<AiProviderId, string> = { openai: "openai", anthropic: "anthropic", gemini: "google" };
+
+const gatewayBaseUrl = () => (env.aiGatewayKey() ? env.aiGatewayBaseUrl() : undefined);
+
+/** Accepts both full gateway IDs ("google/gemini-3.7-flash") and bare names ("gemini-3.7-flash"). */
+function gatewayModel(provider: AiProviderId, model: string) {
+  return model.includes("/") ? model : `${gatewayVendors[provider]}/${model}`;
+}
+
 export function isAiProvider(value: string): value is AiProviderId {
   return (AI_PROVIDERS as readonly string[]).includes(value);
 }
 
 interface ResolvedKey {
   apiKey: string;
+  gatewayBaseUrl?: string;
   usedPlatformKey: boolean;
   model: string;
 }
@@ -45,7 +56,8 @@ async function resolveKey(userId: string, provider: AiProviderId): Promise<Resol
   if (own) {
     return { apiKey: own.secret, usedPlatformKey: false, model: own.metadata.model || defaultModels[provider]() };
   }
-  const platformKey = platformKeys[provider]();
+  const gateway = gatewayBaseUrl();
+  const platformKey = gateway ? env.aiGatewayKey() : platformKeys[provider]();
   if (!platformKey) {
     throw new HttpError(
       400,
@@ -54,7 +66,9 @@ async function resolveKey(userId: string, provider: AiProviderId): Promise<Resol
   }
   const { plan } = await activePlan(userId);
   const model = plan.modelTier === "economy" ? economyModels[provider]() : defaultModels[provider]();
-  return { apiKey: platformKey, usedPlatformKey: true, model };
+  return gateway
+    ? { apiKey: platformKey, gatewayBaseUrl: gateway, usedPlatformKey: true, model: gatewayModel(provider, model) }
+    : { apiKey: platformKey, usedPlatformKey: true, model };
 }
 
 function formatReset(iso: string | null) {
@@ -87,8 +101,9 @@ export async function providerAvailability(userId: string) {
   return Promise.all(
     AI_PROVIDERS.map(async (id) => {
       const own = await getIntegration(userId, id);
-      const source: "user" | "platform" | null = own ? "user" : platformKeys[id]() ? "platform" : null;
-      const platformModel = plan.modelTier === "economy" ? economyModels[id]() : defaultModels[id]();
+      const source: "user" | "platform" | null = own ? "user" : gatewayBaseUrl() || platformKeys[id]() ? "platform" : null;
+      const baseModel = plan.modelTier === "economy" ? economyModels[id]() : defaultModels[id]();
+      const platformModel = gatewayBaseUrl() ? gatewayModel(id, baseModel) : baseModel;
       return {
         id,
         label: AI_PROVIDER_LABELS[id],
@@ -119,8 +134,9 @@ export async function generateStructured<T>(options: StructuredCallOptions<T>): 
   const key = await resolveKey(options.userId, options.provider);
   if (key.usedPlatformKey) await assertWithinPlan(options.userId);
 
-  const result = await providerClients[options.provider]({
+  const result = await callProvider(options.provider, {
     apiKey: key.apiKey,
+    gatewayBaseUrl: key.gatewayBaseUrl,
     model: key.model,
     system: options.system,
     prompt: options.prompt,

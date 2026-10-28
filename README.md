@@ -111,7 +111,7 @@ Callback `http://localhost:3000/api/auth/github/callback`) و یک کلید AI. 
 کد ورود در ترمینال چاپ می‌شود.
 
 ```bash
-npm run db:push     # یا اجرای drizzle/0000_init.sql و drizzle/0001_*.sql به ترتیب
+npm run db:push     # یا روی دیتابیس خالی: کل drizzle/all-in-one.sql را در SQL Editor نئون اجرا کنید (Read-only خاموش)
 npm run dev
 ```
 

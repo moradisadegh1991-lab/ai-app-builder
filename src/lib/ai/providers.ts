@@ -103,6 +103,44 @@ async function callGemini(req: CompletionRequest): Promise<CompletionResult> {
   };
 }
 
+// OpenAI-compatible gateways (Liara AI, OpenRouter, ...) expose Claude, Gemini and OpenAI models
+// behind /chat/completions. They vary in what they accept, so use the most widely supported
+// parameters and retry once without JSON mode if the gateway rejects it (the JSON is parsed
+// out of plain text anyway).
+async function callGateway(req: CompletionRequest): Promise<CompletionResult> {
+  const url = `${req.gatewayBaseUrl}/chat/completions`;
+  const body = {
+    model: req.model,
+    messages: [
+      { role: "system", content: req.system },
+      { role: "user", content: req.prompt },
+    ],
+    max_tokens: req.maxOutputTokens,
+  };
+  const headers = { authorization: `Bearer ${req.apiKey}` };
+  let data: any;
+  try {
+    data = await postJson(url, headers, { ...body, response_format: { type: "json_object" } });
+  } catch (error) {
+    if (!(error instanceof Error) || !/ 400:/.test(error.message)) throw error;
+    data = await postJson(url, headers, body);
+  }
+  const choice = data.choices?.[0];
+  if (choice?.finish_reason === "length") {
+    throw new Error("پاسخ مدل به سقف توکن رسید و ناقص است؛ ایده را ساده‌تر کنید یا دوباره تلاش کنید.");
+  }
+  return {
+    text: choice?.message?.content ?? "",
+    model: data.model ?? req.model,
+    inputTokens: data.usage?.prompt_tokens ?? 0,
+    outputTokens: data.usage?.completion_tokens ?? 0,
+  };
+}
+
+export async function callProvider(provider: AiProviderId, req: CompletionRequest): Promise<CompletionResult> {
+  return req.gatewayBaseUrl ? callGateway(req) : providerClients[provider](req);
+}
+
 export const providerClients: Record<AiProviderId, (req: CompletionRequest) => Promise<CompletionResult>> = {
   openai: callOpenAI,
   anthropic: callAnthropic,

@@ -18,6 +18,8 @@ export async function GET() {
     openai: Boolean(process.env.OPENAI_API_KEY),
     anthropic: Boolean(process.env.ANTHROPIC_API_KEY),
     gemini: Boolean(process.env.GEMINI_API_KEY),
+    // Optional: one OpenAI-compatible gateway (e.g. Liara AI) in front of all providers.
+    aiGateway: Boolean(process.env.AI_GATEWAY_BASE_URL && process.env.AI_GATEWAY_API_KEY),
   };
   try {
     await db().execute(sql`select 1`);
