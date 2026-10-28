@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { UsageSummary } from "@/lib/billing/subscription";
+import { UNLIMITED_TOKENS } from "@/lib/billing/plans";
 
 function formatTokens(value: number) {
   if (value >= 1_000_000) return `${(value / 1_000_000).toLocaleString("fa-IR", { maximumFractionDigits: 1 })} میلیون`;
@@ -13,14 +14,15 @@ function formatReset(iso: string | null) {
 }
 
 function Bar({ label, used, limit, resetsAt }: { label: string; used: number; limit: number; resetsAt: string | null }) {
-  const percent = Math.min(100, Math.round((used / limit) * 100));
+  const unlimited = limit >= UNLIMITED_TOKENS;
+  const percent = unlimited ? 0 : Math.min(100, Math.round((used / limit) * 100));
   const color = percent >= 90 ? "bg-red-500" : percent >= 70 ? "bg-amber-500" : "bg-emerald-500";
   return (
     <div>
       <div className="mb-1 flex justify-between text-xs">
         <span>{label}</span>
         <span className="text-slate-500">
-          {formatTokens(used)} از {formatTokens(limit)} توکن
+          {unlimited ? `${formatTokens(used)} توکن · نامحدود` : `${formatTokens(used)} از ${formatTokens(limit)} توکن`}
         </span>
       </div>
       <div className="h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800" role="progressbar" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100}>
@@ -41,7 +43,9 @@ export function UsageMeter({ usage }: { usage: UsageSummary }) {
           <p className="text-xs text-slate-500">
             {usage.currentPeriodEnd
               ? `اعتبار تا ${new Date(usage.currentPeriodEnd).toLocaleDateString("fa-IR", { timeZone: "Asia/Tehran" })}`
-              : "رایگان و بدون انقضا"}
+              : usage.plan.priceUsd === 0 && usage.plan.id === "max"
+                ? "حساب توسعه‌دهنده"
+                : "رایگان و بدون انقضا"}
             {" · "}
             {usage.plan.modelTier === "economy" ? "مدل‌های اقتصادی" : "مدل‌های اصلی"}
           </p>

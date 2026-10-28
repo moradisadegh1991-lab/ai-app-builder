@@ -23,3 +23,12 @@ describe("APP_URL", () => {
     expect(() => env.appUrl()).toThrow(/APP_URL is not set/);
   });
 });
+
+describe("UNLIMITED_EMAILS", () => {
+  it("is empty by default and parsed case-insensitively otherwise", () => {
+    vi.stubEnv("UNLIMITED_EMAILS", "");
+    expect(env.unlimitedEmails()).toEqual([]);
+    vi.stubEnv("UNLIMITED_EMAILS", " Dev@Example.com , ,b@c.d ");
+    expect(env.unlimitedEmails()).toEqual(["dev@example.com", "b@c.d"]);
+  });
+});
