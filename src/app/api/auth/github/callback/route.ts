@@ -5,7 +5,7 @@ import { signInWithIdentity } from "@/lib/auth/social";
 import { db, schema } from "@/lib/db";
 import { env } from "@/lib/env";
 import { HttpError } from "@/lib/http";
-import { exchangeCode, getAuthenticatedUser, getVerifiedEmail } from "@/lib/integrations/github";
+import { exchangeCode, getAuthenticatedUser, getVerifiedEmail, GitHubOAuthError } from "@/lib/integrations/github";
 import { saveIntegration } from "@/lib/integrations/store";
 import { createSession, getCurrentUser } from "@/lib/session";
 
@@ -25,9 +25,13 @@ export async function GET(request: NextRequest) {
   }
   const mode = check.mode;
 
+  // Which step broke, shown as a short non-secret code so a failure is diagnosable from the page.
+  let stage = "token";
   try {
     const { accessToken, scope } = await exchangeCode(code);
+    stage = "github_user";
     const ghUser = await getAuthenticatedUser(accessToken);
+    stage = "database";
 
     if (mode === "login") {
       const user = await signInWithIdentity({
@@ -62,14 +66,18 @@ export async function GET(request: NextRequest) {
         updatedAt: new Date(),
       })
       .where(eq(schema.users.id, user.id));
+    stage = "encryption_or_database";
     await saveIntegration(user.id, "github", accessToken, { login: ghUser.login, scope });
     return NextResponse.redirect(`${app}/settings?github=connected`);
   } catch (error) {
     console.error("GitHub OAuth callback failed", error);
+    const detail = error instanceof GitHubOAuthError ? `token_${error.detail}` : stage;
     if (mode === "login") {
-      const reason = error instanceof HttpError ? (error.status === 409 ? "account_conflict" : "no_verified_email") : "oauth_failed";
-      return NextResponse.redirect(`${app}/?error=${reason}`);
+      if (error instanceof HttpError) {
+        return NextResponse.redirect(`${app}/?error=${error.status === 409 ? "account_conflict" : "no_verified_email"}`);
+      }
+      return NextResponse.redirect(`${app}/?error=oauth_failed&detail=${detail}`);
     }
-    return NextResponse.redirect(`${app}/settings?github=failed`);
+    return NextResponse.redirect(`${app}/settings?github=failed&detail=${detail}`);
   }
 }

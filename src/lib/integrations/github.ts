@@ -72,6 +72,16 @@ export function authorizeUrl(state: string, scope: string = GITHUB_SCOPES): stri
   return `https://github.com/login/oauth/authorize?${params}`;
 }
 
+/** A failed GitHub code exchange; `detail` is GitHub's short error code, safe to show the user. */
+export class GitHubOAuthError extends Error {
+  constructor(
+    message: string,
+    readonly detail: string,
+  ) {
+    super(message);
+  }
+}
+
 export async function exchangeCode(code: string): Promise<{ accessToken: string; scope: string }> {
   const response = await fetch("https://github.com/login/oauth/access_token", {
     method: "POST",
@@ -85,7 +95,8 @@ export async function exchangeCode(code: string): Promise<{ accessToken: string;
   });
   const data = await response.json();
   if (!response.ok || !data.access_token) {
-    throw new Error(`GitHub OAuth failed: ${data.error_description ?? data.error ?? response.status}`);
+    const code = typeof data.error === "string" && /^[a-z_]{1,40}$/.test(data.error) ? data.error : `http_${response.status}`;
+    throw new GitHubOAuthError(`GitHub OAuth failed: ${data.error_description ?? data.error ?? response.status}`, code);
   }
   return { accessToken: data.access_token, scope: data.scope ?? "" };
 }
