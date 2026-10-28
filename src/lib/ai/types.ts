@@ -9,6 +9,8 @@ export const AI_PROVIDER_LABELS: Record<AiProviderId, string> = {
 
 export interface CompletionRequest {
   apiKey: string;
+  /** Set to route the call through an OpenAI-compatible gateway instead of the provider's own API. */
+  gatewayBaseUrl?: string;
   model: string;
   system: string;
   prompt: string;

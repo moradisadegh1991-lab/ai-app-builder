@@ -34,6 +34,9 @@ export const env = {
   // Google sign-in is optional; the button only appears when both are set.
   googleClientId: () => optional("GOOGLE_CLIENT_ID"),
   googleClientSecret: () => optional("GOOGLE_CLIENT_SECRET"),
+  // Optional OpenAI-compatible gateway (e.g. Liara AI) that serves all three providers with one key.
+  aiGatewayBaseUrl: () => optional("AI_GATEWAY_BASE_URL")?.replace(/\/+$/, ""),
+  aiGatewayKey: () => optional("AI_GATEWAY_API_KEY"),
   openaiKey: () => optional("OPENAI_API_KEY"),
   anthropicKey: () => optional("ANTHROPIC_API_KEY"),
   geminiKey: () => optional("GEMINI_API_KEY"),
