@@ -10,7 +10,7 @@ const ERRORS: Record<string, string> = {
     "مرورگر کوکی ورود را برنگرداند. ورود را از همین آدرس سایت شروع کنید (نه از آدرس Deployment یا Preview)، کوکی‌ها را مسدود نکرده باشید و دوباره تلاش کنید.",
   oauth_mismatch: "نشست ورود با پاسخ برنگشته یکی نبود (احتمالاً چند تب یا درخواست همزمان)؛ یک بار دیگر تلاش کنید.",
   provider_denied: "سرویس ورود درخواست را نپذیرفت یا لغو شد",
-  oauth_failed: "ورود ناموفق بود؛ دوباره تلاش کنید.",
+  oauth_failed: "ورود ناموفق بود",
   no_verified_email: "حساب شما ایمیل تأییدشده‌ای ندارد. ایمیلتان را در آن سرویس تأیید کنید یا با کد ایمیل وارد شوید.",
   account_conflict: "این ایمیل قبلاً به حساب دیگری از همین سرویس وصل شده است.",
   provider_disabled: "این روش ورود فعال نیست.",
@@ -60,7 +60,7 @@ export default async function LandingPage({
           {error && ERRORS[error] && (
             <p className="w-full max-w-sm rounded-xl bg-red-50 px-4 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
               {ERRORS[error]}
-              {error === "provider_denied" && detail && /^[a-z_]{1,40}$/.test(detail) && (
+              {(error === "provider_denied" || error === "oauth_failed") && detail && /^[a-z0-9_]{1,60}$/.test(detail) && (
                 <>
                   {" "}
                   (<span dir="ltr">{detail}</span>)
