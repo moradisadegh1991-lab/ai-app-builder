@@ -7,6 +7,8 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const checks: Record<string, boolean> = {
     database: false,
+    // Migrations applied (0002 adds users.google_id); sign-in fails with a database error when this is false.
+    schema: false,
     appUrl: Boolean(process.env.APP_URL),
     encryptionKey: Boolean(process.env.ENCRYPTION_KEY),
     sessionSecret: Boolean(process.env.SESSION_SECRET),
@@ -20,9 +22,13 @@ export async function GET() {
   try {
     await db().execute(sql`select 1`);
     checks.database = true;
+    const columns = await db().execute(
+      sql`select 1 from information_schema.columns where table_name = 'users' and column_name = 'google_id'`,
+    );
+    checks.schema = (Array.isArray(columns) ? columns.length : (columns as { rows?: unknown[] }).rows?.length ?? 0) > 0;
   } catch {
-    checks.database = false;
+    // keep whatever was verified before the failure
   }
-  const ok = checks.database && checks.appUrl && checks.encryptionKey && checks.sessionSecret && checks.githubOAuth;
+  const ok = checks.database && checks.schema && checks.appUrl && checks.encryptionKey && checks.sessionSecret && checks.githubOAuth;
   return NextResponse.json({ ok, checks }, { status: ok ? 200 : 503 });
 }

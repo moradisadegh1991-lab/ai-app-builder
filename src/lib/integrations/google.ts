@@ -23,6 +23,19 @@ export function googleAuthorizeUrl(state: string): string {
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
 }
 
+/** A failed Google exchange. `detail` is a short, non-secret code that is safe to show the user. */
+export class GoogleOAuthError extends Error {
+  constructor(
+    message: string,
+    readonly stage: "token" | "userinfo",
+    readonly detail: string,
+  ) {
+    super(message);
+  }
+}
+
+const safeCode = (value: unknown) => (typeof value === "string" && /^[a-z_]{1,40}$/.test(value) ? value : null);
+
 export interface GoogleProfile {
   sub: string;
   email: string | null;
@@ -45,14 +58,20 @@ export async function fetchGoogleProfile(code: string): Promise<GoogleProfile> {
   });
   const token = await tokenResponse.json().catch(() => ({}));
   if (!tokenResponse.ok || !token.access_token) {
-    throw new Error(`Google OAuth failed: ${token.error_description ?? token.error ?? tokenResponse.status}`);
+    throw new GoogleOAuthError(
+      `Google OAuth failed: ${token.error_description ?? token.error ?? tokenResponse.status}`,
+      "token",
+      safeCode(token.error) ?? `http_${tokenResponse.status}`,
+    );
   }
 
   const profileResponse = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
     headers: { authorization: `Bearer ${token.access_token}` },
   });
   const profile = await profileResponse.json().catch(() => ({}));
-  if (!profileResponse.ok || !profile.sub) throw new Error(`Google userinfo failed: ${profileResponse.status}`);
+  if (!profileResponse.ok || !profile.sub) {
+    throw new GoogleOAuthError(`Google userinfo failed: ${profileResponse.status}`, "userinfo", `http_${profileResponse.status}`);
+  }
   return {
     sub: String(profile.sub),
     email: typeof profile.email === "string" ? profile.email.toLowerCase() : null,
