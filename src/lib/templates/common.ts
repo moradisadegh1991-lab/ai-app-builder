@@ -81,13 +81,15 @@ jobs:
       - name: Build website
         run: bash ${BUILD_SCRIPT_PATH}
 
+      # Only a convenience download. A full artifact quota on the owner's account must not fail the build.
       - name: Upload build
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: website-dist
           path: dist
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 1
 `;
 
 /**
@@ -137,13 +139,15 @@ jobs:
       - name: Build APK (${template})
         run: bash ${BUILD_SCRIPT_PATH}
 
+      # The APK is also published as a GitHub Release below, so a full artifact quota must not fail the build.
       - name: Upload APK artifact
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: android-apk
           path: dist-apk/app.apk
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 3
 
       - name: Publish APK as GitHub Release
         env:
