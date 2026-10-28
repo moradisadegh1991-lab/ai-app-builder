@@ -33,7 +33,7 @@ export const ALLOWED_LIBRARIES: Record<AppTemplate, Record<string, string>> = {
 export const LIBRARY_DESCRIPTIONS: Record<AppTemplate, string> = {
   capacitor: [
     "react-router-dom (routing; use HashRouter)",
-    "lucide-react (icons)",
+    "lucide-react (icons; v1 has NO brand logos, so never import Instagram, Facebook, Twitter, Youtube, Github, Linkedin, Slack, Chrome etc.; use Camera, Users, AtSign, Play, Code, Briefcase, Globe or Share2 instead)",
     "recharts (charts)",
     "date-fns (dates)",
     "zustand (state)",
@@ -42,7 +42,7 @@ export const LIBRARY_DESCRIPTIONS: Record<AppTemplate, string> = {
   ].join("\n- "),
   web: [
     "react-router-dom (routing; use BrowserRouter only if every route is reachable from /, otherwise HashRouter)",
-    "lucide-react (icons)",
+    "lucide-react (icons; v1 has NO brand logos, so never import Instagram, Facebook, Twitter, Youtube, Github, Linkedin, Slack, Chrome etc.; use Camera, Users, AtSign, Play, Code, Briefcase, Globe or Share2 instead)",
     "recharts (charts)",
     "date-fns (dates)",
     "zustand (state)",
