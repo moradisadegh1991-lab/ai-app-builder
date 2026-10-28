@@ -21,16 +21,37 @@ export async function beginOAuth(provider: OAuthProvider, mode: OAuthMode): Prom
   return state;
 }
 
-/** Checks the returned `state` against the cookie (once) and returns the mode, or null if it does not match. */
-export async function consumeOAuth(provider: OAuthProvider, returnedState: string | null): Promise<OAuthMode | null> {
+export type OAuthCheck =
+  | { ok: true; mode: OAuthMode }
+  /** no_cookie: the browser did not send the state cookie back (other host, blocked cookies, expired). mismatch: it did, but the state differs. */
+  | { ok: false; reason: "no_cookie" | "mismatch" };
+
+/** Checks the returned `state` against the cookie (once) and tells why it failed, so the UI can say what to do. */
+export async function consumeOAuth(provider: OAuthProvider, returnedState: string | null): Promise<OAuthCheck> {
   const store = await cookies();
   const raw = store.get(COOKIE)?.value;
   store.delete(COOKIE);
-  if (!raw || !returnedState) return null;
+  if (!raw) return { ok: false, reason: "no_cookie" };
   const [cookieProvider, mode, state] = raw.split(".");
-  if (cookieProvider !== provider || (mode !== "login" && mode !== "connect") || !state) return null;
+  if (!returnedState || cookieProvider !== provider || (mode !== "login" && mode !== "connect") || !state) {
+    return { ok: false, reason: "mismatch" };
+  }
   const left = Buffer.from(state);
   const right = Buffer.from(returnedState);
-  if (left.length !== right.length || !timingSafeEqual(left, right)) return null;
-  return mode;
+  if (left.length !== right.length || !timingSafeEqual(left, right)) return { ok: false, reason: "mismatch" };
+  return { ok: true, mode };
+}
+
+/**
+ * Where to send the browser when the provider's redirect back is unusable.
+ * `error` is set when the provider itself refused (user pressed Cancel, access_denied, …).
+ */
+export function oauthFailureRedirect(base: string, check: OAuthCheck, providerError: string | null): string {
+  if (!check.ok) return `${base}/?error=${check.reason === "no_cookie" ? "oauth_no_cookie" : "oauth_mismatch"}`;
+  if (providerError) {
+    // Only a short machine code is echoed back (e.g. access_denied), never free text.
+    const detail = /^[a-z_]{1,40}$/.test(providerError) ? providerError : "unknown";
+    return `${base}/?error=provider_denied&detail=${detail}`;
+  }
+  return `${base}/?error=oauth_state`;
 }

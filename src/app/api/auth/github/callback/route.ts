@@ -1,6 +1,6 @@
 import { and, eq, ne } from "drizzle-orm";
 import { NextResponse, type NextRequest } from "next/server";
-import { consumeOAuth } from "@/lib/auth/oauth-state";
+import { consumeOAuth, oauthFailureRedirect } from "@/lib/auth/oauth-state";
 import { signInWithIdentity } from "@/lib/auth/social";
 import { db, schema } from "@/lib/db";
 import { env } from "@/lib/env";
@@ -11,13 +11,19 @@ import { createSession, getCurrentUser } from "@/lib/session";
 
 /** One callback URL for both modes: signing in, and connecting GitHub to an existing account. */
 export async function GET(request: NextRequest) {
-  const mode = await consumeOAuth("github", request.nextUrl.searchParams.get("state"));
+  const check = await consumeOAuth("github", request.nextUrl.searchParams.get("state"));
   const code = request.nextUrl.searchParams.get("code");
   const app = env.appUrl();
 
-  if (!mode || !code) {
-    return NextResponse.redirect(mode === "connect" ? `${app}/settings?github=state_error` : `${app}/?error=oauth_state`);
+  if (!check.ok || !code) {
+    // A failed connect (signed-in user) goes back to settings; a failed sign-in goes to the landing page.
+    return NextResponse.redirect(
+      check.ok && check.mode === "connect"
+        ? `${app}/settings?github=${request.nextUrl.searchParams.get("error") ? "denied" : "state_error"}`
+        : oauthFailureRedirect(app, check, request.nextUrl.searchParams.get("error")),
+    );
   }
+  const mode = check.mode;
 
   try {
     const { accessToken, scope } = await exchangeCode(code);

@@ -13,6 +13,7 @@ const GITHUB_MESSAGES: Record<string, { text: string; ok: boolean }> = {
   connected: { text: "GitHub با موفقیت متصل شد.", ok: true },
   already_linked: { text: "این حساب GitHub قبلاً به کاربر دیگری وصل شده است.", ok: false },
   state_error: { text: "نشست اتصال منقضی شد؛ دوباره تلاش کنید.", ok: false },
+  denied: { text: "GitHub اتصال را نپذیرفت یا لغو شد.", ok: false },
   failed: { text: "اتصال GitHub ناموفق بود؛ دوباره تلاش کنید.", ok: false },
 };
 
