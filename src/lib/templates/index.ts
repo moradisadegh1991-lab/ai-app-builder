@@ -5,6 +5,7 @@ import { capacitorFiles, capacitorPermissions } from "./capacitor";
 import { MANIFEST_PATH, SHARED_GITIGNORE, androidPackageId, buildWorkflow, projectManifest, workflowPath } from "./common";
 import { expoFiles } from "./expo";
 import { ALLOWED_LIBRARIES } from "./libraries";
+import { replaceRemovedLucideIcons } from "./lucide";
 import type { GeneratedFile } from "./types";
 import { webFiles } from "./web";
 
@@ -72,7 +73,8 @@ export function sanitizeAiFiles(
       continue;
     }
     totalBytes += bytes;
-    accepted.set(path, { path, content: file.content });
+    const content = /\.(tsx?|jsx?)$/.test(path) ? replaceRemovedLucideIcons(file.content) : file.content;
+    accepted.set(path, { path, content });
   }
 
   if (accepted.size > MAX_FILES) throw new Error(`تعداد فایل‌های تولیدشده بیش از ${MAX_FILES} است.`);

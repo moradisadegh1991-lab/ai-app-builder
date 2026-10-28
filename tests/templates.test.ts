@@ -153,3 +153,28 @@ describe("renderProject", () => {
     expect(JSON.parse(file(files, "idea2app.json").content)).toMatchObject({ web: false });
   });
 });
+
+describe("removed lucide-react brand icons", () => {
+  it("aliases them to icons that exist so the build does not fail with MISSING_EXPORT", () => {
+    const source = `import { MapPin, Phone, Mail, Instagram } from "lucide-react";\nexport const F = () => <Instagram />;`;
+    const result = sanitizeAiFiles("web", [{ path: "src/App.tsx", content: source }], false, new Set());
+    expect(result.files[0]!.content).toContain('import { MapPin, Phone, Mail, Camera as Instagram } from "lucide-react";');
+    expect(result.files[0]!.content).toContain("<Instagram />");
+  });
+
+  it("keeps existing aliases and leaves valid imports untouched", () => {
+    const valid = `import { Home, Star } from "lucide-react";`;
+    const aliased = `import { Youtube as Yt, X } from 'lucide-react';`;
+    const out = sanitizeAiFiles(
+      "web",
+      [
+        { path: "src/App.tsx", content: valid },
+        { path: "src/B.tsx", content: aliased },
+      ],
+      false,
+      new Set(),
+    ).files;
+    expect(out[0]!.content).toBe(valid);
+    expect(out[1]!.content).toBe(`import { Play as Yt, X } from 'lucide-react';`);
+  });
+});
