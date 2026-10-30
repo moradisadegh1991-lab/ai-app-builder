@@ -1,3 +1,4 @@
+```tsx
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
@@ -155,7 +156,7 @@ export function ProjectWorkspace({
             id="provider"
             className="input w-auto"
             value={provider}
-            onChange={(e) => setProvider(e.target.value)}
+            onChange={(e) => setProvider(e.target.value as ProviderInfo["id"])}
           >
             {providers.map((p) => (
               <option key={p.id} value={p.id} disabled={!p.available}>
@@ -211,19 +212,19 @@ export function ProjectWorkspace({
         done={hasCode}
         locked={!specApproved}
       >
-      <CodeStep
-  project={project}
-  disabled={busy !== null || !specApproved}
-  previewUrl={
-    project.kind === "website" &&
-    project.deployment?.status === "ready"
-      ? project.deployment.url ?? null
-      : null
-  }
-  onGenerate={() =>
-    run("code", `${base}/generate`, "POST", { provider })
-  }
-/>
+        <CodeStep
+          project={project}
+          disabled={busy !== null || !specApproved}
+          previewUrl={
+            project.kind === "website" &&
+            project.deployment?.status === "ready"
+              ? project.deployment.url ?? null
+              : null
+          }
+          onGenerate={() =>
+            run("code", `${base}/generate`, "POST", { provider })
+          }
+        />
       </Step>
 
       <Step
@@ -522,482 +523,6 @@ function SpecStep({
     </div>
   );
 }
-
-// // // ------------------------------------------------------------------
-// Code step — Modern File Explorer + Split Preview
-// ------------------------------------------------------------------
-
-function CodeStep({
-  project,
-  disabled,
-  onGenerate,
-  previewUrl,
-}: {
-  project: ProjectView;
-  disabled: boolean;
-  onGenerate: () => void;
-  previewUrl: string | null;
-}) {
-  const files = project.generation?.files ?? [];
-
-  const [selected, setSelected] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [contentSearch, setContentSearch] = useState("");
-  const [wrapLines, setWrapLines] = useState(false);
-  const [copyState, setCopyState] = useState<"idle" | "content" | "path">("idle");
-  const [copyError, setCopyError] = useState("");
-  const [workspaceView, setWorkspaceView] = useState<
-    "code" | "split" | "preview"
-  >("code");
-  const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
-
-  let safePreviewUrl: string | null = null;
-
-  if (previewUrl) {
-    try {
-      const parsed = new URL(previewUrl);
-
-      if (parsed.protocol === "https:" || parsed.protocol === "http:") {
-        safePreviewUrl = parsed.toString();
-      }
-    } catch {
-      safePreviewUrl = null;
-    }
-  }
-
-  const canPreview =
-    project.kind === "website" && Boolean(safePreviewUrl);
-
-  const activeView = canPreview ? workspaceView : "code";
-
-  const current =
-    files.find((file) => file.path === selected) ??
-    files.find((file) => file.path.endsWith("App.tsx")) ??
-    files[0];
-
-  const filteredFiles = files.filter((file) =>
-    file.path.toLowerCase().includes(search.trim().toLowerCase()),
-  );
-
-  const extensionOf = (path: string) => {
-    const name = path.split("/").pop() ?? path;
-    const dot = name.lastIndexOf(".");
-    return dot > 0 ? name.slice(dot + 1).toLowerCase() : "file";
-  };
-
-  const fileType = (path: string) => {
-    const extension = extensionOf(path);
-
-    const types: Record<string, string> = {
-      ts: "TypeScript",
-      tsx: "React / TSX",
-      js: "JavaScript",
-      jsx: "React / JSX",
-      css: "Stylesheet",
-      scss: "SCSS",
-      json: "JSON",
-      html: "HTML",
-      md: "Markdown",
-      mdx: "MDX",
-      py: "Python",
-      sql: "SQL",
-      yml: "YAML",
-      yaml: "YAML",
-      svg: "SVG",
-      png: "Image",
-      jpg: "Image",
-      jpeg: "Image",
-      webp: "Image",
-      ico: "Icon",
-      sh: "Shell",
-      env: "Environment",
-    };
-
-    return types[extension] ?? extension.toUpperCase();
-  };
-
-  const fileIcon = (path: string) => {
-    const extension = extensionOf(path);
-
-    const icons: Record<string, string> = {
-      ts: "TS",
-      tsx: "TSX",
-      js: "JS",
-      jsx: "JSX",
-      css: "CSS",
-      scss: "SCSS",
-      json: "{}",
-      html: "HTML",
-      md: "MD",
-      mdx: "MDX",
-      py: "PY",
-      sql: "SQL",
-      yml: "YML",
-      yaml: "YML",
-      svg: "SVG",
-      png: "IMG",
-      jpg: "IMG",
-      jpeg: "IMG",
-      webp: "IMG",
-      ico: "ICO",
-      sh: "SH",
-    };
-
-    return icons[extension] ?? "FILE";
-  };
-
-  const formatBytes = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`;
-
-    if (bytes < 1024 * 1024) {
-      return `${(bytes / 1024).toFixed(1)} KB`;
-    }
-
-    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-  };
-
-  const getFileSize = (content: string) =>
-    new TextEncoder().encode(content).length;
-
-  const folderOf = (path: string) => {
-    const parts = path.split("/");
-    return parts.length > 1
-      ? parts.slice(0, -1).join("/")
-      : "root";
-  };
-
-  const lines = current
-    ? current.content.split(/\r\n|\r|\n/)
-    : [];
-
-  const lineCount = lines.length;
-
-  const totalSize = files.reduce(
-    (total, file) => total + getFileSize(file.content),
-    0,
-  );
-
-  const matchingLines = contentSearch.trim()
-    ? lines.filter((line) =>
-        line.toLowerCase().includes(contentSearch.trim().toLowerCase()),
-      ).length
-    : 0;
-
-  const copyText = async (
-    value: string,
-    type: "content" | "path",
-  ) => {
-    setCopyError("");
-
-    try {
-      if (!navigator.clipboard?.writeText) {
-        throw new Error("Clipboard API is unavailable");
-      }
-
-      await navigator.clipboard.writeText(value);
-      setCopyState(type);
-
-      window.setTimeout(() => {
-        setCopyState("idle");
-      }, 1800);
-    } catch {
-      setCopyError(
-        "کپی خودکار انجام نشد. دسترسی Clipboard مرورگر را بررسی کنید.",
-      );
-    }
-  };
-
-  return (
-    <div className="code-explorer">
-      <div className="code-explorer-toolbar">
-        <div className="code-explorer-toolbar-info">
-          <div className="code-explorer-heading">
-            <span className="code-explorer-heading-icon">{"</>"}</span>
-
-            <div>
-              <h3>فایل‌های پروژه</h3>
-              <p>مشاهده و بررسی سورس کد تولیدشده</p>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            className="btn-primary"
-            disabled={disabled}
-            onClick={onGenerate}
-          >
-            {files.length ? "تولید دوباره کد" : "تولید کد"}
-          </button>
-        </div>
-
-        {project.generation && (
-          <div className="code-explorer-generation">
-            <span>
-              {project.generation.kind === "fix"
-                ? "نسخه اصلاح‌شده"
-                : "نسخه تولیدشده"}
-            </span>
-
-            <span className="code-explorer-dot" />
-            <span>{project.generation.provider}</span>
-            <span className="code-explorer-dot" />
-
-            <span dir="ltr">{project.generation.model}</span>
-          </div>
-        )}
-      </div>
-
-      {canPreview && (
-        <div className="workspace-view-switch">
-          <div className="workspace-view-switch-label">
-            <span className="workspace-view-switch-icon">◫</span>
-            <span>نمایش Workspace</span>
-          </div>
-
-          <div
-            className="workspace-view-switch-options"
-            role="group"
-            aria-label="حالت نمایش Workspace"
-          >
-            <button
-              type="button"
-              className={activeView === "code" ? "is-active" : ""}
-              onClick={() => setWorkspaceView("code")}
-              aria-pressed={activeView === "code"}
-            >
-              <span aria-hidden="true">{"</>"}</span>
-              فقط کد
-            </button>
-
-            <button
-              type="button"
-              className={activeView === "split" ? "is-active" : ""}
-              onClick={() => setWorkspaceView("split")}
-              aria-pressed={activeView === "split"}
-            >
-              <span aria-hidden="true">◫</span>
-              کد و پیش‌نمایش
-            </button>
-
-            <button
-              type="button"
-              className={activeView === "preview" ? "is-active" : ""}
-              onClick={() => setWorkspaceView("preview")}
-              aria-pressed={activeView === "preview"}
-            >
-              <span aria-hidden="true">▣</span>
-              فقط پیش‌نمایش
-            </button>
-          </div>
-        </div>
-      )}
-
-      {project.generation?.notes && (
-        <div className="code-explorer-notes">
-          <span>ℹ</span>
-          <p>{project.generation.notes}</p>
-        </div>
-      )}
-
-      {project.generation?.warnings.length ? (
-        <ul className="code-explorer-warnings">
-          {project.generation.warnings.map((warning) => (
-            <li key={warning}>{warning}</li>
-          ))}
-        </ul>
-      ) : null}
-
-      {files.length > 0 && current ? (
-        <>
-          {activeView !== "preview" && (
-            <div
-              className={`code-explorer-layout ${
-                activeView === "split" ? "is-split-view" : ""
-              }`}
-            >
-              <aside className="code-explorer-sidebar">
-                <div className="code-explorer-sidebar-heading">
-                  <span>EXPLORER</span>
-                  <span>{files.length.toLocaleString("fa-IR")} فایل</span>
-                </div>
-
-                <div className="code-explorer-search">
-                  <span aria-hidden="true">⌕</span>
-
-                  <input
-                    type="search"
-                    value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                    placeholder="جست‌وجوی فایل..."
-                    aria-label="جست‌وجوی فایل‌ها"
-                  />
-                </div>
-
-                <div className="code-explorer-file-list" dir="ltr">
-                  {filteredFiles.length > 0 ? (
-                    filteredFiles.map((file) => {
-                      const active = file.path === current.path;
-
-                      return (
-                        <button
-                          key={file.path}
-                          type="button"
-                          onClick={() => {
-                            setSelected(file.path);
-                            setContentSearch("");
-                            setCopyError("");
-                          }}
-                          className={`code-explorer-file ${
-                            active ? "is-active" : ""
-                          }`}
-                          title={file.path}
-                          aria-current={active ? "true" : undefined}
-                        >
-                          <span className="code-explorer-file-icon">
-                            {fileIcon(file.path)}
-                          </span>
-
-                          <span className="code-explorer-file-name">
-                            {file.path.split("/").pop()}
-                          </span>
-
-                          <span className="code-explorer-file-extension">
-                            {extensionOf(file.path)}
-                          </span>
-                        </button>
-                      );
-                    })
-                  ) : (
-                    <div className="code-explorer-empty-search">
-                      فایلی با این نام پیدا نشد.
-                    </div>
-                  )}
-                </div>
-
-                <div className="code-explorer-sidebar-footer">
-                  <span>حجم کل فایل‌ها</span>
-                  <strong>{formatBytes(totalSize)}</strong>
-                </div>
-              </aside>
-
-              <section className="code-explorer-editor">
-                <div className="code-explorer-editor-header">
-                  <div className="code-explorer-breadcrumb" dir="ltr">
-                    {folderOf(current.path)
-                      .split("/")
-                      .map((part, index) => (
-                        <span key={`${part}-${index}`}>
-                          {index > 0 && (
-                            <span className="code-explorer-separator">/</span>
-                          )}
-                          {part}
-                        </span>
-                      ))}
-
-                    <span className="code-explorer-separator">/</span>
-                    <strong>{current.path.split("/").pop()}</strong>
-                  </div>
-
-                  <span className="code-explorer-file-type">
-                    {fileType(current.path)}
-                  </span>
-                </div>
-
-                <div className="code-explorer-actions">
-                  <div className="code-explorer-content-search">
-                    <span aria-hidden="true">⌕</span>
-
-                    <input
-                      type="search"
-                      value={contentSearch}
-                      onChange={(event) =>
-                        setContentSearch(event.target.value)
-                      }
-                      placeholder="جست‌وجو در محتوای فایل..."
-                      aria-label="جست‌وجو در محتوای فایل"
-                    />
-
-                    {contentSearch.trim() && (
-                      <span className="code-explorer-match-count">
-                        {matchingLines.toLocaleString("fa-IR")} خط
-                      </span>
-                    )}
-                  </div>
-
-                  <button
-                    type="button"
-                    className="code-explorer-action-button"
-                    onClick={() => copyText(current.path, "path")}
-                    title="کپی مسیر فایل"
-                  >
-                    {copyState === "path" ? "مسیر کپی شد" : "کپی مسیر"}
-                  </button>
-
-                  <button
-                    type="button"
-                    className="code-explorer-action-button"
-                    onClick={() => copyText(current.content, "content")}
-                    title="کپی محتوای فایل"
-                  >
-                    {copyState === "content" ? "کپی شد ✓" : "کپی کد"}
-                  </button>
-
-                  <button
-                    type="button"
-                    className={`code-explorer-action-button ${
-                      wrapLines ? "is-selected" : ""
-                    }`}
-                    onClick={() => setWrapLines((value) => !value)}
-                    aria-pressed={wrapLines}
-                    title="تغییر حالت نمایش خطوط"
-                  >
-                    {wrapLines ? "بدون شکست خط" : "شکست خودکار خط"}
-                  </button>
-                </div>
-
-                {copyError && (
-                  <div className="code-explorer-copy-error" role="status">
-                    {copyError}
-                  </div>
-                )}
-
-                <div
-                  className={`code-explorer-code ${
-                    wrapLines ? "is-wrapped" : ""
-                  }`}
-                  dir="ltr"
-                >
-                  <pre>
-                    <code>
-                      {lines.map((line, index) => (
-                        <span
-                          className="code-explorer-line"
-                          key={`${current.path}-${index}`}
-                        >
-                          <span className="code-explorer-line-number">
-                            {index + 1}
-                          </span>
-                          <span className="code-explorer-line-content">
-                            {line || " "}
-                          </span>
-                        </span>
-                      ))}
-                    </code>
-                  </pre>
-                </div>
-
-                <div className="code-explorer-statusbar">
-                  <div>
-                    <span>{extensionOf(current.path).toUpperCase()}</span>
-                    <span>UTF-8</span>
-                    <span>Read only</span>
-                  </div>
-
-                  <div>
-                    <span>{lineCount.toLocaleString("fa-IR")} خط</span>
-                    <span>{formatBytes(getFileSize(current.content))}</span>
-                  </div>
-                </div>
               </section>
             </div>
           )}
@@ -1090,9 +615,6 @@ function CodeStep({
   );
 }
 
-
-
-
 // ------------------------------------------------------------------
 // Build step
 // ------------------------------------------------------------------
@@ -1109,7 +631,6 @@ function buildStatusText(status: string, isWebsite: boolean) {
 
   return map[status] ?? status;
 }
-
 
 function BuildStep({
   project,
@@ -1130,13 +651,11 @@ function BuildStep({
   const pushedCurrent = project.status === "pushed";
   const isWebsite = project.kind === "website";
 
-  // Safely read nullable deployment fields
   const deployment = project.deployment;
   const deploymentStatus = deployment?.status ?? null;
   const deploymentUrl = deployment?.url ?? null;
   const deploymentError = deployment?.error ?? null;
 
-  // GitHub connection required
   if (!githubConnected) {
     return (
       <div className="flex flex-col gap-3 text-sm">
@@ -1157,8 +676,6 @@ function BuildStep({
 
   return (
     <div className="flex flex-col gap-4">
-
-      {/* GitHub actions */}
       <div className="flex flex-wrap items-center gap-3">
         <button
           className="btn-primary"
@@ -1183,11 +700,8 @@ function BuildStep({
         )}
       </div>
 
-      {/* Build information */}
       {build && (
         <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
-
-          {/* Build header */}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="text-sm">
               <div className="font-medium">
@@ -1234,18 +748,13 @@ function BuildStep({
             </div>
           </div>
 
-          {/* Successful website build */}
           {build.conclusion === "success" && isWebsite && (
             <div className="mt-4 flex flex-col gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950">
-
-              {/* Deployment ready */}
               {deploymentStatus === "ready" && deploymentUrl ? (
                 <>
                   <div className="flex items-center gap-2 font-medium text-emerald-800 dark:text-emerald-300">
                     <span>✓</span>
-                    <span>
-                      ساخت کد و انتشار سایت با موفقیت انجام شد.
-                    </span>
+                    <span>ساخت کد و انتشار سایت با موفقیت انجام شد.</span>
                   </div>
 
                   <a
@@ -1259,8 +768,6 @@ function BuildStep({
                   </a>
                 </>
               ) : deploymentStatus === "failed" ? (
-
-                /* Deployment failed */
                 <div className="flex flex-col gap-2">
                   <div className="font-medium text-red-700 dark:text-red-300">
                     Build موفق بود، اما استقرار سایت با خطا مواجه شده است.
@@ -1283,22 +790,15 @@ function BuildStep({
                     برای بررسی وضعیت استقرار و رفع خطا، به مرحله استقرار ابری مراجعه کنید.
                   </p>
                 </div>
-
               ) : deploymentStatus === "deploying" ||
                 deploymentStatus === "provisioning" ? (
-
-                /* Deployment in progress */
                 <div className="text-sm text-blue-800 dark:text-blue-300">
                   ✓ کد سایت با موفقیت Build شد.
-
                   <p className="mt-1 text-xs">
                     استقرار سایت در حال انجام است. لطفاً منتظر بمانید.
                   </p>
                 </div>
-
               ) : (
-
-                /* Build successful, deployment not started */
                 <div className="text-sm text-emerald-800 dark:text-emerald-300">
                   ✓ کد سایت با موفقیت Build شد. برای انتشار، به مرحله استقرار ابری بروید.
                 </div>
@@ -1306,12 +806,10 @@ function BuildStep({
             </div>
           )}
 
-          {/* Successful APK build */}
           {build.conclusion === "success" &&
             !isWebsite &&
             build.downloadable && (
               <div className="mt-4 flex flex-col gap-3 rounded-lg bg-emerald-50 p-3 dark:bg-emerald-950">
-
                 <div className="flex flex-wrap items-center gap-3">
                   <a
                     href={`/api/projects/${project.id}/apk`}
@@ -1333,10 +831,8 @@ function BuildStep({
               </div>
             )}
 
-          {/* Failed build */}
           {build.conclusion === "failure" && (
             <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg bg-red-50 p-3 dark:bg-red-950">
-
               <button
                 className="btn-primary"
                 disabled={disabled}
@@ -1350,19 +846,11 @@ function BuildStep({
               </span>
             </div>
           )}
-
         </div>
       )}
     </div>
   );
 }
-
-
-
- // ------------------------------------------------------------------
- // Cloud deployment
- // ------------------------------------------------------------------
-
 function CloudStep({
   project,
   disabled,
@@ -1374,7 +862,6 @@ function CloudStep({
 }) {
   const deployment = project.deployment;
 
-  // Read nullable deployment fields safely.
   const deploymentStatus = deployment?.status ?? null;
   const deploymentUrl = deployment?.url ?? null;
   const deploymentError = deployment?.error ?? null;
@@ -1405,8 +892,6 @@ function CloudStep({
 
   return (
     <div className="flex flex-col gap-4 text-sm">
-
-      {/* Deployment description */}
       <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
         <div className="mb-2 font-semibold">
           استقرار و انتشار اپلیکیشن
@@ -1436,7 +921,6 @@ function CloudStep({
         </div>
       </div>
 
-      {/* No server required */}
       {!needsBackend && !isWebsite && (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900 dark:bg-emerald-950">
           <div className="font-medium text-emerald-800 dark:text-emerald-300">
@@ -1449,7 +933,6 @@ function CloudStep({
         </div>
       )}
 
-      {/* Deployment action when no deployment exists */}
       {needsBackend || isWebsite ? (
         <>
           {!deployment && (
@@ -1471,15 +954,10 @@ function CloudStep({
             </div>
           )}
 
-          {/* Existing deployment */}
           {deployment && (
             <div className="flex flex-col gap-4 rounded-xl border border-slate-200 p-4 dark:border-slate-800">
-
-              {/* Status */}
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="font-semibold">
-                  وضعیت استقرار
-                </div>
+                <div className="font-semibold">وضعیت استقرار</div>
 
                 <span
                   className={`rounded-full px-3 py-1 text-xs font-medium ${
@@ -1497,18 +975,11 @@ function CloudStep({
                 </span>
               </div>
 
-              {/* Infrastructure status */}
               <div className="grid gap-3 sm:grid-cols-2">
-
                 {needsBackend && (
                   <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
-                    <div className="text-xs text-slate-500">
-                      Database
-                    </div>
-
-                    <div className="mt-1 font-medium">
-                      Neon PostgreSQL
-                    </div>
+                    <div className="text-xs text-slate-500">Database</div>
+                    <div className="mt-1 font-medium">Neon PostgreSQL</div>
 
                     <div className="mt-2 text-xs">
                       {hasDatabase ? (
@@ -1525,13 +996,8 @@ function CloudStep({
                 )}
 
                 <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
-                  <div className="text-xs text-slate-500">
-                    Hosting
-                  </div>
-
-                  <div className="mt-1 font-medium">
-                    Vercel
-                  </div>
+                  <div className="text-xs text-slate-500">Hosting</div>
+                  <div className="mt-1 font-medium">Vercel</div>
 
                   <div className="mt-2 text-xs">
                     {isReady ? (
@@ -1551,7 +1017,6 @@ function CloudStep({
                 </div>
               </div>
 
-              {/* Deployment URL */}
               {deploymentUrl && (
                 <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-900">
                   <div className="mb-2 text-xs font-medium text-slate-500">
@@ -1581,7 +1046,6 @@ function CloudStep({
                 </div>
               )}
 
-              {/* Successful deployment */}
               {isReady && (
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950">
                   <div className="font-medium text-emerald-800 dark:text-emerald-300">
@@ -1596,7 +1060,6 @@ function CloudStep({
                 </div>
               )}
 
-              {/* Deployment in progress */}
               {isBusy && (
                 <div
                   role="status"
@@ -1612,7 +1075,6 @@ function CloudStep({
                 </div>
               )}
 
-              {/* Deployment error */}
               {isFailed && (
                 <div className="flex flex-col gap-2 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-900 dark:bg-red-950">
                   <div className="font-medium text-red-800 dark:text-red-300">
@@ -1644,11 +1106,6 @@ function CloudStep({
     </div>
   );
 }
-
-// ------------------------------------------------------------------
-// VPS deployment
-// ------------------------------------------------------------------
-
 interface InstallInstructions {
   token: string;
   command: string;
