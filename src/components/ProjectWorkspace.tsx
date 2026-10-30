@@ -1134,7 +1134,149 @@ function BuildStep({
   );
 }
 
-// ------------------------------------------------------------------
+//
+
+function DeploymentPreview({ url }: { url: string }) {
+  const [device, setDevice] = useState<"desktop" | "tablet" | "mobile">(
+    "desktop",
+  );
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [frameError, setFrameError] = useState(false);
+
+  let safeUrl: string | null = null;
+
+  try {
+    const parsed = new URL(url);
+
+    if (parsed.protocol === "https:" || parsed.protocol === "http:") {
+      safeUrl = parsed.toString();
+    }
+  } catch {
+    safeUrl = null;
+  }
+
+  const deviceWidths = {
+    desktop: "100%",
+    tablet: "768px",
+    mobile: "390px",
+  };
+
+  if (!safeUrl) {
+    return (
+      <div className="deployment-preview-error">
+        آدرس پیش‌نمایش معتبر نیست.
+      </div>
+    );
+  }
+
+  return (
+    <section className="deployment-preview">
+      <div className="deployment-preview-heading">
+        <div>
+          <h3>پیش‌نمایش زنده سایت</h3>
+          <p>مشاهده نسخه مستقرشده در محیط واقعی</p>
+        </div>
+
+        <span className="deployment-preview-live">
+          <span />
+          LIVE
+        </span>
+      </div>
+
+      <div className="deployment-preview-toolbar">
+        <div className="deployment-preview-devices">
+          <button
+            type="button"
+            className={device === "desktop" ? "is-active" : ""}
+            onClick={() => setDevice("desktop")}
+            aria-pressed={device === "desktop"}
+            title="نمایش دسکتاپ"
+          >
+            دسکتاپ
+          </button>
+
+          <button
+            type="button"
+            className={device === "tablet" ? "is-active" : ""}
+            onClick={() => setDevice("tablet")}
+            aria-pressed={device === "tablet"}
+            title="نمایش تبلت"
+          >
+            تبلت
+          </button>
+
+          <button
+            type="button"
+            className={device === "mobile" ? "is-active" : ""}
+            onClick={() => setDevice("mobile")}
+            aria-pressed={device === "mobile"}
+            title="نمایش موبایل"
+          >
+            موبایل
+          </button>
+        </div>
+
+        <div className="deployment-preview-controls">
+          <button
+            type="button"
+            onClick={() => {
+              setFrameError(false);
+              setRefreshKey((value) => value + 1);
+            }}
+          >
+            بارگذاری مجدد
+          </button>
+
+          <a href={safeUrl} target="_blank" rel="noopener noreferrer">
+            باز کردن در تب جدید ↗
+          </a>
+        </div>
+      </div>
+
+      <div className="deployment-preview-stage">
+        <div
+          className={`deployment-preview-frame ${
+            device === "mobile"
+              ? "is-mobile"
+              : device === "tablet"
+                ? "is-tablet"
+                : "is-desktop"
+          }`}
+          style={{ width: deviceWidths[device] }}
+        >
+          {frameError ? (
+            <div className="deployment-preview-blocked">
+              <div className="deployment-preview-blocked-icon">↗</div>
+              <h4>پیش‌نمایش داخل صفحه در دسترس نیست</h4>
+              <p>
+                ممکن است سایت مقصد نمایش در iframe را محدود کرده باشد.
+                می‌توانی آن را در تب جدید باز کنی.
+              </p>
+              <a href={safeUrl} target="_blank" rel="noopener noreferrer">
+                باز کردن سایت
+              </a>
+            </div>
+          ) : (
+            <iframe
+              key={refreshKey}
+              src={safeUrl}
+              title="پیش‌نمایش سایت تولیدشده"
+              sandbox="allow-scripts allow-forms allow-popups"
+              referrerPolicy="no-referrer"
+              onError={() => setFrameError(true)}
+            />
+          )}
+        </div>
+      </div>
+
+      <div className="deployment-preview-footer">
+        <span>Viewport: {device.toUpperCase()}</span>
+        <span dir="ltr">{safeUrl}</span>
+      </div>
+    </section>
+  );
+}
+ ------------------------------------------------------------------
 // Cloud deployment
 // ------------------------------------------------------------------
 
