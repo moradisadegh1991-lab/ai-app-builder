@@ -517,8 +517,8 @@ function SpecStep({
   );
 }
 
-// ------------------------------------------------------------------
-// Code step
+// // ------------------------------------------------------------------
+// Code step — Modern File Explorer
 // ------------------------------------------------------------------
 
 function CodeStep({
@@ -531,85 +531,324 @@ function CodeStep({
   onGenerate: () => void;
 }) {
   const files = project.generation?.files ?? [];
+
   const [selected, setSelected] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
   const current =
-    files.find((f) => f.path === selected) ??
-    files.find((f) => f.path.endsWith("App.tsx")) ??
+    files.find((file) => file.path === selected) ??
+    files.find((file) => file.path.endsWith("App.tsx")) ??
     files[0];
 
+  const filteredFiles = files.filter((file) =>
+    file.path.toLowerCase().includes(search.trim().toLowerCase()),
+  );
+
+  const extensionOf = (path: string) => {
+    const name = path.split("/").pop() ?? path;
+    const dot = name.lastIndexOf(".");
+    return dot > 0 ? name.slice(dot + 1).toLowerCase() : "file";
+  };
+
+  const fileType = (path: string) => {
+    const extension = extensionOf(path);
+
+    const types: Record<string, string> = {
+      ts: "TypeScript",
+      tsx: "React / TSX",
+      js: "JavaScript",
+      jsx: "React / JSX",
+      css: "Stylesheet",
+      scss: "SCSS",
+      json: "JSON",
+      html: "HTML",
+      md: "Markdown",
+      mdx: "MDX",
+      py: "Python",
+      sql: "SQL",
+      yml: "YAML",
+      yaml: "YAML",
+      svg: "SVG",
+      png: "Image",
+      jpg: "Image",
+      jpeg: "Image",
+      webp: "Image",
+      ico: "Icon",
+      sh: "Shell",
+      env: "Environment",
+    };
+
+    return types[extension] ?? extension.toUpperCase();
+  };
+
+  const fileIcon = (path: string) => {
+    const extension = extensionOf(path);
+
+    const icons: Record<string, string> = {
+      ts: "TS",
+      tsx: "TSX",
+      js: "JS",
+      jsx: "JSX",
+      css: "CSS",
+      scss: "SCSS",
+      json: "{}",
+      html: "HTML",
+      md: "MD",
+      mdx: "MDX",
+      py: "PY",
+      sql: "SQL",
+      yml: "YML",
+      yaml: "YML",
+      svg: "SVG",
+      png: "IMG",
+      jpg: "IMG",
+      jpeg: "IMG",
+      webp: "IMG",
+      ico: "ICO",
+      sh: "SH",
+    };
+
+    return icons[extension] ?? "FILE";
+  };
+
+  const formatBytes = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+
+    if (bytes < 1024 * 1024) {
+      return `${(bytes / 1024).toFixed(1)} KB`;
+    }
+
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  };
+
+  const getFileSize = (content: string) =>
+    new TextEncoder().encode(content).length;
+
+  const lineCount = current
+    ? current.content.split(/\r\n|\r|\n/).length
+    : 0;
+
+  const totalSize = files.reduce(
+    (total, file) => total + getFileSize(file.content),
+    0,
+  );
+
+  const folderOf = (path: string) => {
+    const parts = path.split("/");
+    return parts.length > 1
+      ? parts.slice(0, -1).join("/")
+      : "root";
+  };
+
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <button
-          className="btn-primary"
-          disabled={disabled}
-          onClick={onGenerate}
-        >
-          {files.length ? "تولید دوباره کد" : "تولید کد"}
-        </button>
+    <div className="code-explorer">
+      <div className="code-explorer-toolbar">
+        <div className="code-explorer-toolbar-info">
+          <div className="code-explorer-heading">
+            <span className="code-explorer-heading-icon">{"</>"}</span>
+
+            <div>
+              <h3>فایل‌های پروژه</h3>
+              <p>مشاهده ساختار و سورس کد تولیدشده</p>
+            </div>
+          </div>
+
+          <button
+            className="btn-primary"
+            disabled={disabled}
+            onClick={onGenerate}
+          >
+            {files.length ? "تولید دوباره کد" : "تولید کد"}
+          </button>
+        </div>
 
         {project.generation && (
-          <span className="text-xs text-slate-500">
-            {project.generation.kind === "fix"
-              ? "اصلاح‌شده"
-              : "تولیدشده"}{" "}
-            با {project.generation.provider} ·{" "}
-            <span dir="ltr">{project.generation.model}</span> ·{" "}
-            {files.length.toLocaleString("fa-IR")} فایل
-          </span>
+          <div className="code-explorer-generation">
+            <span>
+              {project.generation.kind === "fix"
+                ? "نسخه اصلاح‌شده"
+                : "نسخه تولیدشده"}
+            </span>
+
+            <span className="code-explorer-dot" />
+
+            <span>{project.generation.provider}</span>
+
+            <span className="code-explorer-dot" />
+
+            <span dir="ltr">{project.generation.model}</span>
+          </div>
         )}
       </div>
 
       {project.generation?.notes && (
-        <p className="text-sm text-slate-600 dark:text-slate-400">
-          {project.generation.notes}
-        </p>
+        <div className="code-explorer-notes">
+          <span>ℹ</span>
+          <p>{project.generation.notes}</p>
+        </div>
       )}
 
       {project.generation?.warnings.length ? (
-        <ul className="list-disc rounded-lg bg-amber-50 p-3 ps-8 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-          {project.generation.warnings.map((w) => (
-            <li key={w}>{w}</li>
+        <ul className="code-explorer-warnings">
+          {project.generation.warnings.map((warning) => (
+            <li key={warning}>{warning}</li>
           ))}
         </ul>
       ) : null}
 
-      {files.length > 0 && current && (
-        <div className="grid gap-3 md:grid-cols-[240px_1fr]">
-          <ul
-            dir="ltr"
-            className="max-h-96 overflow-auto rounded-lg border border-slate-200 p-1 font-mono text-xs dark:border-slate-800"
-          >
-            {files.map((file) => (
-              <li key={file.path}>
-                <button
-                  onClick={() => setSelected(file.path)}
-                  className={`w-full truncate rounded px-2 py-1 text-left ${
-                    file.path === current.path
-                      ? "bg-brand-600 text-white"
-                      : "hover:bg-slate-100 dark:hover:bg-slate-800"
-                  }`}
-                >
-                  {file.path}
-                </button>
-              </li>
-            ))}
-          </ul>
+      {files.length > 0 && current ? (
+        <>
+          <div className="code-explorer-layout">
+            <aside className="code-explorer-sidebar">
+              <div className="code-explorer-sidebar-heading">
+                <span>EXPLORER</span>
+                <span>{files.length.toLocaleString("fa-IR")} فایل</span>
+              </div>
 
-          <pre
-            dir="ltr"
-            className="max-h-96 overflow-auto rounded-lg bg-slate-950 p-3 text-left text-xs text-slate-100"
+              <div className="code-explorer-search">
+                <span aria-hidden="true">⌕</span>
+
+                <input
+                  type="search"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="جست‌وجوی فایل..."
+                  aria-label="جست‌وجوی فایل‌ها"
+                />
+              </div>
+
+              <div className="code-explorer-file-list" dir="ltr">
+                {filteredFiles.length > 0 ? (
+                  filteredFiles.map((file) => {
+                    const active = file.path === current.path;
+
+                    return (
+                      <button
+                        key={file.path}
+                        type="button"
+                        onClick={() => setSelected(file.path)}
+                        className={`code-explorer-file ${
+                          active ? "is-active" : ""
+                        }`}
+                        title={file.path}
+                        aria-current={active ? "true" : undefined}
+                      >
+                        <span className="code-explorer-file-icon">
+                          {fileIcon(file.path)}
+                        </span>
+
+                        <span className="code-explorer-file-name">
+                          {file.path.split("/").pop()}
+                        </span>
+
+                        <span className="code-explorer-file-extension">
+                          {extensionOf(file.path)}
+                        </span>
+                      </button>
+                    );
+                  })
+                ) : (
+                  <div className="code-explorer-empty-search">
+                    فایلی با این نام پیدا نشد.
+                  </div>
+                )}
+              </div>
+
+              <div className="code-explorer-sidebar-footer">
+                <span>حجم کل فایل‌ها</span>
+                <strong>{formatBytes(totalSize)}</strong>
+              </div>
+            </aside>
+
+            <section className="code-explorer-editor">
+              <div className="code-explorer-editor-header">
+                <div className="code-explorer-breadcrumb" dir="ltr">
+                  {folderOf(current.path)
+                    .split("/")
+                    .map((part, index) => (
+                      <span key={`${part}-${index}`}>
+                        {index > 0 && (
+                          <span className="code-explorer-separator">
+                            /
+                          </span>
+                        )}
+                        {part}
+                      </span>
+                    ))}
+
+                  <span className="code-explorer-separator">/</span>
+
+                  <strong>
+                    {current.path.split("/").pop()}
+                  </strong>
+                </div>
+
+                <span className="code-explorer-file-type">
+                  {fileType(current.path)}
+                </span>
+              </div>
+
+              <div className="code-explorer-code" dir="ltr">
+                <pre>
+                  <code>{current.content}</code>
+                </pre>
+              </div>
+
+              <div className="code-explorer-statusbar">
+                <div>
+                  <span>{extensionOf(current.path).toUpperCase()}</span>
+                  <span>UTF-8</span>
+                  <span>Read only</span>
+                </div>
+
+                <div>
+                  <span>
+                    {lineCount.toLocaleString("fa-IR")} خط
+                  </span>
+
+                  <span>
+                    {formatBytes(getFileSize(current.content))}
+                  </span>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <div className="code-explorer-summary">
+            <span>
+              <strong>{files.length.toLocaleString("fa-IR")}</strong>
+              فایل در پروژه
+            </span>
+
+            <span>
+              فایل انتخاب‌شده:
+              <strong dir="ltr">{current.path}</strong>
+            </span>
+          </div>
+        </>
+      ) : (
+        <div className="code-explorer-empty">
+          <div className="code-explorer-empty-icon">{"</>"}</div>
+
+          <h3>هنوز کدی تولید نشده است</h3>
+
+          <p>
+            پس از تأیید نیازمندی‌ها، دکمه تولید کد را بزنید.
+            فایل‌های پروژه در این قسمت نمایش داده می‌شوند.
+          </p>
+
+          <button
+            className="btn-primary"
+            disabled={disabled}
+            onClick={onGenerate}
           >
-            <code>{current.content}</code>
-          </pre>
+            شروع تولید کد
+          </button>
         </div>
       )}
     </div>
   );
-}
-
-// ------------------------------------------------------------------
+} ------------------------------------------------------------------
 // Build step
 // ------------------------------------------------------------------
 
