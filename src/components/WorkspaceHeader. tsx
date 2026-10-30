@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { ProjectView } from "@/lib/projects";
@@ -68,7 +69,9 @@ export function WorkspaceHeader({
             className="input w-full"
             value={provider}
             onChange={(event) =>
-              onProviderChange(event.target.value as ProviderInfo["id"])
+              onProviderChange(
+                event.target.value as ProviderInfo["id"]
+              )
             }
           >
             {providers.map((item) => (
