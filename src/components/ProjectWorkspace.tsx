@@ -211,13 +211,19 @@ export function ProjectWorkspace({
         done={hasCode}
         locked={!specApproved}
       >
-        <CodeStep
-          project={project}
-          disabled={busy !== null || !specApproved}
-          onGenerate={() =>
-            run("code", `${base}/generate`, "POST", { provider })
-          }
-        />
+      <CodeStep
+  project={project}
+  disabled={busy !== null || !specApproved}
+  previewUrl={
+    project.kind === "website" &&
+    project.deployment?.status === "ready"
+      ? project.deployment.url ?? null
+      : null
+  }
+  onGenerate={() =>
+    run("code", `${base}/generate`, "POST", { provider })
+  }
+/>
       </Step>
 
       <Step
