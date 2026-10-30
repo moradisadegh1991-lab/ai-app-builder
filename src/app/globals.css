@@ -1450,3 +1450,295 @@ a {
     border-color: #293449;
   }
 }
+
+/* =========================================================
+   Idea2App — Workspace Inner Panels
+   Modern SaaS UI refinement
+   ========================================================= */
+
+/* Specification overview */
+
+.workspace-shell .workspace-step h3 {
+  color: var(--text-main);
+  font-size: 1.05rem;
+  font-weight: 800;
+  line-height: 1.7;
+}
+
+.workspace-shell .workspace-step h3 + p {
+  margin-top: 0.35rem;
+  color: var(--text-muted);
+  line-height: 1.9;
+}
+
+/* Specification screen cards */
+
+.workspace-shell .workspace-step ul.space-y-2 > li {
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 0.8rem;
+  background: var(--surface-muted);
+  transition:
+    border-color 160ms ease,
+    transform 160ms ease,
+    background 160ms ease;
+}
+
+.workspace-shell .workspace-step ul.space-y-2 > li:hover {
+  border-color: rgba(99, 102, 241, 0.4);
+  transform: translateY(-1px);
+}
+
+.workspace-shell .workspace-step ul.list-disc {
+  padding: 0.85rem 2rem 0.85rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 0.85rem;
+  background: var(--surface-muted);
+}
+
+.workspace-shell .workspace-step ul.list-disc li {
+  padding-block: 0.2rem;
+}
+
+/* Data model */
+
+.workspace-shell .workspace-step [dir="ltr"].font-mono {
+  overflow-wrap: anywhere;
+  line-height: 1.8;
+}
+
+.workspace-shell .workspace-step .grid > div > p.rounded-lg {
+  border: 1px solid var(--border);
+  background: var(--surface-muted);
+  line-height: 1.9;
+}
+
+/* Form controls */
+
+.workspace-shell .workspace-step textarea.input {
+  width: 100%;
+  min-height: 100px;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.85rem;
+  background: var(--surface-muted);
+  color: var(--text-main);
+  font-size: 0.85rem;
+  line-height: 1.9;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.workspace-shell .workspace-step textarea.input:focus {
+  border-color: #818cf8;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+  outline: none;
+}
+
+.workspace-shell .workspace-step details {
+  padding: 0.65rem 0.85rem;
+  border: 1px solid var(--border);
+  background: var(--surface-muted);
+}
+
+.workspace-shell .workspace-step details > summary {
+  color: var(--text-main);
+  cursor: pointer;
+  line-height: 1.8;
+}
+
+.workspace-shell .workspace-step details[open] > summary {
+  margin-bottom: 0.6rem;
+  color: var(--brand);
+}
+
+/* Code generation metadata */
+
+.workspace-shell .workspace-step .font-mono {
+  font-variant-ligatures: none;
+}
+
+.workspace-shell .workspace-step pre {
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 0.85rem;
+  line-height: 1.75;
+  tab-size: 2;
+}
+
+.workspace-shell .workspace-step pre code {
+  font-family:
+    "JetBrains Mono",
+    "Fira Code",
+    Consolas,
+    monospace;
+}
+
+/* Generated file explorer */
+
+.workspace-shell .workspace-step ul[dir="ltr"].font-mono {
+  padding: 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 0.9rem;
+  background: var(--surface-muted);
+}
+
+.workspace-shell .workspace-step ul[dir="ltr"].font-mono li button {
+  min-height: 34px;
+  padding: 0.45rem 0.65rem;
+  border-radius: 0.55rem;
+  font-size: 0.72rem;
+  transition:
+    background 150ms ease,
+    color 150ms ease;
+}
+
+.workspace-shell .workspace-step ul[dir="ltr"].font-mono li button:hover:not(.bg-brand-600) {
+  background: rgba(99, 102, 241, 0.09);
+}
+
+.workspace-shell .workspace-step ul[dir="ltr"].font-mono li button.bg-brand-600 {
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.2);
+}
+
+/* Build and deployment status panels */
+
+.workspace-shell .workspace-step .rounded-xl.border {
+  border-color: var(--border);
+  border-radius: 0.95rem;
+}
+
+.workspace-shell .workspace-step .rounded-xl.border > .flex {
+  gap: 0.85rem;
+}
+
+.workspace-shell .workspace-step .text-xs.text-slate-500 {
+  line-height: 1.8;
+}
+
+.workspace-shell .workspace-step a[target="_blank"] {
+  overflow-wrap: anywhere;
+}
+
+.workspace-shell .workspace-step a[target="_blank"]:not(.btn-primary):not(.btn-secondary) {
+  display: inline-block;
+  margin-top: 0.35rem;
+  color: var(--brand);
+  font-weight: 650;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+}
+
+/* Success, warning and error panels */
+
+.workspace-shell .workspace-step .bg-emerald-50,
+.workspace-shell .workspace-step .dark\:bg-emerald-950 {
+  border: 1px solid rgba(16, 185, 129, 0.17);
+  border-radius: 0.85rem;
+}
+
+.workspace-shell .workspace-step .bg-amber-50,
+.workspace-shell .workspace-step .dark\:bg-amber-950 {
+  border: 1px solid rgba(245, 158, 11, 0.18);
+  border-radius: 0.85rem;
+}
+
+.workspace-shell .workspace-step .bg-red-50,
+.workspace-shell .workspace-step .dark\:bg-red-950 {
+  border: 1px solid rgba(239, 68, 68, 0.16);
+  border-radius: 0.85rem;
+}
+
+/* VPS install instructions */
+
+.workspace-shell .workspace-step .border-brand-500\/40 {
+  border-color: rgba(99, 102, 241, 0.35);
+  border-radius: 1rem;
+  background: rgba(99, 102, 241, 0.035);
+}
+
+.workspace-shell .workspace-step pre.whitespace-pre-wrap {
+  min-height: 48px;
+  max-height: 340px;
+  line-height: 1.8;
+}
+
+/* Buttons */
+
+.workspace-shell .workspace-step .btn-primary,
+.workspace-shell .workspace-step .btn-secondary,
+.workspace-shell .workspace-step .btn-danger {
+  min-height: 40px;
+  border-radius: 0.7rem;
+  font-weight: 700;
+}
+
+.workspace-shell .workspace-step .btn-primary:hover:not(:disabled),
+.workspace-shell .workspace-step .btn-secondary:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+/* Mobile refinement */
+
+@media (max-width: 640px) {
+  .workspace-shell .workspace-step {
+    padding: 1rem;
+  }
+
+  .workspace-shell .workspace-step .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .workspace-shell .workspace-step ul[dir="ltr"].font-mono {
+    max-height: 190px;
+  }
+
+  .workspace-shell .workspace-step pre {
+    max-height: 320px;
+    font-size: 11px;
+  }
+
+  .workspace-shell .workspace-step .flex.flex-wrap {
+    align-items: stretch;
+  }
+
+  .workspace-shell .workspace-step .flex.flex-wrap > button,
+  .workspace-shell .workspace-step .flex.flex-wrap > a.btn-primary,
+  .workspace-shell .workspace-step .flex.flex-wrap > a.btn-secondary {
+    max-width: 100%;
+  }
+
+  .workspace-shell .workspace-step .rounded-xl.border {
+    padding: 0.85rem;
+  }
+}
+
+/* Dark mode */
+
+@media (prefers-color-scheme: dark) {
+  .workspace-shell .workspace-step ul.space-y-2 > li,
+  .workspace-shell .workspace-step ul.list-disc,
+  .workspace-shell .workspace-step textarea.input,
+  .workspace-shell .workspace-step details {
+    border-color: #293449;
+    background: #172033;
+  }
+
+  .workspace-shell .workspace-step ul.space-y-2 > li:hover {
+    border-color: #6366f1;
+  }
+
+  .workspace-shell .workspace-step ul[dir="ltr"].font-mono {
+    border-color: #293449;
+    background: #0f172a;
+  }
+
+  .workspace-shell .workspace-step pre {
+    border-color: #293449;
+  }
+
+  .workspace-shell .workspace-step .border-brand-500\/40 {
+    border-color: rgba(129, 140, 248, 0.3);
+    background: rgba(99, 102, 241, 0.07);
+  }
+}
