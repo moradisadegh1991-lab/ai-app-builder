@@ -136,28 +136,12 @@ export function ProjectWorkspace({
 
   return (
     <div className="workspace-shell flex flex-col gap-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        import { WorkspaceHeader } from "./WorkspaceHeader";
-
-        <div className="flex items-center gap-2">
-          <label htmlFor="provider" className="text-sm text-slate-500">
-            مدل:
-          </label>
-
-          <select
-            id="provider"
-            className="input w-auto"
-            value={provider}
-            onChange={(e) => setProvider(e.target.value as ProviderInfo["id"])}
-          >
-            {providers.map((p) => (
-              <option key={p.id} value={p.id} disabled={!p.available}>
-                {p.label} — {p.model}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
+     <WorkspaceHeader
+  project={project}
+  providers={providers}
+  provider={provider}
+  onProviderChange={setProvider}
+/>
 
       <WorkspaceProgress
         project={project}
