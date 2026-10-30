@@ -1,3 +1,4 @@
+
 import Link from "next/link";
 import { Header } from "@/components/Header";
 import { SettingsForm } from "@/components/SettingsForm";
@@ -168,6 +169,7 @@ export default async function SettingsPage({
                 <p className="text-xs font-semibold text-slate-400">
                   حساب کاربری
                 </p>
+
                 <p
                   dir="ltr"
                   className="mt-1 truncate text-sm font-bold text-slate-900 dark:text-white"
@@ -197,16 +199,19 @@ export default async function SettingsPage({
             <p className="text-xs font-semibold text-slate-400">
               اتصال GitHub
             </p>
+
             <div className="mt-3 flex items-center gap-2">
               <span
                 className={`size-2 rounded-full ${
                   githubConnected ? "bg-emerald-500" : "bg-amber-500"
                 }`}
               />
+
               <span className="text-lg font-extrabold text-slate-900 dark:text-white">
                 {githubConnected ? "متصل" : "نیازمند اتصال"}
               </span>
             </div>
+
             <p className="mt-2 text-xs text-slate-500">
               {githubConnected
                 ? "امکان استفاده از مخازن و Build"
@@ -218,9 +223,11 @@ export default async function SettingsPage({
             <p className="text-xs font-semibold text-slate-400">
               اتصال‌های ذخیره‌شده
             </p>
+
             <p className="mt-2 text-2xl font-black tabular-nums text-slate-900 dark:text-white">
               {integrations.length}
             </p>
+
             <p className="mt-2 text-xs text-slate-500">
               شامل GitHub و کلیدهای سرویس
             </p>
@@ -254,6 +261,7 @@ export default async function SettingsPage({
 
                 <p className="mt-1 text-xs leading-6">
                   {message.text}
+
                   {!message.ok &&
                     detail &&
                     /^[a-z0-9_]{1,60}$/.test(detail) && (
@@ -318,6 +326,7 @@ export default async function SettingsPage({
                       githubConnected ? "bg-emerald-500" : "bg-amber-500"
                     }`}
                   />
+
                   {githubConnected ? "متصل" : "متصل نیست"}
                 </span>
               </div>
@@ -356,15 +365,19 @@ export default async function SettingsPage({
 
             <div className="mb-4 rounded-2xl border border-sky-200 bg-sky-50/70 p-4 dark:border-sky-900 dark:bg-sky-950/30">
               <div className="flex items-start gap-3">
-                <span className="text-lg" aria-hidden="true">ⓘ</span>
+                <span className="text-lg" aria-hidden="true">
+                  ⓘ
+                </span>
+
                 <div>
                   <p className="text-sm font-bold text-sky-900 dark:text-sky-200">
                     مدیریت اتصال‌های شخصی
                   </p>
+
                   <p className="mt-1 text-xs leading-6 text-sky-800/80 dark:text-sky-300/80">
-                    اگر کلید شخصی ثبت کنید، سیستم مطابق منطق فعلی از آن استفاده
-                    می‌کند. در صورت نبود کلید شخصی، کلید مرکزی پلتفرم در صورت
-                    پیکربندی در دسترس خواهد بود.
+                    اگر کلید شخصی ثبت کنید، سیستم مطابق منطق فعلی از آن
+                    استفاده می‌کند. در صورت نبود کلید شخصی، کلید مرکزی
+                    پلتفرم در صورت پیکربندی در دسترس خواهد بود.
                   </p>
                 </div>
               </div>
@@ -428,10 +441,12 @@ export default async function SettingsPage({
                   <div className="grid size-10 place-items-center rounded-xl bg-emerald-50 text-lg dark:bg-emerald-950">
                     🔐
                   </div>
+
                   <div>
                     <h3 className="text-sm font-extrabold text-slate-900 dark:text-white">
                       حفاظت از کلیدها
                     </h3>
+
                     <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-300">
                       رمزنگاری در سمت سرور
                     </p>
@@ -450,10 +465,12 @@ export default async function SettingsPage({
                   <div className="grid size-10 place-items-center rounded-xl bg-indigo-50 text-lg dark:bg-indigo-950">
                     🛡️
                   </div>
+
                   <div>
                     <h3 className="text-sm font-extrabold text-slate-900 dark:text-white">
                       نشست ورود
                     </h3>
+
                     <p className="mt-1 text-xs text-slate-500">
                       کوکی امن و HttpOnly
                     </p>
@@ -514,6 +531,7 @@ export default async function SettingsPage({
                 id="vercel-neon"
                 label="آموزش دریافت توکن Vercel و کلید Neon"
               />
+
               <GuideToggle id="github" label="راهنمای اتصال GitHub" />
             </div>
           </section>
