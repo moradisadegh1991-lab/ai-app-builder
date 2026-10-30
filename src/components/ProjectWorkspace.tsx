@@ -1343,9 +1343,10 @@ function BuildStep({
 
 
 
-// ------------------------------------------------------------------
-// Cloud deployment
-// ---------------------------------------------------------------
+
+ // ------------------------------------------------------------------
+ // Cloud deployment
+ // ------------------------------------------------------------------
 
 function CloudStep({
   project,
@@ -1357,90 +1358,274 @@ function CloudStep({
   onProvision: () => void;
 }) {
   const deployment = project.deployment;
-  const needsBackend = project.spec?.needsBackend;
+
+  // Read nullable deployment fields safely.
+  const deploymentStatus = deployment?.status ?? null;
+  const deploymentUrl = deployment?.url ?? null;
+  const deploymentError = deployment?.error ?? null;
+  const hasDatabase = deployment?.hasDatabase ?? false;
+
+  const needsBackend = Boolean(project.spec?.needsBackend);
   const isWebsite = project.kind === "website";
 
+  const statusMap: Record<string, string> = {
+    provisioning: "در حال آماده‌سازی زیرساخت…",
+    deploying: "در حال استقرار روی Vercel…",
+    ready: "استقرار با موفقیت انجام شد",
+    failed: "استقرار ناموفق بود",
+  };
+
+  const statusText = deploymentStatus
+    ? statusMap[deploymentStatus] ?? deploymentStatus
+    : null;
+
+  const isBusy =
+    deploymentStatus === "provisioning" ||
+    deploymentStatus === "deploying";
+
+  const isReady =
+    deploymentStatus === "ready" && Boolean(deploymentUrl);
+
+  const isFailed = deploymentStatus === "failed";
+
   return (
-    <div className="flex flex-col gap-3 text-sm">
-      <p className="text-slate-600 dark:text-slate-400">
-        {needsBackend
-          ? `یک دیتابیس PostgreSQL اختصاصی در Neon ساخته و schema.sql اجرا می‌شود، سپس ${
-              isWebsite ? "سایت و API" : "API"
-            } روی Vercel مستقر می‌شود${
-              isWebsite
-                ? "."
-                : " و نشانی آن در Build بعدی APK قرار می‌گیرد."
-            }`
-          : isWebsite
-            ? "سایت روی Vercel منتشر می‌شود و یک نشانی ‎*.vercel.app‎ با HTTPS می‌گیرد."
-            : "این اپ بدون سرور کار می‌کند."}
-      </p>
+    <div className="flex flex-col gap-4 text-sm">
 
-      <p className="text-xs text-slate-500">
-        پیش‌نیاز: توکن Vercel
-        {needsBackend ? " و کلید Neon" : ""} در صفحه «اتصال‌ها و کلیدها» و نصب اپ GitHub روی حساب Vercel.
-      </p>
+      {/* Deployment description */}
+      <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
+        <div className="mb-2 font-semibold">
+          استقرار و انتشار اپلیکیشن
+        </div>
 
-      <GuideToggle id="vercel-neon" />
+        <p className="text-slate-600 dark:text-slate-400">
+          {needsBackend
+            ? `یک دیتابیس PostgreSQL اختصاصی در Neon ساخته و schema.sql اجرا می‌شود، سپس ${
+                isWebsite ? "سایت و API" : "API"
+              } روی Vercel مستقر می‌شود${
+                isWebsite
+                  ? "."
+                  : " و نشانی API در Build بعدی APK قرار می‌گیرد."
+              }`
+            : isWebsite
+              ? "سایت روی Vercel منتشر می‌شود و یک نشانی اختصاصی ‎*.vercel.app‎ با HTTPS دریافت می‌کند."
+              : "این اپلیکیشن بدون نیاز به سرور اجرا می‌شود."}
+        </p>
 
-      {deployment ? (
-        <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
-          <div className="font-medium">
-            وضعیت:{" "}
-            {{
-              provisioning: "در حال آماده‌سازی…",
-              deploying: "در حال استقرار روی Vercel…",
-              ready: "✅ فعال",
-              failed: "❌ ناموفق",
-            }[deployment.status] ?? deployment.status}
+        <div className="mt-3 text-xs text-slate-500">
+          پیش‌نیاز: توکن Vercel
+          {needsBackend ? " و کلید Neon" : ""} در صفحه «اتصال‌ها و کلیدها» و نصب اپ GitHub روی حساب Vercel.
+        </div>
+
+        <div className="mt-3">
+          <GuideToggle id="vercel-neon" />
+        </div>
+      </div>
+
+      {/* No server required */}
+      {!needsBackend && !isWebsite && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900 dark:bg-emerald-950">
+          <div className="font-medium text-emerald-800 dark:text-emerald-300">
+            ✓ این اپلیکیشن نیازی به استقرار ابری ندارد.
           </div>
 
-          {deployment.hasDatabase && (
-            <div className="text-xs text-slate-500">
-              دیتابیس Neon متصل است.
+          <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-400">
+            برای دریافت نسخه قابل نصب، به مرحله Build مراجعه کنید.
+          </p>
+        </div>
+      )}
+
+      {/* Deployment action when no deployment exists */}
+      {needsBackend || isWebsite ? (
+        <>
+          {!deployment && (
+            <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
+              <div className="mb-3 font-medium">
+                هنوز استقراری برای این پروژه ثبت نشده است.
+              </div>
+
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={disabled}
+                onClick={onProvision}
+              >
+                {needsBackend
+                  ? "ساخت دیتابیس Neon و استقرار روی Vercel"
+                  : "انتشار سایت روی Vercel"}
+              </button>
             </div>
           )}
 
-          {deployment.url && (
-            <a
-              href={deployment.url}
-              target="_blank"
-              rel="noreferrer"
-              className="text-brand-600 underline"
-              dir="ltr"
-            >
-              {deployment.url}
-            </a>
-          )}
+          {/* Existing deployment */}
+          {deployment && (
+            <div className="flex flex-col gap-4 rounded-xl border border-slate-200 p-4 dark:border-slate-800">
 
-          {deployment.error && (
-            <p className="mt-2 whitespace-pre-wrap text-red-600">
-              {deployment?.error && (
-  <pre
-    dir="auto"
-    className="overflow-x-auto whitespace-pre-wrap break-words rounded-lg bg-red-100 p-3 text-xs text-red-800 dark:bg-red-900/40 dark:text-red-200"
-  >
-    {deployment.error}
-  </pre>
-)}
-)}
-              تلاش دوباره
-            </button>
+              {/* Status */}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="font-semibold">
+                  وضعیت استقرار
+                </div>
+
+                <span
+                  className={`rounded-full px-3 py-1 text-xs font-medium ${
+                    isReady
+                      ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                      : isFailed
+                        ? "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300"
+                        : isBusy
+                          ? "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300"
+                          : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                  }`}
+                >
+                  {isBusy ? "⏳ " : isReady ? "✓ " : isFailed ? "✕ " : ""}
+                  {statusText}
+                </span>
+              </div>
+
+              {/* Infrastructure status */}
+              <div className="grid gap-3 sm:grid-cols-2">
+
+                {needsBackend && (
+                  <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+                    <div className="text-xs text-slate-500">
+                      Database
+                    </div>
+
+                    <div className="mt-1 font-medium">
+                      Neon PostgreSQL
+                    </div>
+
+                    <div className="mt-2 text-xs">
+                      {hasDatabase ? (
+                        <span className="text-emerald-700 dark:text-emerald-300">
+                          ✓ دیتابیس متصل است
+                        </span>
+                      ) : (
+                        <span className="text-amber-700 dark:text-amber-300">
+                          ⏳ اتصال دیتابیس تأیید نشده است
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+                  <div className="text-xs text-slate-500">
+                    Hosting
+                  </div>
+
+                  <div className="mt-1 font-medium">
+                    Vercel
+                  </div>
+
+                  <div className="mt-2 text-xs">
+                    {isReady ? (
+                      <span className="text-emerald-700 dark:text-emerald-300">
+                        ✓ سایت منتشر شده است
+                      </span>
+                    ) : isFailed ? (
+                      <span className="text-red-700 dark:text-red-300">
+                        ✕ استقرار ناموفق
+                      </span>
+                    ) : (
+                      <span className="text-sky-700 dark:text-sky-300">
+                        ⏳ در انتظار تکمیل استقرار
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Deployment URL */}
+              {deploymentUrl && (
+                <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-900">
+                  <div className="mb-2 text-xs font-medium text-slate-500">
+                    آدرس سایت / API
+                  </div>
+
+                  <a
+                    href={deploymentUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    dir="ltr"
+                    className="block break-all font-medium text-brand-600 underline"
+                  >
+                    {deploymentUrl}
+                  </a>
+
+                  <div className="mt-3">
+                    <a
+                      href={deploymentUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn-secondary inline-flex"
+                    >
+                      باز کردن سایت ↗
+                    </a>
+                  </div>
+                </div>
+              )}
+
+              {/* Successful deployment */}
+              {isReady && (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950">
+                  <div className="font-medium text-emerald-800 dark:text-emerald-300">
+                    ✓ استقرار با موفقیت انجام شد.
+                  </div>
+
+                  <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-400">
+                    {needsBackend
+                      ? "زیرساخت ابری پروژه آماده استفاده است."
+                      : "سایت شما روی Vercel منتشر شده و قابل دسترسی است."}
+                  </p>
+                </div>
+              )}
+
+              {/* Deployment in progress */}
+              {isBusy && (
+                <div
+                  role="status"
+                  className="rounded-lg bg-sky-50 p-3 text-sky-800 dark:bg-sky-950 dark:text-sky-300"
+                >
+                  <div className="font-medium">
+                    عملیات استقرار در حال اجراست.
+                  </div>
+
+                  <p className="mt-1 text-xs">
+                    لطفاً تا تکمیل عملیات منتظر بمانید. وضعیت پروژه به‌صورت خودکار به‌روزرسانی می‌شود.
+                  </p>
+                </div>
+              )}
+
+              {/* Deployment error */}
+              {isFailed && (
+                <div className="flex flex-col gap-2 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-900 dark:bg-red-950">
+                  <div className="font-medium text-red-800 dark:text-red-300">
+                    استقرار پروژه با خطا مواجه شده است.
+                  </div>
+
+                  {deploymentError ? (
+                    <pre
+                      dir="auto"
+                      className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-red-100 p-3 text-xs text-red-900 dark:bg-red-900/40 dark:text-red-200"
+                    >
+                      {deploymentError}
+                    </pre>
+                  ) : (
+                    <p className="text-xs text-red-700 dark:text-red-300">
+                      جزئیات خطای استقرار از سرور دریافت نشده است.
+                    </p>
+                  )}
+
+                  <p className="text-xs text-red-700 dark:text-red-300">
+                    تنظیمات اتصال Vercel و Neon و گزارش اجرای عملیات را بررسی کنید.
+                  </p>
+                </div>
+              )}
+            </div>
           )}
-        </div>
-      ) : (
-        <div>
-          <button
-            className="btn-primary"
-            disabled={disabled}
-            onClick={onProvision}
-          >
-            {needsBackend
-              ? "ساخت دیتابیس Neon و استقرار روی Vercel"
-              : "انتشار روی Vercel"}
-          </button>
-        </div>
-      )}
+        </>
+      ) : null}
     </div>
   );
 }
