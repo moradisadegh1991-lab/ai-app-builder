@@ -521,6 +521,7 @@ function SpecStep({
 // Code step — Modern File Explorer
 // ------------------------------------------------------------------
 
+
 function CodeStep({
   project,
   disabled,
@@ -534,6 +535,10 @@ function CodeStep({
 
   const [selected, setSelected] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [contentSearch, setContentSearch] = useState("");
+  const [wrapLines, setWrapLines] = useState(false);
+  const [copyState, setCopyState] = useState<"idle" | "content" | "path">("idle");
+  const [copyError, setCopyError] = useState("");
 
   const current =
     files.find((file) => file.path === selected) ??
@@ -624,20 +629,49 @@ function CodeStep({
   const getFileSize = (content: string) =>
     new TextEncoder().encode(content).length;
 
-  const lineCount = current
-    ? current.content.split(/\r\n|\r|\n/).length
-    : 0;
+  const folderOf = (path: string) => {
+    const parts = path.split("/");
+    return parts.length > 1
+      ? parts.slice(0, -1).join("/")
+      : "root";
+  };
+
+  const lines = current
+    ? current.content.split(/\r\n|\r|\n/)
+    : [];
+
+  const lineCount = lines.length;
 
   const totalSize = files.reduce(
     (total, file) => total + getFileSize(file.content),
     0,
   );
 
-  const folderOf = (path: string) => {
-    const parts = path.split("/");
-    return parts.length > 1
-      ? parts.slice(0, -1).join("/")
-      : "root";
+  const matchingLines = contentSearch.trim()
+    ? lines.filter((line) =>
+        line.toLowerCase().includes(contentSearch.trim().toLowerCase()),
+      ).length
+    : 0;
+
+  const copyText = async (value: string, type: "content" | "path") => {
+    setCopyError("");
+
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("Clipboard API is unavailable");
+      }
+
+      await navigator.clipboard.writeText(value);
+      setCopyState(type);
+
+      window.setTimeout(() => {
+        setCopyState("idle");
+      }, 1800);
+    } catch {
+      setCopyError(
+        "کپی خودکار انجام نشد. دسترسی Clipboard مرورگر را بررسی کنید.",
+      );
+    }
   };
 
   return (
@@ -649,11 +683,12 @@ function CodeStep({
 
             <div>
               <h3>فایل‌های پروژه</h3>
-              <p>مشاهده ساختار و سورس کد تولیدشده</p>
+              <p>مشاهده و بررسی سورس کد تولیدشده</p>
             </div>
           </div>
 
           <button
+            type="button"
             className="btn-primary"
             disabled={disabled}
             onClick={onGenerate}
@@ -671,9 +706,7 @@ function CodeStep({
             </span>
 
             <span className="code-explorer-dot" />
-
             <span>{project.generation.provider}</span>
-
             <span className="code-explorer-dot" />
 
             <span dir="ltr">{project.generation.model}</span>
@@ -726,7 +759,11 @@ function CodeStep({
                       <button
                         key={file.path}
                         type="button"
-                        onClick={() => setSelected(file.path)}
+                        onClick={() => {
+                          setSelected(file.path);
+                          setContentSearch("");
+                          setCopyError("");
+                        }}
                         className={`code-explorer-file ${
                           active ? "is-active" : ""
                         }`}
@@ -768,19 +805,14 @@ function CodeStep({
                     .map((part, index) => (
                       <span key={`${part}-${index}`}>
                         {index > 0 && (
-                          <span className="code-explorer-separator">
-                            /
-                          </span>
+                          <span className="code-explorer-separator">/</span>
                         )}
                         {part}
                       </span>
                     ))}
 
                   <span className="code-explorer-separator">/</span>
-
-                  <strong>
-                    {current.path.split("/").pop()}
-                  </strong>
+                  <strong>{current.path.split("/").pop()}</strong>
                 </div>
 
                 <span className="code-explorer-file-type">
@@ -788,9 +820,86 @@ function CodeStep({
                 </span>
               </div>
 
-              <div className="code-explorer-code" dir="ltr">
+              <div className="code-explorer-actions">
+                <div className="code-explorer-content-search">
+                  <span aria-hidden="true">⌕</span>
+
+                  <input
+                    type="search"
+                    value={contentSearch}
+                    onChange={(event) =>
+                      setContentSearch(event.target.value)
+                    }
+                    placeholder="جست‌وجو در محتوای فایل..."
+                    aria-label="جست‌وجو در محتوای فایل"
+                  />
+
+                  {contentSearch.trim() && (
+                    <span className="code-explorer-match-count">
+                      {matchingLines.toLocaleString("fa-IR")} خط
+                    </span>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  className="code-explorer-action-button"
+                  onClick={() => copyText(current.path, "path")}
+                  title="کپی مسیر فایل"
+                >
+                  {copyState === "path" ? "مسیر کپی شد" : "کپی مسیر"}
+                </button>
+
+                <button
+                  type="button"
+                  className="code-explorer-action-button"
+                  onClick={() => copyText(current.content, "content")}
+                  title="کپی محتوای فایل"
+                >
+                  {copyState === "content" ? "کپی شد ✓" : "کپی کد"}
+                </button>
+
+                <button
+                  type="button"
+                  className={`code-explorer-action-button ${
+                    wrapLines ? "is-selected" : ""
+                  }`}
+                  onClick={() => setWrapLines((value) => !value)}
+                  aria-pressed={wrapLines}
+                  title="تغییر حالت نمایش خطوط"
+                >
+                  {wrapLines ? "بدون شکست خط" : "شکست خودکار خط"}
+                </button>
+              </div>
+
+              {copyError && (
+                <div className="code-explorer-copy-error" role="status">
+                  {copyError}
+                </div>
+              )}
+
+              <div
+                className={`code-explorer-code ${
+                  wrapLines ? "is-wrapped" : ""
+                }`}
+                dir="ltr"
+              >
                 <pre>
-                  <code>{current.content}</code>
+                  <code>
+                    {lines.map((line, index) => (
+                      <span
+                        className="code-explorer-line"
+                        key={`${current.path}-${index}`}
+                      >
+                        <span className="code-explorer-line-number">
+                          {index + 1}
+                        </span>
+                        <span className="code-explorer-line-content">
+                          {line || " "}
+                        </span>
+                      </span>
+                    ))}
+                  </code>
                 </pre>
               </div>
 
@@ -802,13 +911,8 @@ function CodeStep({
                 </div>
 
                 <div>
-                  <span>
-                    {lineCount.toLocaleString("fa-IR")} خط
-                  </span>
-
-                  <span>
-                    {formatBytes(getFileSize(current.content))}
-                  </span>
+                  <span>{lineCount.toLocaleString("fa-IR")} خط</span>
+                  <span>{formatBytes(getFileSize(current.content))}</span>
                 </div>
               </div>
             </section>
@@ -838,6 +942,7 @@ function CodeStep({
           </p>
 
           <button
+            type="button"
             className="btn-primary"
             disabled={disabled}
             onClick={onGenerate}
@@ -848,7 +953,8 @@ function CodeStep({
       )}
     </div>
   );
-} ------------------------------------------------------------------
+}
+ ------------------------------------------------------------------
 // Build step
 // ------------------------------------------------------------------
 
