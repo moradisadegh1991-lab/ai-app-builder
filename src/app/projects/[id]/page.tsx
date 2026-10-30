@@ -1,4 +1,3 @@
-مسیر فایل: "src/app/projects/[id]/page.tsx"
 
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -112,9 +111,7 @@ export default async function ProjectPage({
         </div>
 
         <footer className="mt-10 border-t border-slate-200 pt-5 text-center text-xs text-slate-500 dark:border-slate-800 dark:text-slate-500">
-          <p>
-            Idea2App AI · مدیریت و توسعه هوشمند پروژه
-          </p>
+          <p>Idea2App AI · مدیریت و توسعه هوشمند پروژه</p>
         </footer>
       </main>
     </div>
