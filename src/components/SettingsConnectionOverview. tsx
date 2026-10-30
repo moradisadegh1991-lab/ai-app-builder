@@ -1,0 +1,231 @@
+import Link from "next/link";
+import type { ProviderInfo } from "@/components/api";
+
+type IntegrationView = {
+  provider: string;
+  secretHint: string;
+  metadata: Record<string, string>;
+};
+
+type ServiceItem = {
+  id: string;
+  name: string;
+  category: string;
+  href: string;
+  status: string;
+  detail: string;
+  tone: "success" | "info" | "warning" | "neutral";
+};
+
+function StatusPill({
+  tone,
+  children,
+}: {
+  tone: ServiceItem["tone"];
+  children: React.ReactNode;
+}) {
+  const styles = {
+    success:
+      "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300",
+    info: "bg-sky-50 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300",
+    warning:
+      "bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300",
+    neutral:
+      "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
+  };
+
+  return (
+    <span
+      className={`inline-flex w-fit items-center rounded-full px-2.5 py-1 text-[10px] font-bold ${styles[tone]}`}
+    >
+      {children}
+    </span>
+  );
+}
+
+function ServiceCard({ item }: { item: ServiceItem }) {
+  const dotStyles = {
+    success: "bg-emerald-500",
+    info: "bg-sky-500",
+    warning: "bg-amber-500",
+    neutral: "bg-slate-400",
+  };
+
+  return (
+    <article className="rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-slate-300 hover:shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className={`size-2 shrink-0 rounded-full ${dotStyles[item.tone]}`} />
+            <h3 className="truncate text-sm font-extrabold text-slate-900 dark:text-white">
+              {item.name}
+            </h3>
+          </div>
+
+          <p className="mt-1 ps-4 text-[10px] font-medium uppercase tracking-wider text-slate-400">
+            {item.category}
+          </p>
+        </div>
+
+        <StatusPill tone={item.tone}>{item.status}</StatusPill>
+      </div>
+
+      <p className="mt-4 min-h-10 text-xs leading-6 text-slate-500 dark:text-slate-400">
+        {item.detail}
+      </p>
+
+      <Link
+        href={item.href}
+        className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-brand-600 transition hover:text-brand-700 dark:text-brand-400"
+      >
+        مدیریت اتصال
+        <span aria-hidden="true">←</span>
+      </Link>
+    </article>
+  );
+}
+
+export function SettingsConnectionOverview({
+  integrations,
+  providers,
+  githubConnected,
+}: {
+  integrations: IntegrationView[];
+  providers: ProviderInfo[];
+  githubConnected: boolean;
+}) {
+  const hasPersonalKey = (provider: string) =>
+    integrations.some((item) => item.provider === provider);
+
+  const aiServices: ServiceItem[] = providers.map((provider) => {
+    const source = provider.source;
+
+    if (source === "user") {
+      return {
+        id: provider.id,
+        name: provider.label,
+        category: "AI PROVIDER",
+        href: "#api-keys",
+        status: "کلید شخصی",
+        detail: `کلید اختصاصی ثبت شده · مدل ${provider.model}`,
+        tone: "success",
+      };
+    }
+
+    if (source === "platform") {
+      return {
+        id: provider.id,
+        name: provider.label,
+        category: "AI PROVIDER",
+        href: "#api-keys",
+        status: "کلید مرکزی",
+        detail: `استفاده از اعتبار پلتفرم · مدل ${provider.model}`,
+        tone: "info",
+      };
+    }
+
+    return {
+      id: provider.id,
+      name: provider.label,
+      category: "AI PROVIDER",
+      href: "#api-keys",
+      status: "نیازمند تنظیم",
+      detail: "برای استفاده از این مدل، یک کلید API ثبت کنید.",
+      tone: "warning",
+    };
+  });
+
+  const infrastructureServices: ServiceItem[] = [
+    {
+      id: "vercel",
+      name: "Vercel",
+      category: "DEPLOYMENT",
+      href: "#api-keys",
+      status: hasPersonalKey("vercel")
+        ? "کلید شخصی ثبت شده"
+        : "بررسی نشده",
+      detail: hasPersonalKey("vercel")
+        ? "توکن اختصاصی Vercel در حساب ذخیره شده است."
+        : "توکن شخصی Vercel در تنظیمات حساب ثبت نشده است.",
+      tone: hasPersonalKey("vercel") ? "success" : "neutral",
+    },
+    {
+      id: "neon",
+      name: "Neon",
+      category: "DATABASE PLATFORM",
+      href: "#api-keys",
+      status: hasPersonalKey("neon")
+        ? "کلید شخصی ثبت شده"
+        : "بررسی نشده",
+      detail: hasPersonalKey("neon")
+        ? "کلید اختصاصی Neon در حساب ذخیره شده است."
+        : "توکن شخصی Neon در تنظیمات حساب ثبت نشده است.",
+      tone: hasPersonalKey("neon") ? "success" : "neutral",
+    },
+  ];
+
+  const githubService: ServiceItem = {
+    id: "github",
+    name: "GitHub",
+    category: "SOURCE CONTROL",
+    href: "#github",
+    status: githubConnected ? "متصل" : "متصل نیست",
+    detail: githubConnected
+      ? "اتصال OAuth برای دسترسی به مخازن GitHub برقرار است."
+      : "برای ذخیره و مدیریت کد پروژه‌ها، GitHub را متصل کنید.",
+    tone: githubConnected ? "success" : "warning",
+  };
+
+  const allServices = [
+    githubService,
+    ...infrastructureServices,
+    ...aiServices,
+  ];
+
+  const connectedCount = allServices.filter(
+    (item) => item.tone === "success" || item.tone === "info",
+  ).length;
+
+  return (
+    <section className="mb-8">
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-brand-600">
+            CONNECTION OVERVIEW
+          </p>
+
+          <h2 className="mt-2 text-lg font-extrabold text-slate-900 dark:text-white">
+            نمای کلی اتصال‌ها
+          </h2>
+
+          <p className="mt-1 text-xs leading-6 text-slate-500 dark:text-slate-400">
+            وضعیت اتصال حساب و منبع تأمین سرویس‌های پلتفرم
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-800 dark:bg-slate-900">
+          <span className="font-black tabular-nums text-slate-900 dark:text-white">
+            {connectedCount}
+          </span>
+          <span className="mx-1 text-slate-400">از</span>
+          <span className="font-semibold tabular-nums text-slate-600 dark:text-slate-300">
+            {allServices.length}
+          </span>
+          <span className="ms-1 text-slate-500">اتصال فعال یا آماده</span>
+        </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {allServices.map((item) => (
+          <ServiceCard key={item.id} item={item} />
+        ))}
+      </div>
+
+      <p className="mt-3 text-[10px] leading-6 text-slate-400">
+        وضعیت «کلید ثبت شده» نشان‌دهنده ذخیره بودن اطلاعات اتصال است، نه
+        تأیید اعتبار یا موفقیت درخواست واقعی به سرویس خارجی. وضعیت عملیاتی
+        دیتابیس و پیکربندی سرور در بخش سلامت سیستم نمایش داده می‌شود.
+      </p>
+    </section>
+  );
+}
