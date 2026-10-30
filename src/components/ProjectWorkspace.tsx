@@ -9,6 +9,7 @@ import { GuideToggle } from "./guides/Guide";
 import type { GuideId } from "./guides/data";
 import { StatusBadge } from "./StatusBadge";
 import { WorkspaceProgress } from "./WorkspaceProgress";
+import { WorkspaceHeader } from "./WorkspaceHeader";
 
 type Busy =
   | null
@@ -136,16 +137,7 @@ export function ProjectWorkspace({
   return (
     <div className="workspace-shell flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-extrabold">{project.name}</h1>
-            <StatusBadge status={project.status} />
-          </div>
-
-          <p className="mt-1 max-w-3xl text-sm text-slate-600 dark:text-slate-400">
-            {project.idea}
-          </p>
-        </div>
+        import { WorkspaceHeader } from "./WorkspaceHeader";
 
         <div className="flex items-center gap-2">
           <label htmlFor="provider" className="text-sm text-slate-500">
