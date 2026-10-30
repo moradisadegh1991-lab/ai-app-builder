@@ -1405,16 +1405,15 @@ function CloudStep({
 
           {deployment.error && (
             <p className="mt-2 whitespace-pre-wrap text-red-600">
-              {deployment.error}
-            </p>
-          )}
-
-          {deployment.status === "failed" && (
-            <button
-              className="btn-secondary mt-3"
-              disabled={disabled}
-              onClick={onProvision}
-            >
+              {deployment?.error && (
+  <pre
+    dir="auto"
+    className="overflow-x-auto whitespace-pre-wrap break-words rounded-lg bg-red-100 p-3 text-xs text-red-800 dark:bg-red-900/40 dark:text-red-200"
+  >
+    {deployment.error}
+  </pre>
+)}
+)}
               تلاش دوباره
             </button>
           )}
