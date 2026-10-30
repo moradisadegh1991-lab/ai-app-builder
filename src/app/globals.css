@@ -1742,3 +1742,193 @@ a {
     background: rgba(99, 102, 241, 0.07);
   }
 }
+/* =========================================================
+   Workspace Quick Navigation
+   Modern SaaS navigation for project workflow
+   ========================================================= */
+
+.workspace-quick-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  margin-top: 1.25rem;
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--border);
+}
+
+.workspace-quick-nav-label {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 750;
+}
+
+.workspace-quick-nav-items {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.workspace-quick-nav-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 0.8rem;
+  background: var(--surface-muted);
+  color: var(--text-main);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    transform 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.workspace-quick-nav-item:hover {
+  transform: translateY(-2px);
+  border-color: #818cf8;
+  box-shadow: 0 5px 16px rgba(99, 102, 241, 0.1);
+}
+
+.workspace-quick-nav-item:focus-visible {
+  outline: 3px solid rgba(99, 102, 241, 0.3);
+  outline-offset: 2px;
+}
+
+.workspace-quick-nav-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 25px;
+  width: 25px;
+  height: 25px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.workspace-quick-nav-item.is-complete {
+  border-color: rgba(16, 185, 129, 0.3);
+  background: rgba(16, 185, 129, 0.055);
+}
+
+.workspace-quick-nav-item.is-complete
+  .workspace-quick-nav-number {
+  border-color: #059669;
+  background: #059669;
+  color: white;
+}
+
+.workspace-quick-nav-item.is-current {
+  border-color: rgba(99, 102, 241, 0.55);
+  background: rgba(99, 102, 241, 0.08);
+  color: #6366f1;
+}
+
+.workspace-quick-nav-item.is-current
+  .workspace-quick-nav-number {
+  border-color: #6366f1;
+  background: #6366f1;
+  color: white;
+}
+
+.workspace-quick-nav-item.is-locked {
+  color: var(--text-muted);
+}
+
+.workspace-quick-nav-lock {
+  font-size: 0.7rem;
+  opacity: 0.7;
+}
+
+.workspace-shell .workspace-step {
+  scroll-margin-top: 24px;
+}
+
+.workspace-shell .workspace-step-highlight {
+  border-color: #818cf8 !important;
+  box-shadow:
+    0 0 0 3px rgba(99, 102, 241, 0.13),
+    0 12px 30px rgba(99, 102, 241, 0.08) !important;
+  transition:
+    border-color 200ms ease,
+    box-shadow 200ms ease;
+}
+
+@media (max-width: 640px) {
+  .workspace-quick-nav-items {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .workspace-quick-nav-item {
+    justify-content: flex-start;
+    min-height: 46px;
+    padding-inline: 0.65rem;
+    font-size: 0.75rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-quick-nav-item,
+  .workspace-shell .workspace-step-highlight {
+    transition: none;
+  }
+
+  .workspace-quick-nav-item:hover {
+    transform: none;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .workspace-quick-nav {
+    border-color: #293449;
+  }
+
+  .workspace-quick-nav-item {
+    border-color: #344054;
+    background: #172033;
+    color: #e2e8f0;
+  }
+
+  .workspace-quick-nav-item.is-complete {
+    border-color: #065f46;
+    background: rgba(6, 95, 70, 0.2);
+    color: #6ee7b7;
+  }
+
+  .workspace-quick-nav-item.is-current {
+    border-color: #4f46e5;
+    background: #25245a;
+    color: #c7d2fe;
+  }
+
+  .workspace-quick-nav-number {
+    border-color: #475467;
+    background: #111827;
+    color: #d0d5dd;
+  }
+
+  .workspace-quick-nav-item.is-complete
+    .workspace-quick-nav-number {
+    border-color: #059669;
+    background: #059669;
+    color: white;
+  }
+
+  .workspace-quick-nav-item.is-current
+    .workspace-quick-nav-number {
+    border-color: #6366f1;
+    background: #6366f1;
+    color: white;
+  }
+}
