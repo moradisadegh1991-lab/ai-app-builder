@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
@@ -43,11 +44,13 @@ export function ProjectWorkspace({
     async (kind: Exclude<Busy, null>, url: string, method: string, body?: unknown) => {
       setBusy(kind);
       setError(null);
+
       try {
         const data = await api<{ project: ProjectView }>(url, {
           method,
           body: body === undefined ? undefined : JSON.stringify(body),
         });
+
         setProject(data.project);
       } catch (e) {
         setError((e as Error).message);
@@ -62,60 +65,79 @@ export function ProjectWorkspace({
 
   // Poll GitHub Actions while a build is running.
   const buildRunning = project.build !== null && project.build.status !== "completed";
+
   useEffect(() => {
     if (!buildRunning) return;
+
     const timer = setInterval(() => {
       api<{ project: ProjectView }>(`${base}/build`)
         .then((data) => setProject(data.project))
         .catch(() => undefined);
     }, 10_000);
+
     return () => clearInterval(timer);
   }, [buildRunning, base]);
 
   // Poll Vercel while the backend is deploying.
   const deploying = project.deployment?.status === "deploying";
+
   useEffect(() => {
     if (!deploying) return;
+
     const timer = setInterval(() => {
       api<{ project: ProjectView }>(`${base}/cloud`)
         .then((data) => setProject(data.project))
         .catch(() => undefined);
     }, 8_000);
+
     return () => clearInterval(timer);
   }, [deploying, base]);
 
-  // Poll the project while the VPS agent installs or deploys (it reports to the platform).
-  const vpsBusy = project.vps !== null && (project.vps.status === "pending" || project.vps.status === "deploying");
+  // Poll the project while the VPS agent installs or deploys.
+  const vpsBusy =
+    project.vps !== null &&
+    (project.vps.status === "pending" || project.vps.status === "deploying");
+
   useEffect(() => {
     if (!vpsBusy) return;
+
     const timer = setInterval(() => {
       api<{ project: ProjectView }>(base)
         .then((data) => setProject(data.project))
         .catch(() => undefined);
     }, 10_000);
+
     return () => clearInterval(timer);
   }, [vpsBusy, base]);
 
   const specApproved = Boolean(project.specApprovedAt);
-  const hasCode = Boolean(project.generation?.files.length) && project.generation?.kind !== "spec";
+  const hasCode =
+    Boolean(project.generation?.files.length) &&
+    project.generation?.kind !== "spec";
+
   const isWebsite = project.kind === "website";
   const product = isWebsite ? "سایت" : "اپ";
   const deployFailed = project.vps?.status === "error";
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="workspace-shell flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-extrabold">{project.name}</h1>
             <StatusBadge status={project.status} />
           </div>
-          <p className="mt-1 max-w-3xl text-sm text-slate-600 dark:text-slate-400">{project.idea}</p>
+
+          <p className="mt-1 max-w-3xl text-sm text-slate-600 dark:text-slate-400">
+            {project.idea}
+          </p>
         </div>
+
         <div className="flex items-center gap-2">
           <label htmlFor="provider" className="text-sm text-slate-500">
             مدل:
           </label>
+
           <select
             id="provider"
             className="input w-auto"
@@ -132,13 +154,21 @@ export function ProjectWorkspace({
       </div>
 
       {busy && (
-        <div className="flex items-center gap-3 rounded-xl bg-brand-50 px-4 py-3 text-sm text-brand-700 dark:bg-brand-700/20 dark:text-brand-100">
+        <div
+          role="status"
+          aria-live="polite"
+          className="workspace-notice workspace-notice-loading flex items-center gap-3 rounded-xl px-4 py-3 text-sm"
+        >
           <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
           {BUSY_MESSAGES[busy]}
         </div>
       )}
+
       {error && !busy && (
-        <div className="rounded-xl bg-red-50 px-4 py-3 text-sm whitespace-pre-wrap text-red-700 dark:bg-red-950 dark:text-red-300">
+        <div
+          role="alert"
+          className="workspace-notice workspace-notice-error rounded-xl px-4 py-3 text-sm whitespace-pre-wrap"
+        >
           {error}
         </div>
       )}
@@ -148,12 +178,21 @@ export function ProjectWorkspace({
           spec={project.spec}
           approved={specApproved}
           disabled={busy !== null}
-          onGenerate={(feedback) => run("spec", `${base}/spec`, "POST", { feedback, provider })}
-          onApprove={(spec) => run("approve", `${base}/spec`, "PUT", spec ? { spec } : {})}
+          onGenerate={(feedback) =>
+            run("spec", `${base}/spec`, "POST", { feedback, provider })
+          }
+          onApprove={(spec) =>
+            run("approve", `${base}/spec`, "PUT", spec ? { spec } : {})
+          }
         />
       </Step>
 
-      <Step number={2} title={`تولید کد ${product}`} done={hasCode} locked={!specApproved}>
+      <Step
+        number={2}
+        title={`تولید کد ${product}`}
+        done={hasCode}
+        locked={!specApproved}
+      >
         <CodeStep
           project={project}
           disabled={busy !== null || !specApproved}
@@ -178,16 +217,27 @@ export function ProjectWorkspace({
       </Step>
 
       {project.hosting === "none" ? (
-        <Step number={4} title="اجرا روی گوشی" done={project.build?.conclusion === "success"} locked={!hasCode}>
+        <Step
+          number={4}
+          title="اجرا روی گوشی"
+          done={project.build?.conclusion === "success"}
+          locked={!hasCode}
+        >
           <p className="text-sm text-slate-600 dark:text-slate-400">
             این اپ محلی است و همه داده‌ها روی گوشی ذخیره می‌شوند؛ به سرور یا فضای ابری نیاز ندارد. فقط APK را نصب کنید.
           </p>
+
           <div className="mt-3">
             <GuideToggle id="install-apk" />
           </div>
         </Step>
       ) : project.hosting === "vercel" ? (
-        <Step number={4} title="اجرا روی Vercel + Neon (رایگان)" done={project.deployment?.status === "ready"} locked={!project.repo}>
+        <Step
+          number={4}
+          title="اجرا روی Vercel + Neon (رایگان)"
+          done={project.deployment?.status === "ready"}
+          locked={!project.repo}
+        >
           <CloudStep
             project={project}
             disabled={busy !== null || !project.repo}
@@ -229,17 +279,21 @@ function Step({
   children: React.ReactNode;
 }) {
   return (
-    <section className={`card ${locked ? "opacity-60" : ""}`}>
+    <section className={`workspace-step card ${locked ? "is-locked" : ""}`}>
       <div className="mb-4 flex items-center gap-3">
         <span
           className={`flex size-8 items-center justify-center rounded-full text-sm font-bold ${
-            done ? "bg-emerald-500 text-white" : "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+            done
+              ? "bg-emerald-500 text-white"
+              : "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
           }`}
         >
           {done ? "✓" : number.toLocaleString("fa-IR")}
         </span>
+
         <h2 className="text-lg font-bold">{title}</h2>
       </div>
+
       {children}
     </section>
   );
@@ -264,16 +318,23 @@ function SpecStep({
   const [rawJson, setRawJson] = useState("");
   const [jsonError, setJsonError] = useState<string | null>(null);
 
-  useEffect(() => setRawJson(spec ? JSON.stringify(spec, null, 2) : ""), [spec]);
+  useEffect(
+    () => setRawJson(spec ? JSON.stringify(spec, null, 2) : ""),
+    [spec],
+  );
 
   if (!spec) {
     return (
       <div className="flex flex-col items-start gap-3">
         <p className="text-sm text-slate-600 dark:text-slate-400">
-          هوش مصنوعی ایده را به صفحات، قابلیت‌ها، مدل داده و نیاز به سرور تبدیل می‌کند. قبل از تولید کد آن را بررسی و
-          تأیید می‌کنی.
+          هوش مصنوعی ایده را به صفحات، قابلیت‌ها، مدل داده و نیاز به سرور تبدیل می‌کند. قبل از تولید کد آن را بررسی و تأیید می‌کنی.
         </p>
-        <button className="btn-primary" disabled={disabled} onClick={() => onGenerate()}>
+
+        <button
+          className="btn-primary"
+          disabled={disabled}
+          onClick={() => onGenerate()}
+        >
           تحلیل ایده با هوش مصنوعی
         </button>
       </div>
@@ -284,32 +345,43 @@ function SpecStep({
     <div className="flex flex-col gap-4">
       <div>
         <h3 className="font-bold">{spec.appName}</h3>
-        <p className="text-sm text-slate-600 dark:text-slate-400">{spec.summary}</p>
+        <p className="text-sm text-slate-600 dark:text-slate-400">
+          {spec.summary}
+        </p>
       </div>
+
       <div className="grid gap-4 md:grid-cols-2">
         <div>
           <h4 className="mb-2 text-sm font-bold">صفحات</h4>
+
           <ul className="space-y-2 text-sm">
             {spec.screens.map((screen) => (
-              <li key={screen.name} className="rounded-lg bg-slate-50 p-2 dark:bg-slate-800/60">
+              <li
+                key={screen.name}
+                className="rounded-lg bg-slate-50 p-2 dark:bg-slate-800/60"
+              >
                 <span className="font-medium">{screen.name}</span>
                 <span className="text-slate-500"> — {screen.purpose}</span>
               </li>
             ))}
           </ul>
         </div>
+
         <div className="flex flex-col gap-4">
           <div>
             <h4 className="mb-2 text-sm font-bold">قابلیت‌ها</h4>
+
             <ul className="list-disc space-y-1 ps-5 text-sm">
               {spec.features.map((feature) => (
                 <li key={feature}>{feature}</li>
               ))}
             </ul>
           </div>
+
           {spec.dataModel.length > 0 && (
             <div>
               <h4 className="mb-2 text-sm font-bold">مدل داده</h4>
+
               <ul className="space-y-1 text-sm">
                 {spec.dataModel.map((entity) => (
                   <li key={entity.entity}>
@@ -322,8 +394,11 @@ function SpecStep({
               </ul>
             </div>
           )}
+
           <p className="rounded-lg bg-slate-50 p-2 text-sm dark:bg-slate-800/60">
-            {spec.needsBackend ? "🌐 به سرور و دیتابیس ابری نیاز دارد: " : "📱 بدون سرور؛ داده‌ها روی گوشی ذخیره می‌شوند. "}
+            {spec.needsBackend
+              ? "🌐 به سرور و دیتابیس ابری نیاز دارد: "
+              : "📱 بدون سرور؛ داده‌ها روی گوشی ذخیره می‌شوند. "}
             <span className="text-slate-500">{spec.backendReason}</span>
           </p>
         </div>
@@ -333,6 +408,7 @@ function SpecStep({
         <label className="label" htmlFor="feedback">
           تغییرات موردنظر (اختیاری)
         </label>
+
         <textarea
           id="feedback"
           className="input min-h-20"
@@ -343,13 +419,17 @@ function SpecStep({
       </div>
 
       <details className="text-sm">
-        <summary className="cursor-pointer text-slate-500">ویرایش پیشرفته (JSON)</summary>
+        <summary className="cursor-pointer text-slate-500">
+          ویرایش پیشرفته (JSON)
+        </summary>
+
         <textarea
           dir="ltr"
           className="input mt-2 min-h-64 font-mono text-xs"
           value={rawJson}
           onChange={(e) => setRawJson(e.target.value)}
         />
+
         {jsonError && <p className="mt-1 text-red-600">{jsonError}</p>}
       </details>
 
@@ -359,6 +439,7 @@ function SpecStep({
           disabled={disabled}
           onClick={() => {
             let edited: AppSpec | undefined;
+
             if (rawJson && rawJson !== JSON.stringify(spec, null, 2)) {
               try {
                 edited = JSON.parse(rawJson) as AppSpec;
@@ -366,13 +447,19 @@ function SpecStep({
                 return setJsonError("JSON نامعتبر است.");
               }
             }
+
             setJsonError(null);
             onApprove(edited);
           }}
         >
           {approved ? "ذخیره و تأیید مجدد" : "تأیید نیازمندی‌ها"}
         </button>
-        <button className="btn-secondary" disabled={disabled} onClick={() => onGenerate(feedback || undefined)}>
+
+        <button
+          className="btn-secondary"
+          disabled={disabled}
+          onClick={() => onGenerate(feedback || undefined)}
+        >
           {feedback ? "بازنویسی با این تغییرات" : "تحلیل دوباره"}
         </button>
       </div>
@@ -382,26 +469,50 @@ function SpecStep({
 
 // ------------------------------------------------------------------ code
 
-function CodeStep({ project, disabled, onGenerate }: { project: ProjectView; disabled: boolean; onGenerate: () => void }) {
+function CodeStep({
+  project,
+  disabled,
+  onGenerate,
+}: {
+  project: ProjectView;
+  disabled: boolean;
+  onGenerate: () => void;
+}) {
   const files = project.generation?.files ?? [];
   const [selected, setSelected] = useState<string | null>(null);
-  const current = files.find((f) => f.path === selected) ?? files.find((f) => f.path.endsWith("App.tsx")) ?? files[0];
+
+  const current =
+    files.find((f) => f.path === selected) ??
+    files.find((f) => f.path.endsWith("App.tsx")) ??
+    files[0];
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-3">
-        <button className="btn-primary" disabled={disabled} onClick={onGenerate}>
+        <button
+          className="btn-primary"
+          disabled={disabled}
+          onClick={onGenerate}
+        >
           {files.length ? "تولید دوباره کد" : "تولید کد"}
         </button>
+
         {project.generation && (
           <span className="text-xs text-slate-500">
-            {project.generation.kind === "fix" ? "اصلاح‌شده" : "تولیدشده"} با {project.generation.provider} ·{" "}
-            <span dir="ltr">{project.generation.model}</span> · {files.length.toLocaleString("fa-IR")} فایل
+            {project.generation.kind === "fix" ? "اصلاح‌شده" : "تولیدشده"} با{" "}
+            {project.generation.provider} ·{" "}
+            <span dir="ltr">{project.generation.model}</span> ·{" "}
+            {files.length.toLocaleString("fa-IR")} فایل
           </span>
         )}
       </div>
 
-      {project.generation?.notes && <p className="text-sm text-slate-600 dark:text-slate-400">{project.generation.notes}</p>}
+      {project.generation?.notes && (
+        <p className="text-sm text-slate-600 dark:text-slate-400">
+          {project.generation.notes}
+        </p>
+      )}
+
       {project.generation?.warnings.length ? (
         <ul className="list-disc rounded-lg bg-amber-50 p-3 ps-8 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300">
           {project.generation.warnings.map((w) => (
@@ -412,13 +523,18 @@ function CodeStep({ project, disabled, onGenerate }: { project: ProjectView; dis
 
       {files.length > 0 && current && (
         <div className="grid gap-3 md:grid-cols-[240px_1fr]">
-          <ul dir="ltr" className="max-h-96 overflow-auto rounded-lg border border-slate-200 p-1 font-mono text-xs dark:border-slate-800">
+          <ul
+            dir="ltr"
+            className="max-h-96 overflow-auto rounded-lg border border-slate-200 p-1 font-mono text-xs dark:border-slate-800"
+          >
             {files.map((file) => (
               <li key={file.path}>
                 <button
                   onClick={() => setSelected(file.path)}
                   className={`w-full truncate rounded px-2 py-1 text-left ${
-                    file.path === current.path ? "bg-brand-600 text-white" : "hover:bg-slate-100 dark:hover:bg-slate-800"
+                    file.path === current.path
+                      ? "bg-brand-600 text-white"
+                      : "hover:bg-slate-100 dark:hover:bg-slate-800"
                   }`}
                 >
                   {file.path}
@@ -426,7 +542,11 @@ function CodeStep({ project, disabled, onGenerate }: { project: ProjectView; dis
               </li>
             ))}
           </ul>
-          <pre dir="ltr" className="max-h-96 overflow-auto rounded-lg bg-slate-950 p-3 text-left text-xs text-slate-100">
+
+          <pre
+            dir="ltr"
+            className="max-h-96 overflow-auto rounded-lg bg-slate-950 p-3 text-left text-xs text-slate-100"
+          >
             <code>{current.content}</code>
           </pre>
         </div>
@@ -441,9 +561,12 @@ function buildStatusText(status: string, isWebsite: boolean) {
   const map: Record<string, string> = {
     waiting: "در انتظار شروع Workflow…",
     queued: "در صف GitHub Actions…",
-    in_progress: isWebsite ? "در حال Build سایت (حدود ۱ تا ۳ دقیقه)…" : "در حال ساخت APK (معمولاً ۵ تا ۱۵ دقیقه)…",
+    in_progress: isWebsite
+      ? "در حال Build سایت (حدود ۱ تا ۳ دقیقه)…"
+      : "در حال ساخت APK (معمولاً ۵ تا ۱۵ دقیقه)…",
     completed: "پایان یافت",
   };
+
   return map[status] ?? status;
 }
 
@@ -472,11 +595,13 @@ function BuildStep({
         <p className="rounded-lg bg-amber-50 p-3 text-amber-900 dark:bg-amber-950 dark:text-amber-200">
           برای ذخیره کد و ساخت {isWebsite ? "سایت" : "APK"}، ابتدا حساب GitHub خود را متصل کنید (رایگان).
         </p>
+
         <div>
           <a href="/api/auth/github" className="btn-primary">
             اتصال GitHub
           </a>
         </div>
+
         <GuideToggle id="github" />
       </div>
     );
@@ -485,11 +610,24 @@ function BuildStep({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-3">
-        <button className="btn-primary" disabled={disabled || pushedCurrent} onClick={onPush}>
-          {project.repo ? "ارسال نسخه جدید کد به GitHub" : "ساخت Repository و شروع Build"}
+        <button
+          className="btn-primary"
+          disabled={disabled || pushedCurrent}
+          onClick={onPush}
+        >
+          {project.repo
+            ? "ارسال نسخه جدید کد به GitHub"
+            : "ساخت Repository و شروع Build"}
         </button>
+
         {project.repo && (
-          <a href={project.repo.url} target="_blank" rel="noreferrer" className="btn-secondary" dir="ltr">
+          <a
+            href={project.repo.url}
+            target="_blank"
+            rel="noreferrer"
+            className="btn-secondary"
+            dir="ltr"
+          >
             {project.repo.owner}/{project.repo.name}
           </a>
         )}
@@ -509,18 +647,30 @@ function BuildStep({
                       : "❌ ناموفق"
                   : buildStatusText(build.status, isWebsite)}
               </div>
+
               <div className="text-xs text-slate-500" dir="ltr">
                 commit {build.commitSha.slice(0, 7)}
               </div>
             </div>
+
             <div className="flex flex-wrap gap-2">
               {build.runUrl && (
-                <a href={build.runUrl} target="_blank" rel="noreferrer" className="btn-secondary">
+                <a
+                  href={build.runUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn-secondary"
+                >
                   گزارش Build
                 </a>
               )}
+
               {build.status === "completed" && (
-                <button className="btn-secondary" disabled={disabled} onClick={onRebuild}>
+                <button
+                  className="btn-secondary"
+                  disabled={disabled}
+                  onClick={onRebuild}
+                >
                   Build مجدد
                 </button>
               )}
@@ -536,24 +686,36 @@ function BuildStep({
           {build.conclusion === "success" && !isWebsite && build.downloadable && (
             <div className="mt-4 flex flex-col gap-3 rounded-lg bg-emerald-50 p-3 dark:bg-emerald-950">
               <div className="flex flex-wrap items-center gap-3">
-                <a href={`/api/projects/${project.id}/apk`} className="btn-primary bg-emerald-600 hover:bg-emerald-700">
+                <a
+                  href={`/api/projects/${project.id}/apk`}
+                  className="btn-primary bg-emerald-600 hover:bg-emerald-700"
+                >
                   ⬇️ دانلود فایل APK
                 </a>
+
                 <span className="text-xs text-emerald-800 dark:text-emerald-300">
                   {build.apkName}
-                  {build.apkSizeBytes ? ` · ${(build.apkSizeBytes / 1024 / 1024).toFixed(1)} MB` : ""} — نسخه آزمایشی با
-                  امضای Debug
+                  {build.apkSizeBytes
+                    ? ` · ${(build.apkSizeBytes / 1024 / 1024).toFixed(1)} MB`
+                    : ""}{" "}
+                  — نسخه آزمایشی با امضای Debug
                 </span>
               </div>
+
               <GuideToggle id="install-apk" />
             </div>
           )}
 
           {build.conclusion === "failure" && (
             <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg bg-red-50 p-3 dark:bg-red-950">
-              <button className="btn-primary" disabled={disabled} onClick={onFix}>
+              <button
+                className="btn-primary"
+                disabled={disabled}
+                onClick={onFix}
+              >
                 🛠 اصلاح خودکار خطا با هوش مصنوعی
               </button>
+
               <span className="text-xs text-red-800 dark:text-red-300">
                 گزارش خطای Build برای مدل ارسال می‌شود و نسخه اصلاح‌شده دوباره Build می‌شود.
               </span>
@@ -567,7 +729,15 @@ function BuildStep({
 
 // ----------------------------------------------------------------- cloud
 
-function CloudStep({ project, disabled, onProvision }: { project: ProjectView; disabled: boolean; onProvision: () => void }) {
+function CloudStep({
+  project,
+  disabled,
+  onProvision,
+}: {
+  project: ProjectView;
+  disabled: boolean;
+  onProvision: () => void;
+}) {
   const deployment = project.deployment;
   const needsBackend = project.spec?.needsBackend;
   const isWebsite = project.kind === "website";
@@ -583,36 +753,69 @@ function CloudStep({ project, disabled, onProvision }: { project: ProjectView; d
             ? "سایت روی Vercel منتشر می‌شود و یک نشانی ‎*.vercel.app‎ با HTTPS می‌گیرد."
             : "این اپ بدون سرور کار می‌کند."}
       </p>
+
       <p className="text-xs text-slate-500">
         پیش‌نیاز: توکن Vercel{needsBackend ? " و کلید Neon" : ""} در صفحه «اتصال‌ها و کلیدها» و نصب اپ GitHub روی حساب Vercel.
       </p>
+
       <GuideToggle id="vercel-neon" />
 
       {deployment ? (
         <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
           <div className="font-medium">
             وضعیت:{" "}
-            {{ provisioning: "در حال آماده‌سازی…", deploying: "در حال استقرار روی Vercel…", ready: "✅ فعال", failed: "❌ ناموفق" }[
-              deployment.status
-            ] ?? deployment.status}
+            {{
+              provisioning: "در حال آماده‌سازی…",
+              deploying: "در حال استقرار روی Vercel…",
+              ready: "✅ فعال",
+              failed: "❌ ناموفق",
+            }[deployment.status] ?? deployment.status}
           </div>
-          {deployment.hasDatabase && <div className="text-xs text-slate-500">دیتابیس Neon متصل است.</div>}
+
+          {deployment.hasDatabase && (
+            <div className="text-xs text-slate-500">
+              دیتابیس Neon متصل است.
+            </div>
+          )}
+
           {deployment.url && (
-            <a href={deployment.url} target="_blank" rel="noreferrer" className="text-brand-600 underline" dir="ltr">
+            <a
+              href={deployment.url}
+              target="_blank"
+              rel="noreferrer"
+              className="text-brand-600 underline"
+              dir="ltr"
+            >
               {deployment.url}
             </a>
           )}
-          {deployment.error && <p className="mt-2 whitespace-pre-wrap text-red-600">{deployment.error}</p>}
+
+          {deployment.error && (
+            <p className="mt-2 whitespace-pre-wrap text-red-600">
+              {deployment.error}
+            </p>
+          )}
+
           {deployment.status === "failed" && (
-            <button className="btn-secondary mt-3" disabled={disabled} onClick={onProvision}>
+            <button
+              className="btn-secondary mt-3"
+              disabled={disabled}
+              onClick={onProvision}
+            >
               تلاش دوباره
             </button>
           )}
         </div>
       ) : (
         <div>
-          <button className="btn-primary" disabled={disabled} onClick={onProvision}>
-            {needsBackend ? "ساخت دیتابیس Neon و استقرار روی Vercel" : "انتشار روی Vercel"}
+          <button
+            className="btn-primary"
+            disabled={disabled}
+            onClick={onProvision}
+          >
+            {needsBackend
+              ? "ساخت دیتابیس Neon و استقرار روی Vercel"
+              : "انتشار روی Vercel"}
           </button>
         </div>
       )}
@@ -629,21 +832,40 @@ interface InstallInstructions {
   expiresAt: string;
 }
 
-const VPS_GUIDES: Record<string, GuideId> = { own: "own-vps", oracle: "oracle", gcp: "gcp", aws: "aws" };
+const VPS_GUIDES: Record<string, GuideId> = {
+  own: "own-vps",
+  oracle: "oracle",
+  gcp: "gcp",
+  aws: "aws",
+};
 
 const VPS_STATUS: Record<string, { text: string; className: string }> = {
-  pending: { text: "⏳ منتظر اجرای نصب‌کننده روی سرور", className: "text-amber-700 dark:text-amber-300" },
-  deploying: { text: "🔄 در حال استقرار…", className: "text-sky-700 dark:text-sky-300" },
-  online: { text: "✅ فعال", className: "text-emerald-700 dark:text-emerald-300" },
-  error: { text: "❌ استقرار ناموفق", className: "text-red-700 dark:text-red-300" },
+  pending: {
+    text: "⏳ منتظر اجرای نصب‌کننده روی سرور",
+    className: "text-amber-700 dark:text-amber-300",
+  },
+  deploying: {
+    text: "🔄 در حال استقرار…",
+    className: "text-sky-700 dark:text-sky-300",
+  },
+  online: {
+    text: "✅ فعال",
+    className: "text-emerald-700 dark:text-emerald-300",
+  },
+  error: {
+    text: "❌ استقرار ناموفق",
+    className: "text-red-700 dark:text-red-300",
+  },
 };
 
 function CopyBox({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false);
+
   return (
     <div>
       <div className="mb-1 flex items-center justify-between">
         <span className="text-xs font-medium">{label}</span>
+
         <button
           type="button"
           className="btn-secondary min-h-0 px-2 py-1 text-xs"
@@ -657,7 +879,11 @@ function CopyBox({ label, value }: { label: string; value: string }) {
           {copied ? "کپی شد ✓" : "کپی"}
         </button>
       </div>
-      <pre dir="ltr" className="overflow-x-auto rounded-lg bg-slate-950 p-3 text-left text-xs whitespace-pre-wrap break-all text-emerald-300">
+
+      <pre
+        dir="ltr"
+        className="overflow-x-auto rounded-lg bg-slate-950 p-3 text-left text-xs whitespace-pre-wrap break-all text-emerald-300"
+      >
         {value}
       </pre>
     </div>
@@ -681,6 +907,7 @@ function VpsStep({
 }) {
   const [install, setInstall] = useState<InstallInstructions | null>(null);
   const [busy, setBusy] = useState(false);
+
   const vps = project.vps;
   const own = project.vpsProvider === "own";
   const guide = VPS_GUIDES[project.vpsProvider ?? "own"] ?? "own-vps";
@@ -688,10 +915,15 @@ function VpsStep({
   async function createCommand() {
     setBusy(true);
     onError(null);
+
     try {
-      const data = await api<{ install: InstallInstructions; project: ProjectView }>(`/api/projects/${project.id}/vps`, {
+      const data = await api<{
+        install: InstallInstructions;
+        project: ProjectView;
+      }>(`/api/projects/${project.id}/vps`, {
         method: "POST",
       });
+
       setInstall(data.install);
       onChange(data.project);
     } catch (e) {
@@ -702,10 +934,22 @@ function VpsStep({
   }
 
   async function disconnect() {
-    if (!confirm("اتصال این سرور حذف شود؟ کلید استقرار از GitHub پاک می‌شود؛ خود سرور دست نمی‌خورد.")) return;
+    if (
+      !confirm(
+        "اتصال این سرور حذف شود؟ کلید استقرار از GitHub پاک می‌شود؛ خود سرور دست نمی‌خورد.",
+      )
+    ) {
+      return;
+    }
+
     setBusy(true);
+
     try {
-      const data = await api<{ project: ProjectView }>(`/api/projects/${project.id}/vps`, { method: "DELETE" });
+      const data = await api<{ project: ProjectView }>(
+        `/api/projects/${project.id}/vps`,
+        { method: "DELETE" },
+      );
+
       setInstall(null);
       onChange(data.project);
     } catch (e) {
@@ -715,7 +959,9 @@ function VpsStep({
     }
   }
 
-  const status = vps ? VPS_STATUS[vps.status] ?? { text: vps.status, className: "" } : null;
+  const status = vps
+    ? VPS_STATUS[vps.status] ?? { text: vps.status, className: "" }
+    : null;
 
   return (
     <div className="flex flex-col gap-4 text-sm">
@@ -730,54 +976,99 @@ function VpsStep({
       {vps && vps.registered && status && (
         <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className={`font-medium ${status.className}`}>{status.text}</div>
+            <div className={`font-medium ${status.className}`}>
+              {status.text}
+            </div>
+
             <div className="text-xs text-slate-500" dir="ltr">
               {vps.hostname} {vps.ip ? `· ${vps.ip}` : ""}
             </div>
           </div>
-          {vps.lastMessage && <div className="mt-1 text-xs text-slate-500">{vps.lastMessage}</div>}
+
+          {vps.lastMessage && (
+            <div className="mt-1 text-xs text-slate-500">
+              {vps.lastMessage}
+            </div>
+          )}
+
           {vps.url && vps.status === "online" && (
-            <a href={vps.url} target="_blank" rel="noreferrer" className="mt-2 inline-block text-brand-600 underline" dir="ltr">
+            <a
+              href={vps.url}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-2 inline-block text-brand-600 underline"
+              dir="ltr"
+            >
               {vps.url}
             </a>
           )}
+
           <div className="mt-2 text-xs text-slate-500">
             {vps.deployedCommit && (
               <span dir="ltr" className="font-mono">
                 commit {vps.deployedCommit.slice(0, 7)} ·{" "}
               </span>
             )}
-            {vps.lastReportAt && `آخرین گزارش: ${new Date(vps.lastReportAt).toLocaleString("fa-IR", { timeZone: "Asia/Tehran" })}`}
+
+            {vps.lastReportAt &&
+              `آخرین گزارش: ${new Date(vps.lastReportAt).toLocaleString(
+                "fa-IR",
+                { timeZone: "Asia/Tehran" },
+              )}`}
           </div>
+
           {vps.stale && (
             <p className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-200">
               بیش از ۱۰ دقیقه است که سرور گزارشی نفرستاده؛ ممکن است خاموش یا بدون اینترنت باشد. روی سرور بزنید:{" "}
               <code dir="ltr">sudo idea2app status</code>
             </p>
           )}
+
           {vps.lastLog && (
             <details className="mt-3">
-              <summary className="cursor-pointer text-xs text-slate-500">گزارش آخرین استقرار</summary>
-              <pre dir="ltr" className="mt-2 max-h-64 overflow-auto rounded-lg bg-slate-950 p-3 text-left text-[11px] text-slate-200">
+              <summary className="cursor-pointer text-xs text-slate-500">
+                گزارش آخرین استقرار
+              </summary>
+
+              <pre
+                dir="ltr"
+                className="mt-2 max-h-64 overflow-auto rounded-lg bg-slate-950 p-3 text-left text-[11px] text-slate-200"
+              >
                 {vps.lastLog}
               </pre>
             </details>
           )}
+
           {canFix && (
             <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg bg-red-50 p-3 dark:bg-red-950">
-              <button className="btn-primary" disabled={disabled} onClick={onFix}>
+              <button
+                className="btn-primary"
+                disabled={disabled}
+                onClick={onFix}
+              >
                 🛠 اصلاح خودکار خطا با هوش مصنوعی
               </button>
+
               <span className="text-xs text-red-800 dark:text-red-300">
                 گزارش استقرار برای مدل ارسال می‌شود؛ کد اصلاح‌شده Commit و روی سرور خودکار دوباره مستقر می‌شود.
               </span>
             </div>
           )}
+
           <div className="mt-3 flex flex-wrap gap-2">
-            <button className="btn-secondary" disabled={disabled || busy} onClick={createCommand}>
+            <button
+              className="btn-secondary"
+              disabled={disabled || busy}
+              onClick={createCommand}
+            >
               نصب روی سرور دیگر / نصب دوباره
             </button>
-            <button className="btn-danger" disabled={busy} onClick={disconnect}>
+
+            <button
+              className="btn-danger"
+              disabled={busy}
+              onClick={disconnect}
+            >
               قطع اتصال سرور
             </button>
           </div>
@@ -791,9 +1082,18 @@ function VpsStep({
               {VPS_STATUS.pending!.text}. اگر دستور قبلی را ندارید، دستور تازه بسازید (دستور قبلی باطل می‌شود).
             </p>
           )}
+
           <div>
-            <button className="btn-primary" disabled={disabled || busy} onClick={createCommand}>
-              {busy ? "در حال ساخت…" : own ? "ساخت دستور نصب" : "ساخت اسکریپت نصب خودکار"}
+            <button
+              className="btn-primary"
+              disabled={disabled || busy}
+              onClick={createCommand}
+            >
+              {busy
+                ? "در حال ساخت…"
+                : own
+                  ? "ساخت دستور نصب"
+                  : "ساخت اسکریپت نصب خودکار"}
             </button>
           </div>
         </div>
@@ -803,16 +1103,24 @@ function VpsStep({
         <div className="flex flex-col gap-4 rounded-xl border border-brand-500/40 p-4">
           <p className="text-xs text-slate-600 dark:text-slate-400">
             این دستور یک توکن یک‌بارمصرف دارد و تا{" "}
-            {new Date(install.expiresAt).toLocaleString("fa-IR", { timeZone: "Asia/Tehran" })} معتبر است. آن را با کسی به اشتراک
-            نگذارید. بعد از اجرا، این صفحه خودکار وضعیت سرور را نشان می‌دهد.
+            {new Date(install.expiresAt).toLocaleString("fa-IR", {
+              timeZone: "Asia/Tehran",
+            })}{" "}
+            معتبر است. آن را با کسی به اشتراک نگذارید. بعد از اجرا، این صفحه خودکار وضعیت سرور را نشان می‌دهد.
           </p>
+
           {own ? (
             <>
-              <CopyBox label="روی سرور (با SSH) این دستور را اجرا کنید:" value={install.command} />
+              <CopyBox
+                label="روی سرور (با SSH) این دستور را اجرا کنید:"
+                value={install.command}
+              />
+
               <details>
                 <summary className="cursor-pointer text-xs text-slate-500">
                   سرور را تازه می‌سازید؟ اسکریپت cloud-init / user-data
                 </summary>
+
                 <div className="mt-2">
                   <CopyBox label="cloud-init" value={install.cloudInit} />
                 </div>
@@ -822,16 +1130,25 @@ function VpsStep({
             <>
               <CopyBox
                 label={`این اسکریپت را هنگام ساخت سرور در ${
-                  { oracle: "Initialization script (Oracle)", gcp: "Startup script (Google Cloud)", aws: "User data (AWS)" }[
-                    project.vpsProvider ?? "oracle"
-                  ] ?? "cloud-init"
+                  {
+                    oracle: "Initialization script (Oracle)",
+                    gcp: "Startup script (Google Cloud)",
+                    aws: "User data (AWS)",
+                  }[project.vpsProvider ?? "oracle"] ?? "cloud-init"
                 } قرار دهید:`}
                 value={install.cloudInit}
               />
+
               <details>
-                <summary className="cursor-pointer text-xs text-slate-500">سرور را قبلاً ساخته‌اید؟ دستور SSH</summary>
+                <summary className="cursor-pointer text-xs text-slate-500">
+                  سرور را قبلاً ساخته‌اید؟ دستور SSH
+                </summary>
+
                 <div className="mt-2">
-                  <CopyBox label="روی سرور اجرا کنید:" value={install.command} />
+                  <CopyBox
+                    label="روی سرور اجرا کنید:"
+                    value={install.command}
+                  />
                 </div>
               </details>
             </>
