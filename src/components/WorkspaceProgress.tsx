@@ -1,4 +1,3 @@
-
 "use client";
 
 import type { ProjectView } from "@/lib/projects";
@@ -16,6 +15,13 @@ interface ProgressStep {
   description: string;
   status: StepStatus;
 }
+
+const STEP_LABELS = [
+  "نیازمندی‌ها",
+  "تولید کد",
+  "Build",
+  "استقرار",
+];
 
 export function WorkspaceProgress({
   project,
@@ -114,6 +120,28 @@ export function WorkspaceProgress({
   const showGithubHint =
     !githubConnected && hasCode && !project.repo;
 
+  function navigateToStep(index: number) {
+    const workspace = document.querySelector(".workspace-shell");
+    const stepElements = workspace?.querySelectorAll(
+      ".workspace-step",
+    );
+
+    const target = stepElements?.item(index);
+
+    if (!target) return;
+
+    target.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+
+    target.classList.add("workspace-step-highlight");
+
+    window.setTimeout(() => {
+      target.classList.remove("workspace-step-highlight");
+    }, 1600);
+  }
+
   return (
     <section
       className="workspace-progress"
@@ -195,6 +223,44 @@ export function WorkspaceProgress({
           </div>
         ))}
       </div>
+
+      <nav
+        className="workspace-quick-nav"
+        aria-label="رفتن به مراحل پروژه"
+      >
+        <span className="workspace-quick-nav-label">
+          دسترسی سریع به مراحل
+        </span>
+
+        <div className="workspace-quick-nav-items">
+          {steps.map((step, index) => (
+            <button
+              key={step.id}
+              type="button"
+              className={`workspace-quick-nav-item is-${step.status}`}
+              onClick={() => navigateToStep(index)}
+              aria-label={`رفتن به مرحله ${step.title}`}
+            >
+              <span className="workspace-quick-nav-number">
+                {step.status === "complete"
+                  ? "✓"
+                  : (index + 1).toLocaleString("fa-IR")}
+              </span>
+
+              <span>{STEP_LABELS[index]}</span>
+
+              {step.status === "locked" && (
+                <span
+                  className="workspace-quick-nav-lock"
+                  aria-label="قفل شده"
+                >
+                  🔒
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </nav>
 
       {showGithubHint && (
         <div className="workspace-progress-hint" role="status">
