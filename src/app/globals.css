@@ -164,8 +164,14 @@ a {
     border-color 160ms ease,
     box-shadow 160ms ease,
     transform 160ms ease;
-  disabled:cursor-not-allowed;
-  disabled:opacity-50;
+}
+
+.btn:disabled,
+.btn-primary:disabled,
+.btn-secondary:disabled,
+.btn-danger:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 @utility btn-primary {
@@ -387,7 +393,8 @@ a {
 
 .empty-state-icon {
   display: grid;
-  size: 3rem;
+  width: 3rem;
+  height: 3rem;
   place-items: center;
   border-radius: 1rem;
   background: var(--brand-soft);
@@ -416,6 +423,282 @@ a {
   outline-offset: 2px;
 }
 
+/* =========================================================
+   Idea2App — Project Workspace
+   ========================================================= */
+
+.workspace-shell {
+  width: 100%;
+  max-width: 1120px;
+  margin-inline: auto;
+  padding-bottom: 3rem;
+}
+
+.workspace-shell > div:first-child {
+  padding: 1.25rem 1.4rem;
+  border: 1px solid var(--border);
+  border-radius: 1.25rem;
+  background:
+    radial-gradient(
+      circle at 95% 5%,
+      rgba(99, 102, 241, 0.10),
+      transparent 35%
+    ),
+    var(--surface);
+}
+
+.workspace-shell h1 {
+  letter-spacing: -0.035em;
+  line-height: 1.4;
+}
+
+.workspace-shell .workspace-step {
+  position: relative;
+  overflow: hidden;
+  padding: 1.35rem;
+  border: 1px solid var(--border);
+  border-radius: 1.15rem;
+  background: var(--surface);
+  box-shadow: 0 5px 22px rgba(15, 23, 42, 0.035);
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease,
+    opacity 180ms ease;
+}
+
+.workspace-shell .workspace-step:hover {
+  border-color: rgba(99, 102, 241, 0.35);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.055);
+}
+
+.workspace-shell .workspace-step.is-locked {
+  opacity: 0.58;
+  background: var(--surface-muted);
+  box-shadow: none;
+}
+
+.workspace-shell .workspace-step > div:first-child {
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.workspace-shell .workspace-step h2 {
+  font-size: 1rem;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+
+.workspace-shell .workspace-step h3 {
+  font-size: 1rem;
+  font-weight: 750;
+}
+
+.workspace-shell .workspace-step h4 {
+  font-size: 0.82rem;
+  font-weight: 750;
+  color: var(--text-main);
+}
+
+.workspace-shell .workspace-step button,
+.workspace-shell .workspace-step a {
+  transition:
+    transform 150ms ease,
+    box-shadow 150ms ease,
+    background-color 150ms ease,
+    border-color 150ms ease;
+}
+
+.workspace-shell .workspace-step button:not(:disabled):active,
+.workspace-shell .workspace-step a:active {
+  transform: translateY(1px);
+}
+
+.workspace-shell .workspace-step button:focus-visible,
+.workspace-shell .workspace-step a:focus-visible,
+.workspace-shell .workspace-step select:focus-visible,
+.workspace-shell .workspace-step textarea:focus-visible {
+  outline: 3px solid rgba(99, 102, 241, 0.25);
+  outline-offset: 2px;
+}
+
+.workspace-shell .workspace-step button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.workspace-notice {
+  border: 1px solid transparent;
+  border-radius: 0.9rem;
+  line-height: 1.9;
+}
+
+.workspace-notice-loading {
+  color: #4338ca;
+  background: #eef2ff;
+  border-color: #c7d2fe;
+}
+
+.workspace-notice-error {
+  color: #b91c1c;
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.workspace-shell pre {
+  scrollbar-width: thin;
+  scrollbar-color: #475569 transparent;
+}
+
+.workspace-shell pre::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+.workspace-shell pre::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 20px;
+}
+
+.workspace-shell details {
+  border-radius: 0.75rem;
+}
+
+.workspace-shell details > summary {
+  padding-block: 0.35rem;
+  font-weight: 600;
+}
+
+.workspace-shell textarea {
+  line-height: 1.9;
+  resize: vertical;
+}
+
+.workspace-shell ul li {
+  line-height: 1.85;
+}
+
+.workspace-shell .workspace-step [dir="ltr"] {
+  text-align: left;
+}
+
+/* =========================================================
+   Idea2App — Project Creator
+   ========================================================= */
+
+.project-creator {
+  position: relative;
+  overflow: hidden;
+  padding: clamp(1rem, 3vw, 2rem);
+  border: 1px solid var(--border);
+  border-radius: 1.4rem;
+  background:
+    radial-gradient(
+      circle at 100% 0,
+      rgba(99, 102, 241, 0.09),
+      transparent 28%
+    ),
+    var(--surface);
+}
+
+.project-creator-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 1.4rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.project-eyebrow {
+  display: inline-block;
+  margin-bottom: 0.45rem;
+  color: #6366f1;
+  font-size: 0.67rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.project-heading-icon {
+  display: grid;
+  width: 3.4rem;
+  height: 3.4rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: 1.1rem;
+  background: rgba(99, 102, 241, 0.09);
+  color: #6366f1;
+  font-size: 1.7rem;
+}
+
+.project-question {
+  min-width: 0;
+  padding-top: 0.25rem;
+}
+
+.project-question legend {
+  color: var(--text-main);
+  font-size: 0.95rem;
+  line-height: 1.8;
+}
+
+.project-choice {
+  position: relative;
+  min-height: 145px;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.project-choice:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+}
+
+.project-choice-selected {
+  border-color: #6366f1 !important;
+  box-shadow:
+    0 0 0 3px rgba(99, 102, 241, 0.09),
+    0 8px 24px rgba(99, 102, 241, 0.07);
+}
+
+.project-choice:focus-visible {
+  outline: 3px solid rgba(99, 102, 241, 0.3);
+  outline-offset: 3px;
+}
+
+.project-creator .input {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 0.75rem;
+}
+
+.project-creator textarea.input {
+  min-height: 130px;
+  line-height: 1.9;
+}
+
+.project-creator .label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.project-creator .btn-primary {
+  min-height: 46px;
+  padding-inline: 1.5rem;
+  border-radius: 0.8rem;
+  font-weight: 750;
+}
+
+.project-creator button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Responsive */
+
 @media (max-width: 640px) {
   .page-container {
     width: min(100% - 1.25rem, 1200px);
@@ -433,7 +716,64 @@ a {
   .dashboard-welcome {
     border-radius: 1.1rem;
   }
+
+  .workspace-shell {
+    gap: 1rem;
+  }
+
+  .workspace-shell > div:first-child {
+    padding: 1rem;
+    border-radius: 1rem;
+  }
+
+  .workspace-shell .workspace-step {
+    padding: 1rem;
+    border-radius: 1rem;
+  }
+
+  .workspace-shell .workspace-step > div:first-child {
+    align-items: flex-start;
+  }
+
+  .workspace-shell .workspace-step h2 {
+    font-size: 0.92rem;
+  }
+
+  .workspace-shell .workspace-step button,
+  .workspace-shell .workspace-step a.btn-primary,
+  .workspace-shell .workspace-step a.btn-secondary {
+    min-height: 42px;
+  }
+
+  .workspace-shell pre {
+    max-width: 100%;
+    font-size: 11px;
+  }
+
+  .project-creator {
+    padding: 1rem;
+    border-radius: 1rem;
+  }
+
+  .project-creator-heading {
+    align-items: flex-start;
+  }
+
+  .project-heading-icon {
+    width: 2.7rem;
+    height: 2.7rem;
+  }
+
+  .project-choice {
+    min-height: 120px;
+  }
+
+  .project-creator .btn-primary {
+    width: 100%;
+  }
 }
+
+/* Reduced motion */
 
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -442,8 +782,11 @@ a {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
   }
 }
+
+/* Dark mode */
 
 @media (prefers-color-scheme: dark) {
   :root {
@@ -547,5 +890,51 @@ a {
 
   .btn-danger:hover:not(:disabled) {
     background: #541d1d;
+  }
+
+  .workspace-notice-loading {
+    color: #c7d2fe;
+    background: #25245a;
+    border-color: #3730a3;
+  }
+
+  .workspace-notice-error {
+    color: #fda29b;
+    background: #451a1a;
+    border-color: #7f1d1d;
+  }
+
+  .project-choice {
+    background: var(--surface);
+    border-color: var(--border);
+  }
+
+  .project-choice-selected {
+    background: #25245a;
+    border-color: #818cf8 !important;
+  }
+
+  .project-creator {
+    background:
+      radial-gradient(
+        circle at 100% 0,
+        rgba(99, 102, 241, 0.13),
+        transparent 28%
+      ),
+      var(--surface);
+  }
+
+  .project-creator-heading {
+    border-color: var(--border);
+  }
+
+  .project-eyebrow {
+    color: #a5b4fc;
+  }
+
+  .project-heading-icon {
+    border-color: rgba(129, 140, 248, 0.3);
+    background: rgba(99, 102, 241, 0.15);
+    color: #a5b4fc;
   }
 }
