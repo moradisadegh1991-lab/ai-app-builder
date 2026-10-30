@@ -1,3 +1,4 @@
+
 import Link from "next/link";
 import { activePlan } from "@/lib/billing/subscription";
 import type { schema } from "@/lib/db";
@@ -15,6 +16,7 @@ export async function Header({ user }: { user: schema.User }) {
     <header className="app-header">
       <div className="page-shell">
         <div className="flex min-h-[68px] items-center justify-between gap-4">
+
           {/* Brand */}
           <Link
             href="/dashboard"
@@ -37,11 +39,12 @@ export async function Header({ user }: { user: schema.User }) {
             </span>
           </Link>
 
-          {/* Navigation */}
-          <HeaderNavigation />
+          {/* Desktop Navigation */}
+          <HeaderNavigation variant="desktop" />
 
-          {/* User actions */}
+          {/* User Actions */}
           <div className="flex shrink-0 items-center gap-2">
+
             {/* Subscription */}
             <Link
               href="/pricing"
@@ -56,7 +59,7 @@ export async function Header({ user }: { user: schema.User }) {
               <span>طرح {plan.name}</span>
             </Link>
 
-            {/* User profile */}
+            {/* User Profile */}
             <div className="hidden items-center gap-2 border-s border-slate-200 ps-3 sm:flex">
               {user.avatarUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -109,9 +112,9 @@ export async function Header({ user }: { user: schema.User }) {
           </div>
         </div>
 
-        {/* Mobile navigation is rendered by HeaderNavigation */}
+        {/* Mobile Navigation */}
         <div className="md:hidden">
-          <HeaderNavigation />
+          <HeaderNavigation variant="mobile" />
         </div>
       </div>
     </header>
