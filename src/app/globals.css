@@ -2439,3 +2439,218 @@ a {
     transition: none;
   }
 }
+
+/* -------------------------------------------------------
+   Code Explorer - Developer Tools
+------------------------------------------------------- */
+
+.code-explorer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border, #e2e8f0);
+  background: var(--surface-muted, #f8fafc);
+}
+
+.code-explorer-content-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 220px;
+  min-width: 0;
+  padding: 0 10px;
+  min-height: 36px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 8px;
+  background: var(--surface, #fff);
+  color: var(--text-muted, #64748b);
+}
+
+.code-explorer-content-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+}
+
+.code-explorer-content-search input:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.code-explorer-match-count {
+  flex-shrink: 0;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.code-explorer-action-button {
+  min-height: 36px;
+  padding: 0 11px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 8px;
+  background: var(--surface, #fff);
+  color: var(--text-main, #334155);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.code-explorer-action-button:hover {
+  background: var(--surface-muted, #f1f5f9);
+  border-color: #94a3b8;
+}
+
+.code-explorer-action-button.is-selected {
+  border-color: #818cf8;
+  background: #eef2ff;
+  color: #4338ca;
+}
+
+.code-explorer-copy-error {
+  padding: 9px 12px;
+  border-bottom: 1px solid #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 12px;
+}
+
+.code-explorer-code {
+  min-height: 280px;
+  max-height: 620px;
+  overflow: auto;
+  background: #0b1220;
+  color: #e2e8f0;
+  text-align: left;
+}
+
+.code-explorer-code pre {
+  min-width: max-content;
+  margin: 0;
+  padding: 14px 0;
+  font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.8;
+  tab-size: 2;
+}
+
+.code-explorer-code code {
+  display: block;
+  font-family: inherit;
+}
+
+.code-explorer-line {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  min-height: 22px;
+}
+
+.code-explorer-line-number {
+  position: sticky;
+  left: 0;
+  display: block;
+  padding: 0 12px 0 8px;
+  border-right: 1px solid #263244;
+  background: #111b2b;
+  color: #64748b;
+  text-align: right;
+  user-select: none;
+}
+
+.code-explorer-line-content {
+  display: block;
+  padding: 0 16px;
+  white-space: pre;
+}
+
+.code-explorer-code.is-wrapped pre {
+  min-width: 0;
+}
+
+.code-explorer-code.is-wrapped .code-explorer-line {
+  grid-template-columns: 54px minmax(0, 1fr);
+}
+
+.code-explorer-code.is-wrapped .code-explorer-line-content {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.code-explorer-line:hover {
+  background: rgb(148 163 184 / 8%);
+}
+
+@media (max-width: 640px) {
+  .code-explorer-actions {
+    align-items: stretch;
+  }
+
+  .code-explorer-content-search {
+    flex-basis: 100%;
+  }
+
+  .code-explorer-action-button {
+    flex: 1 1 auto;
+    padding-inline: 7px;
+    font-size: 10px;
+  }
+
+  .code-explorer-code {
+    max-height: 480px;
+  }
+
+  .code-explorer-code pre {
+    font-size: 11px;
+  }
+
+  .code-explorer-line {
+    grid-template-columns: 42px minmax(0, 1fr);
+  }
+
+  .code-explorer-line-number {
+    padding-inline: 5px;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .code-explorer-action-button {
+    background: #172033;
+    border-color: #334155;
+    color: #e2e8f0;
+  }
+
+  .code-explorer-action-button:hover {
+    background: #243149;
+  }
+
+  .code-explorer-action-button.is-selected {
+    background: #312e81;
+    border-color: #6366f1;
+    color: #e0e7ff;
+  }
+
+  .code-explorer-content-search {
+    background: #111827;
+    border-color: #334155;
+  }
+
+  .code-explorer-copy-error {
+    background: #450a0a;
+    border-color: #7f1d1d;
+    color: #fecaca;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .code-explorer-action-button {
+    transition: none;
+  }
+}
