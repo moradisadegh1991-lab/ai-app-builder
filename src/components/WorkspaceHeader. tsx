@@ -1,244 +1,76 @@
-
 "use client";
 
-import Link from "next/link";
 import type { ProjectView } from "@/lib/projects";
 import type { ProviderInfo } from "./api";
+import { StatusBadge } from "./StatusBadge";
 
-interface WorkspaceHeaderProps {
+type WorkspaceHeaderProps = {
   project: ProjectView;
   providers: ProviderInfo[];
   provider: ProviderInfo["id"];
-  onProviderChange: (value: ProviderInfo["id"]) => void;
-  githubConnected: boolean;
-  busy: boolean;
-}
-
-function getHostingLabel(project: ProjectView) {
-  if (project.hosting === "none") return "اجرای محلی";
-  if (project.hosting === "vercel") return "Vercel + Neon";
-
-  if (project.vpsProvider === "own") return "VPS اختصاصی";
-  if (project.vpsProvider === "oracle") return "Oracle Cloud";
-  if (project.vpsProvider === "gcp") return "Google Cloud";
-  if (project.vpsProvider === "aws") return "Amazon AWS";
-
-  return "VPS";
-}
-
-function getKindLabel(project: ProjectView) {
-  return project.kind === "website" ? "وب‌سایت" : "اپلیکیشن";
-}
-
-function getStatusLabel(status: string) {
-  const labels: Record<string, string> = {
-    draft: "پیش‌نویس",
-    spec_ready: "تحلیل آماده",
-    spec_approved: "نیازمندی تأیید شده",
-    generating: "در حال تولید",
-    generated: "کد تولید شده",
-    pushed: "ثبت در GitHub",
-    building: "در حال Build",
-    deploying: "در حال استقرار",
-    deployed: "منتشر شده",
-    failed: "دارای خطا",
-    completed: "تکمیل شده",
-  };
-
-  return labels[status] ?? status;
-}
-
-function getStatusStyle(status: string) {
-  if (
-    ["completed", "deployed", "generated", "pushed"].includes(status)
-  ) {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300";
-  }
-
-  if (
-    ["failed", "error"].includes(status)
-  ) {
-    return "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300";
-  }
-
-  if (
-    ["generating", "building", "deploying"].includes(status)
-  ) {
-    return "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-300";
-  }
-
-  return "border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-300";
-}
-
-function formatDate(value: string) {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) return "نامشخص";
-
-  return new Intl.DateTimeFormat("fa-IR", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
-}
-
-function InfoChip({
-  icon,
-  label,
-}: {
-  icon: string;
-  label: string;
-}) {
-  return (
-    <span className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white/80 px-2.5 py-1 text-[10px] font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300">
-      <span aria-hidden="true">{icon}</span>
-      {label}
-    </span>
-  );
-}
+  onProviderChange: (provider: ProviderInfo["id"]) => void;
+};
 
 export function WorkspaceHeader({
   project,
   providers,
   provider,
   onProviderChange,
-  githubConnected,
-  busy,
 }: WorkspaceHeaderProps) {
-  const selectedProvider = providers.find(
-    (item) => item.id === provider,
-  );
-
-  const generationStatus = project.generation?.status;
-
-  const lastUpdated = formatDate(project.updatedAt);
+  const isWebsite = project.kind === "website";
 
   return (
-    <header className="workspace-command-header">
-      {/* Navigation and quick actions */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Link
-          href="/dashboard"
-          className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 transition hover:border-indigo-300 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
-        >
-          <span aria-hidden="true">→</span>
-          بازگشت به داشبورد
-        </Link>
+    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div className="h-1 bg-gradient-to-r from-indigo-500 via-violet-500 to-cyan-400" />
 
-        <div className="flex flex-wrap items-center gap-2">
-          {project.repo && (
-            <a
-              href={project.repo.url}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-[10px] font-bold text-slate-600 transition hover:border-indigo-300 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
-            >
-              <span aria-hidden="true">⌘</span>
-              GitHub
-              <span aria-hidden="true">↗</span>
-            </a>
-          )}
-
-          {project.deployment?.url && (
-            <a
-              href={project.deployment.url}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-[10px] font-bold text-emerald-700 transition hover:border-emerald-400 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300"
-            >
-              <span aria-hidden="true">🌐</span>
-              مشاهده سایت
-              <span aria-hidden="true">↗</span>
-            </a>
-          )}
-        </div>
-      </div>
-
-      {/* Main project identity */}
-      <div className="mt-6 flex flex-col justify-between gap-5 lg:flex-row lg:items-start">
+      <div className="flex flex-col gap-5 p-5 sm:p-6 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0 flex-1">
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <span className="rounded-lg bg-indigo-100 px-2.5 py-1 text-[9px] font-extrabold tracking-wider text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
-              IDEA2APP WORKSPACE
+            <span className="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700 dark:border-indigo-900 dark:bg-indigo-950/50 dark:text-indigo-300">
+              <span className="size-2 rounded-full bg-indigo-500" />
+              {isWebsite ? "WEB PROJECT" : "APP PROJECT"}
             </span>
 
-            <span
-              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold ${getStatusStyle(project.status)}`}
-            >
-              <span className="size-1.5 rounded-full bg-current" />
-              {getStatusLabel(project.status)}
-            </span>
+            <StatusBadge status={project.status} />
           </div>
 
-          <h1 className="break-words text-2xl font-black tracking-tight text-slate-950 dark:text-white sm:text-3xl">
+          <h1 className="break-words text-2xl font-extrabold tracking-tight text-slate-950 dark:text-white sm:text-3xl">
             {project.name}
           </h1>
 
-          <p className="mt-2 max-w-3xl text-xs leading-7 text-slate-600 dark:text-slate-400">
+          <p className="mt-2 max-w-3xl text-sm leading-7 text-slate-600 dark:text-slate-400">
             {project.idea}
           </p>
 
-          <div className="mt-4 flex flex-wrap gap-2">
-            <InfoChip icon="📦" label={getKindLabel(project)} />
-            <InfoChip icon="☁️" label={getHostingLabel(project)} />
+          <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+            <span className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-1.5 dark:bg-slate-800">
+              <span aria-hidden="true">✦</span>
+              توسعه با هوش مصنوعی
+            </span>
 
-            {project.kind === "app" && (
-              <InfoChip
-                icon="📱"
-                label={
-                  project.template === "expo"
-                    ? "React Native + Expo"
-                    : "React + Capacitor"
-                }
-              />
-            )}
-
-            {project.repo && (
-              <InfoChip
-                icon="🔗"
-                label={`${project.repo.owner}/${project.repo.name}`}
-              />
-            )}
+            <span className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-1.5 dark:bg-slate-800">
+              <span aria-hidden="true">{isWebsite ? "⌘" : "▣"}</span>
+              {isWebsite ? "وب‌سایت" : "اپلیکیشن"}
+            </span>
           </div>
         </div>
 
-        {/* AI provider panel */}
-        <div className="w-full rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900/80 lg:w-72 lg:shrink-0">
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
-                تنظیمات هوش مصنوعی
-              </p>
-
-              <h2 className="mt-1 text-sm font-extrabold text-slate-900 dark:text-white">
-                AI Provider
-              </h2>
-            </div>
-
-            <span className="flex size-9 items-center justify-center rounded-xl bg-violet-50 text-lg dark:bg-violet-950/40">
-              ✦
-            </span>
-          </div>
-
+        <div className="w-full shrink-0 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950/60 lg:w-72">
           <label
-            htmlFor="workspace-provider"
-            className="mb-1.5 mt-4 block text-[10px] font-bold text-slate-600 dark:text-slate-300"
+            htmlFor="workspace-ai-provider"
+            className="mb-2 block text-xs font-bold text-slate-600 dark:text-slate-300"
           >
-            مدل فعال برای عملیات بعدی
+            مدل هوش مصنوعی
           </label>
 
           <select
-            id="workspace-provider"
-            className="input text-xs"
+            id="workspace-ai-provider"
+            className="input w-full"
             value={provider}
-            disabled={busy || providers.length === 0}
             onChange={(event) =>
               onProviderChange(event.target.value as ProviderInfo["id"])
             }
           >
-            {providers.length === 0 && (
-              <option value="">در حال دریافت مدل‌ها...</option>
-            )}
-
             {providers.map((item) => (
               <option
                 key={item.id}
@@ -251,67 +83,11 @@ export function WorkspaceHeader({
             ))}
           </select>
 
-          <div className="mt-3 flex items-center justify-between gap-2">
-            <span className="text-[10px] text-slate-400">
-              {selectedProvider?.available
-                ? "مدل آماده استفاده است"
-                : "وضعیت مدل را بررسی کنید"}
-            </span>
-
-            <span
-              className={`size-2 rounded-full ${
-                selectedProvider?.available
-                  ? "bg-emerald-500"
-                  : "bg-amber-500"
-              }`}
-            />
-          </div>
+          <p className="mt-2 text-[11px] leading-5 text-slate-500">
+            مدل انتخاب‌شده برای عملیات بعدی تحلیل و تولید کد استفاده می‌شود.
+          </p>
         </div>
       </div>
-
-      {/* Metadata footer */}
-      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200/80 pt-4 dark:border-slate-800">
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[10px] text-slate-500 dark:text-slate-400">
-          <span>
-            <strong className="font-bold text-slate-700 dark:text-slate-300">
-              شناسه:
-            </strong>{" "}
-            <span dir="ltr" className="font-mono">
-              {project.id.slice(0, 8)}
-            </span>
-          </span>
-
-          <span>
-            <strong className="font-bold text-slate-700 dark:text-slate-300">
-              آخرین تغییر:
-            </strong>{" "}
-            {lastUpdated}
-          </span>
-
-          {generationStatus && (
-            <span>
-              <strong className="font-bold text-slate-700 dark:text-slate-300">
-                تولید کد:
-              </strong>{" "}
-              {generationStatus}
-            </span>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2">
-          <span
-            className={`size-2 rounded-full ${
-              githubConnected ? "bg-emerald-500" : "bg-amber-500"
-            }`}
-          />
-
-          <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
-            {githubConnected
-              ? "GitHub متصل است"
-              : "GitHub متصل نیست"}
-          </span>
-        </div>
-      </div>
-    </header>
+    </section>
   );
 }
