@@ -517,19 +517,20 @@ function SpecStep({
   );
 }
 
-// // ------------------------------------------------------------------
-// Code step — Modern File Explorer
+// // // ------------------------------------------------------------------
+// Code step — Modern File Explorer + Split Preview
 // ------------------------------------------------------------------
-
 
 function CodeStep({
   project,
   disabled,
   onGenerate,
+  previewUrl,
 }: {
   project: ProjectView;
   disabled: boolean;
   onGenerate: () => void;
+  previewUrl: string | null;
 }) {
   const files = project.generation?.files ?? [];
 
@@ -539,6 +540,29 @@ function CodeStep({
   const [wrapLines, setWrapLines] = useState(false);
   const [copyState, setCopyState] = useState<"idle" | "content" | "path">("idle");
   const [copyError, setCopyError] = useState("");
+  const [workspaceView, setWorkspaceView] = useState<
+    "code" | "split" | "preview"
+  >("code");
+  const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
+
+  let safePreviewUrl: string | null = null;
+
+  if (previewUrl) {
+    try {
+      const parsed = new URL(previewUrl);
+
+      if (parsed.protocol === "https:" || parsed.protocol === "http:") {
+        safePreviewUrl = parsed.toString();
+      }
+    } catch {
+      safePreviewUrl = null;
+    }
+  }
+
+  const canPreview =
+    project.kind === "website" && Boolean(safePreviewUrl);
+
+  const activeView = canPreview ? workspaceView : "code";
 
   const current =
     files.find((file) => file.path === selected) ??
@@ -653,7 +677,10 @@ function CodeStep({
       ).length
     : 0;
 
-  const copyText = async (value: string, type: "content" | "path") => {
+  const copyText = async (
+    value: string,
+    type: "content" | "path",
+  ) => {
     setCopyError("");
 
     try {
@@ -714,6 +741,51 @@ function CodeStep({
         )}
       </div>
 
+      {canPreview && (
+        <div className="workspace-view-switch">
+          <div className="workspace-view-switch-label">
+            <span className="workspace-view-switch-icon">◫</span>
+            <span>نمایش Workspace</span>
+          </div>
+
+          <div
+            className="workspace-view-switch-options"
+            role="group"
+            aria-label="حالت نمایش Workspace"
+          >
+            <button
+              type="button"
+              className={activeView === "code" ? "is-active" : ""}
+              onClick={() => setWorkspaceView("code")}
+              aria-pressed={activeView === "code"}
+            >
+              <span aria-hidden="true">{"</>"}</span>
+              فقط کد
+            </button>
+
+            <button
+              type="button"
+              className={activeView === "split" ? "is-active" : ""}
+              onClick={() => setWorkspaceView("split")}
+              aria-pressed={activeView === "split"}
+            >
+              <span aria-hidden="true">◫</span>
+              کد و پیش‌نمایش
+            </button>
+
+            <button
+              type="button"
+              className={activeView === "preview" ? "is-active" : ""}
+              onClick={() => setWorkspaceView("preview")}
+              aria-pressed={activeView === "preview"}
+            >
+              <span aria-hidden="true">▣</span>
+              فقط پیش‌نمایش
+            </button>
+          </div>
+        </div>
+      )}
+
       {project.generation?.notes && (
         <div className="code-explorer-notes">
           <span>ℹ</span>
@@ -731,192 +803,247 @@ function CodeStep({
 
       {files.length > 0 && current ? (
         <>
-          <div className="code-explorer-layout">
-            <aside className="code-explorer-sidebar">
-              <div className="code-explorer-sidebar-heading">
-                <span>EXPLORER</span>
-                <span>{files.length.toLocaleString("fa-IR")} فایل</span>
-              </div>
-
-              <div className="code-explorer-search">
-                <span aria-hidden="true">⌕</span>
-
-                <input
-                  type="search"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="جست‌وجوی فایل..."
-                  aria-label="جست‌وجوی فایل‌ها"
-                />
-              </div>
-
-              <div className="code-explorer-file-list" dir="ltr">
-                {filteredFiles.length > 0 ? (
-                  filteredFiles.map((file) => {
-                    const active = file.path === current.path;
-
-                    return (
-                      <button
-                        key={file.path}
-                        type="button"
-                        onClick={() => {
-                          setSelected(file.path);
-                          setContentSearch("");
-                          setCopyError("");
-                        }}
-                        className={`code-explorer-file ${
-                          active ? "is-active" : ""
-                        }`}
-                        title={file.path}
-                        aria-current={active ? "true" : undefined}
-                      >
-                        <span className="code-explorer-file-icon">
-                          {fileIcon(file.path)}
-                        </span>
-
-                        <span className="code-explorer-file-name">
-                          {file.path.split("/").pop()}
-                        </span>
-
-                        <span className="code-explorer-file-extension">
-                          {extensionOf(file.path)}
-                        </span>
-                      </button>
-                    );
-                  })
-                ) : (
-                  <div className="code-explorer-empty-search">
-                    فایلی با این نام پیدا نشد.
-                  </div>
-                )}
-              </div>
-
-              <div className="code-explorer-sidebar-footer">
-                <span>حجم کل فایل‌ها</span>
-                <strong>{formatBytes(totalSize)}</strong>
-              </div>
-            </aside>
-
-            <section className="code-explorer-editor">
-              <div className="code-explorer-editor-header">
-                <div className="code-explorer-breadcrumb" dir="ltr">
-                  {folderOf(current.path)
-                    .split("/")
-                    .map((part, index) => (
-                      <span key={`${part}-${index}`}>
-                        {index > 0 && (
-                          <span className="code-explorer-separator">/</span>
-                        )}
-                        {part}
-                      </span>
-                    ))}
-
-                  <span className="code-explorer-separator">/</span>
-                  <strong>{current.path.split("/").pop()}</strong>
+          {activeView !== "preview" && (
+            <div
+              className={`code-explorer-layout ${
+                activeView === "split" ? "is-split-view" : ""
+              }`}
+            >
+              <aside className="code-explorer-sidebar">
+                <div className="code-explorer-sidebar-heading">
+                  <span>EXPLORER</span>
+                  <span>{files.length.toLocaleString("fa-IR")} فایل</span>
                 </div>
 
-                <span className="code-explorer-file-type">
-                  {fileType(current.path)}
-                </span>
-              </div>
-
-              <div className="code-explorer-actions">
-                <div className="code-explorer-content-search">
+                <div className="code-explorer-search">
                   <span aria-hidden="true">⌕</span>
 
                   <input
                     type="search"
-                    value={contentSearch}
-                    onChange={(event) =>
-                      setContentSearch(event.target.value)
-                    }
-                    placeholder="جست‌وجو در محتوای فایل..."
-                    aria-label="جست‌وجو در محتوای فایل"
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="جست‌وجوی فایل..."
+                    aria-label="جست‌وجوی فایل‌ها"
                   />
+                </div>
 
-                  {contentSearch.trim() && (
-                    <span className="code-explorer-match-count">
-                      {matchingLines.toLocaleString("fa-IR")} خط
-                    </span>
+                <div className="code-explorer-file-list" dir="ltr">
+                  {filteredFiles.length > 0 ? (
+                    filteredFiles.map((file) => {
+                      const active = file.path === current.path;
+
+                      return (
+                        <button
+                          key={file.path}
+                          type="button"
+                          onClick={() => {
+                            setSelected(file.path);
+                            setContentSearch("");
+                            setCopyError("");
+                          }}
+                          className={`code-explorer-file ${
+                            active ? "is-active" : ""
+                          }`}
+                          title={file.path}
+                          aria-current={active ? "true" : undefined}
+                        >
+                          <span className="code-explorer-file-icon">
+                            {fileIcon(file.path)}
+                          </span>
+
+                          <span className="code-explorer-file-name">
+                            {file.path.split("/").pop()}
+                          </span>
+
+                          <span className="code-explorer-file-extension">
+                            {extensionOf(file.path)}
+                          </span>
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <div className="code-explorer-empty-search">
+                      فایلی با این نام پیدا نشد.
+                    </div>
                   )}
                 </div>
 
-                <button
-                  type="button"
-                  className="code-explorer-action-button"
-                  onClick={() => copyText(current.path, "path")}
-                  title="کپی مسیر فایل"
-                >
-                  {copyState === "path" ? "مسیر کپی شد" : "کپی مسیر"}
-                </button>
-
-                <button
-                  type="button"
-                  className="code-explorer-action-button"
-                  onClick={() => copyText(current.content, "content")}
-                  title="کپی محتوای فایل"
-                >
-                  {copyState === "content" ? "کپی شد ✓" : "کپی کد"}
-                </button>
-
-                <button
-                  type="button"
-                  className={`code-explorer-action-button ${
-                    wrapLines ? "is-selected" : ""
-                  }`}
-                  onClick={() => setWrapLines((value) => !value)}
-                  aria-pressed={wrapLines}
-                  title="تغییر حالت نمایش خطوط"
-                >
-                  {wrapLines ? "بدون شکست خط" : "شکست خودکار خط"}
-                </button>
-              </div>
-
-              {copyError && (
-                <div className="code-explorer-copy-error" role="status">
-                  {copyError}
+                <div className="code-explorer-sidebar-footer">
+                  <span>حجم کل فایل‌ها</span>
+                  <strong>{formatBytes(totalSize)}</strong>
                 </div>
-              )}
+              </aside>
 
-              <div
-                className={`code-explorer-code ${
-                  wrapLines ? "is-wrapped" : ""
-                }`}
-                dir="ltr"
-              >
-                <pre>
-                  <code>
-                    {lines.map((line, index) => (
-                      <span
-                        className="code-explorer-line"
-                        key={`${current.path}-${index}`}
-                      >
-                        <span className="code-explorer-line-number">
-                          {index + 1}
+              <section className="code-explorer-editor">
+                <div className="code-explorer-editor-header">
+                  <div className="code-explorer-breadcrumb" dir="ltr">
+                    {folderOf(current.path)
+                      .split("/")
+                      .map((part, index) => (
+                        <span key={`${part}-${index}`}>
+                          {index > 0 && (
+                            <span className="code-explorer-separator">/</span>
+                          )}
+                          {part}
                         </span>
-                        <span className="code-explorer-line-content">
-                          {line || " "}
-                        </span>
+                      ))}
+
+                    <span className="code-explorer-separator">/</span>
+                    <strong>{current.path.split("/").pop()}</strong>
+                  </div>
+
+                  <span className="code-explorer-file-type">
+                    {fileType(current.path)}
+                  </span>
+                </div>
+
+                <div className="code-explorer-actions">
+                  <div className="code-explorer-content-search">
+                    <span aria-hidden="true">⌕</span>
+
+                    <input
+                      type="search"
+                      value={contentSearch}
+                      onChange={(event) =>
+                        setContentSearch(event.target.value)
+                      }
+                      placeholder="جست‌وجو در محتوای فایل..."
+                      aria-label="جست‌وجو در محتوای فایل"
+                    />
+
+                    {contentSearch.trim() && (
+                      <span className="code-explorer-match-count">
+                        {matchingLines.toLocaleString("fa-IR")} خط
                       </span>
-                    ))}
-                  </code>
-                </pre>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    className="code-explorer-action-button"
+                    onClick={() => copyText(current.path, "path")}
+                    title="کپی مسیر فایل"
+                  >
+                    {copyState === "path" ? "مسیر کپی شد" : "کپی مسیر"}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="code-explorer-action-button"
+                    onClick={() => copyText(current.content, "content")}
+                    title="کپی محتوای فایل"
+                  >
+                    {copyState === "content" ? "کپی شد ✓" : "کپی کد"}
+                  </button>
+
+                  <button
+                    type="button"
+                    className={`code-explorer-action-button ${
+                      wrapLines ? "is-selected" : ""
+                    }`}
+                    onClick={() => setWrapLines((value) => !value)}
+                    aria-pressed={wrapLines}
+                    title="تغییر حالت نمایش خطوط"
+                  >
+                    {wrapLines ? "بدون شکست خط" : "شکست خودکار خط"}
+                  </button>
+                </div>
+
+                {copyError && (
+                  <div className="code-explorer-copy-error" role="status">
+                    {copyError}
+                  </div>
+                )}
+
+                <div
+                  className={`code-explorer-code ${
+                    wrapLines ? "is-wrapped" : ""
+                  }`}
+                  dir="ltr"
+                >
+                  <pre>
+                    <code>
+                      {lines.map((line, index) => (
+                        <span
+                          className="code-explorer-line"
+                          key={`${current.path}-${index}`}
+                        >
+                          <span className="code-explorer-line-number">
+                            {index + 1}
+                          </span>
+                          <span className="code-explorer-line-content">
+                            {line || " "}
+                          </span>
+                        </span>
+                      ))}
+                    </code>
+                  </pre>
+                </div>
+
+                <div className="code-explorer-statusbar">
+                  <div>
+                    <span>{extensionOf(current.path).toUpperCase()}</span>
+                    <span>UTF-8</span>
+                    <span>Read only</span>
+                  </div>
+
+                  <div>
+                    <span>{lineCount.toLocaleString("fa-IR")} خط</span>
+                    <span>{formatBytes(getFileSize(current.content))}</span>
+                  </div>
+                </div>
+              </section>
+            </div>
+          )}
+
+          {canPreview && activeView !== "code" && safePreviewUrl && (
+            <section
+              className={`workspace-inline-preview ${
+                activeView === "split" ? "is-split" : "is-full"
+              }`}
+            >
+              <div className="workspace-inline-preview-header">
+                <div>
+                  <h3>پیش‌نمایش سایت</h3>
+                  <p>نسخه مستقرشده روی سرور</p>
+                </div>
+
+                <div className="workspace-inline-preview-actions">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPreviewRefreshKey((value) => value + 1)
+                    }
+                  >
+                    بارگذاری مجدد
+                  </button>
+
+                  <a
+                    href={safePreviewUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    باز کردن در تب جدید ↗
+                  </a>
+                </div>
               </div>
 
-              <div className="code-explorer-statusbar">
-                <div>
-                  <span>{extensionOf(current.path).toUpperCase()}</span>
-                  <span>UTF-8</span>
-                  <span>Read only</span>
-                </div>
+              <div className="workspace-inline-preview-frame">
+                <iframe
+                  key={previewRefreshKey}
+                  src={safePreviewUrl}
+                  title="پیش‌نمایش نسخه Deploy شده سایت"
+                  sandbox="allow-scripts allow-forms allow-popups"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
 
-                <div>
-                  <span>{lineCount.toLocaleString("fa-IR")} خط</span>
-                  <span>{formatBytes(getFileSize(current.content))}</span>
-                </div>
+              <div className="workspace-inline-preview-footer">
+                <span>نسخه Deploy شده</span>
+                <span dir="ltr">{safePreviewUrl}</span>
               </div>
             </section>
-          </div>
+          )}
 
           <div className="code-explorer-summary">
             <span>
@@ -924,10 +1051,12 @@ function CodeStep({
               فایل در پروژه
             </span>
 
-            <span>
-              فایل انتخاب‌شده:
-              <strong dir="ltr">{current.path}</strong>
-            </span>
+            {activeView !== "preview" && (
+              <span>
+                فایل انتخاب‌شده:
+                <strong dir="ltr">{current.path}</strong>
+              </span>
+            )}
           </div>
         </>
       ) : (
@@ -953,8 +1082,7 @@ function CodeStep({
       )}
     </div>
   );
-}
- ------------------------------------------------------------------
+} ------------------------------------------------------------------
 // Build step
 // ------------------------------------------------------------------
 
