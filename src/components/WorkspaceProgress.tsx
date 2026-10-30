@@ -84,47 +84,62 @@ export function WorkspaceProgress({
     },
   ];
 
-  const completedCount = definitions.filter((step) => step.done).length;
-  const progress = Math.round((completedCount / definitions.length) * 100);
+  const completedCount = definitions.filter(
+    (step) => step.done,
+  ).length;
+
+  const progress = Math.round(
+    (completedCount / definitions.length) * 100,
+  );
 
   const currentIndex = definitions.findIndex(
     (step) => !step.done && !step.locked,
   );
 
-  const steps: ProgressStep[] = definitions.map((step, index) => ({
-    id: step.id,
-    title: step.title,
-    description: step.description,
-    status: step.done
-      ? "complete"
-      : step.locked
-        ? "locked"
-        : index === currentIndex
-          ? "current"
-          : "pending",
-  }));
+  const steps: ProgressStep[] = definitions.map(
+    (step, index) => ({
+      id: step.id,
+      title: step.title,
+      description: step.description,
+      status: step.done
+        ? "complete"
+        : step.locked
+          ? "locked"
+          : index === currentIndex
+            ? "current"
+            : "pending",
+    }),
+  );
 
   const showGithubHint =
     !githubConnected && hasCode && !project.repo;
 
   return (
     <section
-      className="workspace-progress card"
+      className="workspace-progress"
       aria-label="پیشرفت ساخت محصول"
     >
-      <div className="workspace-progress-header">
+      <div className="workspace-progress-heading">
         <div>
-          <h2 className="text-base font-bold">
-            مسیر ساخت محصول
-          </h2>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            وضعیت مراحل ساخت و انتشار پروژه
+          <span className="workspace-progress-eyebrow">
+            PROJECT WORKFLOW
+          </span>
+
+          <h2>مسیر ساخت محصول</h2>
+
+          <p>
+            وضعیت مراحل طراحی، تولید و انتشار پروژه
           </p>
         </div>
 
-        <div className="workspace-progress-percent">
-          <strong>{progress.toLocaleString("fa-IR")}%</strong>
-          <span>تکمیل شده</span>
+        <div className="workspace-progress-summary">
+          <strong>
+            {progress.toLocaleString("fa-IR")}٪
+          </strong>
+
+          <span>
+            {completedCount.toLocaleString("fa-IR")} از ۴ مرحله
+          </span>
         </div>
       </div>
 
@@ -137,7 +152,7 @@ export function WorkspaceProgress({
         aria-label="درصد پیشرفت پروژه"
       >
         <div
-          className="workspace-progress-fill"
+          className="workspace-progress-track-value"
           style={{ width: `${progress}%` }}
         />
       </div>
@@ -148,34 +163,34 @@ export function WorkspaceProgress({
             key={step.id}
             className={`workspace-progress-step is-${step.status}`}
           >
-            <div className="workspace-progress-step-indicator">
-              {step.status === "complete" ? (
-                <span aria-label="تکمیل شده">✓</span>
-              ) : step.status === "locked" ? (
-                <span aria-label="قفل شده">🔒</span>
-              ) : (
-                <span>{(index + 1).toLocaleString("fa-IR")}</span>
-              )}
+            <div className="workspace-progress-step-marker">
+              {step.status === "complete"
+                ? "✓"
+                : step.status === "locked"
+                  ? "🔒"
+                  : (index + 1).toLocaleString("fa-IR")}
             </div>
+
+            {index < steps.length - 1 && (
+              <div className="workspace-progress-connector" />
+            )}
 
             <div className="workspace-progress-step-content">
               <div className="workspace-progress-step-title">
                 {step.title}
               </div>
 
-              <div className="workspace-progress-step-description">
-                {step.description}
-              </div>
+              <p>{step.description}</p>
 
-              <div className="workspace-progress-step-status">
+              <span className="workspace-progress-step-state">
                 {step.status === "complete"
                   ? "تکمیل شده"
                   : step.status === "current"
                     ? "مرحله فعلی"
                     : step.status === "locked"
-                      ? "در انتظار مرحله قبل"
+                      ? "قفل شده"
                       : "در انتظار"}
-              </div>
+              </span>
             </div>
           </div>
         ))}
@@ -183,7 +198,8 @@ export function WorkspaceProgress({
 
       {showGithubHint && (
         <div className="workspace-progress-hint" role="status">
-          <span aria-hidden="true">ℹ️</span>
+          <span aria-hidden="true">i</span>
+
           <p>
             برای ادامه مسیر، ابتدا حساب GitHub را از بخش
             «اتصال‌ها و کلیدها» متصل کن. سپس می‌توانی کد
@@ -193,9 +209,12 @@ export function WorkspaceProgress({
       )}
 
       {completedCount === definitions.length && (
-        <div className="workspace-progress-success" role="status">
-          <span aria-hidden="true">🎉</span>
-          پروژه با موفقیت به مرحله نهایی رسیده است.
+        <div className="workspace-progress-hint" role="status">
+          <span aria-hidden="true">✓</span>
+
+          <p>
+            همه مراحل پروژه با موفقیت تکمیل شده‌اند.
+          </p>
         </div>
       )}
     </section>
