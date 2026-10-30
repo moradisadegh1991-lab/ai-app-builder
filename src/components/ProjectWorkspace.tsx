@@ -1110,6 +1110,7 @@ function buildStatusText(status: string, isWebsite: boolean) {
   return map[status] ?? status;
 }
 
+
 function BuildStep({
   project,
   githubConnected,
@@ -1129,9 +1130,13 @@ function BuildStep({
   const pushedCurrent = project.status === "pushed";
   const isWebsite = project.kind === "website";
 
+  // Safely read nullable deployment fields
   const deployment = project.deployment;
-  const deploymentStatus = deployment?.status;
+  const deploymentStatus = deployment?.status ?? null;
+  const deploymentUrl = deployment?.url ?? null;
+  const deploymentError = deployment?.error ?? null;
 
+  // GitHub connection required
   if (!githubConnected) {
     return (
       <div className="flex flex-col gap-3 text-sm">
@@ -1152,6 +1157,7 @@ function BuildStep({
 
   return (
     <div className="flex flex-col gap-4">
+
       {/* GitHub actions */}
       <div className="flex flex-wrap items-center gap-3">
         <button
@@ -1180,6 +1186,8 @@ function BuildStep({
       {/* Build information */}
       {build && (
         <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
+
+          {/* Build header */}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="text-sm">
               <div className="font-medium">
@@ -1229,7 +1237,9 @@ function BuildStep({
           {/* Successful website build */}
           {build.conclusion === "success" && isWebsite && (
             <div className="mt-4 flex flex-col gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950">
-              {deploymentStatus === "ready" && deployment?.url ? (
+
+              {/* Deployment ready */}
+              {deploymentStatus === "ready" && deploymentUrl ? (
                 <>
                   <div className="flex items-center gap-2 font-medium text-emerald-800 dark:text-emerald-300">
                     <span>✓</span>
@@ -1239,53 +1249,56 @@ function BuildStep({
                   </div>
 
                   <a
-                    href={deployment.url}
+                    href={deploymentUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     dir="ltr"
                     className="break-all text-sm font-medium text-emerald-700 underline dark:text-emerald-300"
                   >
-                    {deployment.url}
+                    {deploymentUrl}
                   </a>
                 </>
               ) : deploymentStatus === "failed" ? (
-  <div className="flex flex-col gap-2">
-    <div className="font-medium text-red-700 dark:text-red-300">
-      Build موفق بود، اما استقرار سایت با خطا مواجه شده است.
-    </div>
 
-    {deployment?.error ? (
-      <pre
-        dir="auto"
-        className="overflow-x-auto whitespace-pre-wrap break-words rounded-lg bg-red-100 p-3 text-xs text-red-800 dark:bg-red-900/40 dark:text-red-200"
-      >
-        {deployment.error}
-      </pre>
-    ) : (
-      <p className="text-xs text-red-700 dark:text-red-300">
-        جزئیات خطای استقرار در دسترس نیست.
-      </p>
-    )}
+                /* Deployment failed */
+                <div className="flex flex-col gap-2">
+                  <div className="font-medium text-red-700 dark:text-red-300">
+                    Build موفق بود، اما استقرار سایت با خطا مواجه شده است.
+                  </div>
 
-    <p className="text-xs text-red-700 dark:text-red-300">
-      برای بررسی وضعیت استقرار و رفع خطا، به مرحله استقرار ابری مراجعه کنید.
-    </p>
-  </div>
-
-                  {deployment.error && (
+                  {deploymentError ? (
                     <pre
                       dir="auto"
                       className="overflow-x-auto whitespace-pre-wrap break-words rounded-lg bg-red-100 p-3 text-xs text-red-800 dark:bg-red-900/40 dark:text-red-200"
                     >
-                      {deployment.error}
+                      {deploymentError}
                     </pre>
+                  ) : (
+                    <p className="text-xs text-red-700 dark:text-red-300">
+                      جزئیات خطای استقرار در دسترس نیست.
+                    </p>
                   )}
 
                   <p className="text-xs text-red-700 dark:text-red-300">
                     برای بررسی وضعیت استقرار و رفع خطا، به مرحله استقرار ابری مراجعه کنید.
                   </p>
                 </div>
+
+              ) : deploymentStatus === "deploying" ||
+                deploymentStatus === "provisioning" ? (
+
+                /* Deployment in progress */
+                <div className="text-sm text-blue-800 dark:text-blue-300">
+                  ✓ کد سایت با موفقیت Build شد.
+
+                  <p className="mt-1 text-xs">
+                    استقرار سایت در حال انجام است. لطفاً منتظر بمانید.
+                  </p>
+                </div>
+
               ) : (
+
+                /* Build successful, deployment not started */
                 <div className="text-sm text-emerald-800 dark:text-emerald-300">
                   ✓ کد سایت با موفقیت Build شد. برای انتشار، به مرحله استقرار ابری بروید.
                 </div>
@@ -1298,6 +1311,7 @@ function BuildStep({
             !isWebsite &&
             build.downloadable && (
               <div className="mt-4 flex flex-col gap-3 rounded-lg bg-emerald-50 p-3 dark:bg-emerald-950">
+
                 <div className="flex flex-wrap items-center gap-3">
                   <a
                     href={`/api/projects/${project.id}/apk`}
@@ -1322,6 +1336,7 @@ function BuildStep({
           {/* Failed build */}
           {build.conclusion === "failure" && (
             <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg bg-red-50 p-3 dark:bg-red-950">
+
               <button
                 className="btn-primary"
                 disabled={disabled}
@@ -1335,12 +1350,12 @@ function BuildStep({
               </span>
             </div>
           )}
+
         </div>
       )}
     </div>
   );
 }
-
 
 
 
