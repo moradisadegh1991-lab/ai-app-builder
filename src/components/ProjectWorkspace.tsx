@@ -523,98 +523,310 @@ function SpecStep({
     </div>
   );
 }
-              </section>
-            </div>
-          )}
+   // ------------------------------------------------------------------
+// Code step
+// ------------------------------------------------------------------
 
-          {canPreview && activeView !== "code" && safePreviewUrl && (
-            <section
-              className={`workspace-inline-preview ${
-                activeView === "split" ? "is-split" : "is-full"
-              }`}
-            >
-              <div className="workspace-inline-preview-header">
-                <div>
-                  <h3>پیش‌نمایش سایت</h3>
-                  <p>نسخه مستقرشده روی سرور</p>
-                </div>
+type CodeView = "code" | "preview" | "split";
 
-                <div className="workspace-inline-preview-actions">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setPreviewRefreshKey((value) => value + 1)
-                    }
-                  >
-                    بارگذاری مجدد
-                  </button>
+function CodeStep({
+  project,
+  disabled,
+  previewUrl,
+  onGenerate,
+}: {
+  project: ProjectView;
+  disabled: boolean;
+  previewUrl: string | null;
+  onGenerate: () => void;
+}) {
+  const files = project.generation?.files ?? [];
 
-                  <a
-                    href={safePreviewUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    باز کردن در تب جدید ↗
-                  </a>
-                </div>
-              </div>
+  const [selectedPath, setSelectedPath] = useState("");
+  const [activeView, setActiveView] = useState<CodeView>("code");
+  const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
 
-              <div className="workspace-inline-preview-frame">
-                <iframe
-                  key={previewRefreshKey}
-                  src={safePreviewUrl}
-                  title="پیش‌نمایش نسخه Deploy شده سایت"
-                  sandbox="allow-scripts allow-forms allow-popups"
-                  referrerPolicy="no-referrer"
-                />
-              </div>
+  useEffect(() => {
+    if (files.length === 0) {
+      setSelectedPath("");
+      return;
+    }
 
-              <div className="workspace-inline-preview-footer">
-                <span>نسخه Deploy شده</span>
-                <span dir="ltr">{safePreviewUrl}</span>
-              </div>
-            </section>
-          )}
+    setSelectedPath((current) => {
+      if (files.some((file) => file.path === current)) {
+        return current;
+      }
 
-          <div className="code-explorer-summary">
-            <span>
-              <strong>{files.length.toLocaleString("fa-IR")}</strong>
-              فایل در پروژه
-            </span>
+      return files[0].path;
+    });
+  }, [files]);
 
-            {activeView !== "preview" && (
-              <span>
-                فایل انتخاب‌شده:
-                <strong dir="ltr">{current.path}</strong>
-              </span>
-            )}
-          </div>
-        </>
-      ) : (
-        <div className="code-explorer-empty">
-          <div className="code-explorer-empty-icon">{"</>"}</div>
+  const current =
+    files.find((file) => file.path === selectedPath) ?? files[0];
 
-          <h3>هنوز کدی تولید نشده است</h3>
+  const safePreviewUrl =
+    previewUrl &&
+    (previewUrl.startsWith("https://") ||
+      previewUrl.startsWith("http://"))
+      ? previewUrl
+      : null;
 
-          <p>
-            پس از تأیید نیازمندی‌ها، دکمه تولید کد را بزنید.
-            فایل‌های پروژه در این قسمت نمایش داده می‌شوند.
+  const canPreview = Boolean(safePreviewUrl);
+
+  if (files.length === 0 || !current) {
+    return (
+      <div className="code-explorer-empty">
+        <div className="code-explorer-empty-icon">
+          {"</>"}
+        </div>
+
+        <h3>هنوز کدی تولید نشده است</h3>
+
+        <p>
+          پس از تأیید نیازمندی‌ها، دکمه تولید کد را بزنید.
+          فایل‌های پروژه در این قسمت نمایش داده می‌شوند.
+        </p>
+
+        <button
+          type="button"
+          className="btn-primary"
+          disabled={disabled}
+          onClick={onGenerate}
+        >
+          شروع تولید کد
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Code explorer header */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="font-bold">
+            فایل‌های تولیدشده پروژه
+          </h3>
+
+          <p className="mt-1 text-xs text-slate-500">
+            فایل‌ها را انتخاب کنید و محتوای تولیدشده را بررسی کنید.
           </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+            {files.length.toLocaleString("fa-IR")} فایل
+          </span>
 
           <button
             type="button"
-            className="btn-primary"
+            className="btn-secondary"
             disabled={disabled}
             onClick={onGenerate}
           >
-            شروع تولید کد
+            تولید مجدد کد
           </button>
         </div>
-      )}
+      </div>
+
+      {/* View selector */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-2 dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex flex-wrap gap-1">
+          <button
+            type="button"
+            className={
+              activeView === "code"
+                ? "btn-primary"
+                : "btn-secondary"
+            }
+            onClick={() => setActiveView("code")}
+          >
+            مشاهده کد
+          </button>
+
+          {canPreview && (
+            <>
+              <button
+                type="button"
+                className={
+                  activeView === "preview"
+                    ? "btn-primary"
+                    : "btn-secondary"
+                }
+                onClick={() => setActiveView("preview")}
+              >
+                پیش‌نمایش سایت
+              </button>
+
+              <button
+                type="button"
+                className={
+                  activeView === "split"
+                    ? "btn-primary"
+                    : "btn-secondary"
+                }
+                onClick={() => setActiveView("split")}
+              >
+                نمایش هم‌زمان
+              </button>
+            </>
+          )}
+        </div>
+
+        {safePreviewUrl && (
+          <a
+            href={safePreviewUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            dir="ltr"
+            className="text-xs font-medium text-brand-600 hover:underline"
+          >
+            باز کردن سایت ↗
+          </a>
+        )}
+      </div>
+
+      {/* Code and preview */}
+      <div
+        className={`grid min-w-0 gap-4 ${
+          activeView === "split"
+            ? "xl:grid-cols-2"
+            : "grid-cols-1"
+        }`}
+      >
+        {activeView !== "preview" && (
+          <section className="min-w-0 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
+              <div className="min-w-0">
+                <div className="text-xs font-semibold text-slate-500">
+                  FILE
+                </div>
+
+                <div
+                  className="mt-1 truncate font-mono text-sm font-medium"
+                  dir="ltr"
+                >
+                  {current.path}
+                </div>
+              </div>
+
+              <span className="rounded-md bg-slate-200 px-2 py-1 text-[10px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                READ ONLY
+              </span>
+            </div>
+
+            <div className="max-h-[650px] min-h-[350px] overflow-auto bg-slate-950 p-4">
+              <pre
+                dir="ltr"
+                className="whitespace-pre-wrap break-words text-left font-mono text-xs leading-6 text-slate-200"
+              >
+                <code>{current.content}</code>
+              </pre>
+            </div>
+          </section>
+        )}
+
+        {canPreview && activeView !== "code" && safePreviewUrl && (
+          <section className="workspace-inline-preview min-w-0 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
+            <div className="workspace-inline-preview-header">
+              <div>
+                <h3>پیش‌نمایش سایت</h3>
+                <p>نسخه مستقرشده روی سرور</p>
+              </div>
+
+              <div className="workspace-inline-preview-actions">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPreviewRefreshKey((value) => value + 1)
+                  }
+                >
+                  بارگذاری مجدد
+                </button>
+
+                <a
+                  href={safePreviewUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  باز کردن در تب جدید ↗
+                </a>
+              </div>
+            </div>
+
+            <div className="workspace-inline-preview-frame">
+              <iframe
+                key={previewRefreshKey}
+                src={safePreviewUrl}
+                title="پیش‌نمایش نسخه Deploy شده سایت"
+                sandbox="allow-scripts allow-forms allow-popups"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+
+            <div className="workspace-inline-preview-footer">
+              <span>نسخه Deploy شده</span>
+              <span dir="ltr">{safePreviewUrl}</span>
+            </div>
+          </section>
+        )}
+      </div>
+
+      {/* File explorer */}
+      <section className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
+        <div className="border-b border-slate-200 px-4 py-3 dark:border-slate-800">
+          <h4 className="text-sm font-bold">
+            ساختار فایل‌های پروژه
+          </h4>
+        </div>
+
+        <div className="max-h-64 overflow-y-auto p-2">
+          <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
+            {files.map((file) => {
+              const selected = file.path === current.path;
+
+              return (
+                <button
+                  key={file.path}
+                  type="button"
+                  onClick={() => {
+                    setSelectedPath(file.path);
+                    setActiveView("code");
+                  }}
+                  className={`min-w-0 rounded-lg px-3 py-2 text-right text-xs transition ${
+                    selected
+                      ? "bg-brand-50 text-brand-700 ring-1 ring-brand-200 dark:bg-brand-950/50 dark:text-brand-300 dark:ring-brand-900"
+                      : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                  }`}
+                >
+                  <span className="block truncate font-mono" dir="ltr">
+                    {file.path}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* Summary */}
+      <div className="code-explorer-summary">
+        <span>
+          <strong>{files.length.toLocaleString("fa-IR")}</strong>
+          {" "}فایل در پروژه
+        </span>
+
+        {activeView !== "preview" && (
+          <span>
+            فایل انتخاب‌شده:
+            {" "}
+            <strong dir="ltr">{current.path}</strong>
+          </span>
+        )}
+      </div>
     </div>
   );
 }
-
 // ------------------------------------------------------------------
 // Build step
 // ------------------------------------------------------------------
