@@ -3,45 +3,250 @@
 @theme {
   --font-sans: "Vazirmatn", ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
   --color-brand-50: #eef2ff;
   --color-brand-100: #e0e7ff;
+  --color-brand-200: #c7d2fe;
+  --color-brand-300: #a5b4fc;
+  --color-brand-400: #818cf8;
   --color-brand-500: #6366f1;
   --color-brand-600: #4f46e5;
   --color-brand-700: #4338ca;
+  --color-brand-800: #3730a3;
+  --color-brand-900: #312e81;
 }
 
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
+  --app-bg: #f7f8fc;
+  --surface: #ffffff;
+  --surface-muted: #f8fafc;
+  --border: #e7eaf1;
+  --text-main: #172033;
+  --text-muted: #687386;
+  --shadow-soft: 0 8px 30px rgb(15 23 42 / 4%);
+  --shadow-card: 0 2px 8px rgb(15 23 42 / 3%), 0 14px 36px rgb(15 23 42 / 4%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  @apply bg-slate-50 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100;
+  min-height: 100vh;
+  background:
+    radial-gradient(ellipse at 85% 0%, rgb(99 102 241 / 6%), transparent 32rem),
+    var(--app-bg);
+  color: var(--text-main);
+  @apply antialiased;
+}
+
+::selection {
+  background: rgb(99 102 241 / 18%);
+  color: #312e81;
+}
+
+a {
+  text-decoration: none;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+:focus-visible {
+  outline: 3px solid rgb(99 102 241 / 35%);
+  outline-offset: 2px;
+}
+
+@utility page-shell {
+  @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8;
+}
+
+@utility page-section {
+  @apply flex flex-col gap-6 py-7 sm:gap-8 sm:py-10;
+}
+
+@utility eyebrow {
+  @apply text-xs font-bold tracking-wide text-brand-600;
+}
+
+@utility page-title {
+  @apply text-2xl font-extrabold tracking-tight text-slate-950 sm:text-3xl;
+}
+
+@utility page-description {
+  @apply mt-2 max-w-2xl text-sm leading-7 text-slate-500;
 }
 
 @utility card {
-  @apply rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900;
+  @apply rounded-2xl border border-slate-200/80 bg-white p-5;
+  box-shadow: var(--shadow-soft);
+}
+
+@utility card-hover {
+  @apply transition duration-200 hover:-translate-y-0.5 hover:border-brand-200;
+  box-shadow: var(--shadow-soft);
 }
 
 @utility btn {
-  @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50;
+  @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition duration-150;
+  @apply disabled:pointer-events-none disabled:opacity-50;
 }
 
 @utility btn-primary {
-  @apply btn bg-brand-600 text-white hover:bg-brand-700;
+  @apply btn bg-brand-600 text-white shadow-sm hover:bg-brand-700 active:scale-[0.99];
 }
 
 @utility btn-secondary {
-  @apply btn border border-slate-300 bg-white text-slate-800 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700;
+  @apply btn border border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50;
+}
+
+@utility btn-ghost {
+  @apply btn text-slate-600 hover:bg-slate-100 hover:text-slate-950;
 }
 
 @utility btn-danger {
-  @apply btn text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950;
+  @apply btn text-red-600 hover:bg-red-50;
 }
 
 @utility input {
-  @apply w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30 dark:border-slate-700 dark:bg-slate-950;
+  @apply w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition;
+  @apply placeholder:text-slate-400 hover:border-slate-300;
+  @apply focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10;
 }
 
 @utility label {
-  @apply mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300;
+  @apply mb-1.5 block text-sm font-semibold text-slate-700;
+}
+
+@utility muted-panel {
+  @apply rounded-xl border border-slate-200 bg-slate-50/80;
+}
+
+@utility status-dot {
+  @apply inline-block size-2 rounded-full;
+}
+
+@utility nav-link {
+  @apply inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium text-slate-600 transition;
+  @apply hover:bg-slate-100 hover:text-slate-950;
+}
+
+@utility nav-link-active {
+  @apply bg-brand-50 text-brand-700;
+}
+
+@utility section-heading {
+  @apply text-lg font-bold tracking-tight text-slate-900;
+}
+
+@utility divider {
+  @apply border-t border-slate-100;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+  }
+
+  body {
+    background:
+      radial-gradient(ellipse at 85% 0%, rgb(99 102 241 / 10%), transparent 32rem),
+      #080d19;
+    color: #e5e7eb;
+  }
+
+  .card {
+    border-color: #263247;
+    background: #111827;
+    box-shadow: none;
+  }
+
+  .input {
+    border-color: #334155;
+    background: #0b1220;
+    color: #e5e7eb;
+  }
+
+  .label {
+    color: #cbd5e1;
+  }
+
+  .nav-link {
+    color: #cbd5e1;
+  }
+
+  .nav-link:hover {
+    background: #1e293b;
+    color: #fff;
+  }
+
+  .nav-link-active {
+    background: rgb(79 70 229 / 20%);
+    color: #c7d2fe;
+  }
+
+  .section-heading,
+  .page-title {
+    color: #f8fafc;
+  }
+
+  .page-description {
+    color: #94a3b8;
+  }
+
+  .muted-panel {
+    border-color: #263247;
+    background: #172033;
+  }
+
+  .divider {
+    border-color: #263247;
+  }
+
+  .btn-secondary {
+    border-color: #334155;
+    background: #172033;
+    color: #e2e8f0;
+  }
+
+  .btn-secondary:hover {
+    background: #263247;
+  }
+
+  .btn-ghost {
+    color: #cbd5e1;
+  }
+
+  .btn-ghost:hover {
+    background: #1e293b;
+    color: #fff;
+  }
 }
