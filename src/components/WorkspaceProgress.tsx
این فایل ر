@@ -1,0 +1,192 @@
+"use client";
+
+import type { ProjectView } from "@/lib/projects";
+
+type StepStatus = "complete" | "current" | "locked" | "pending";
+
+interface WorkspaceProgressProps {
+  project: ProjectView;
+  githubConnected: boolean;
+}
+
+export function WorkspaceProgress({
+  project,
+  githubConnected,
+}: WorkspaceProgressProps) {
+  const specApproved = Boolean(project.specApprovedAt);
+
+  const hasCode =
+    Boolean(project.generation?.files.length) &&
+    project.generation?.kind !== "spec";
+
+  const buildSucceeded =
+    project.build?.status === "completed" &&
+    project.build?.conclusion === "success";
+
+  const isWebsite = project.kind === "website";
+
+  const hostingReady =
+    project.hosting === "none"
+      ? buildSucceeded
+      : project.hosting === "vercel"
+        ? project.deployment?.status === "ready"
+        : project.vps?.status === "online";
+
+  const hostingLocked =
+    project.hosting === "none" ? !hasCode : !project.repo;
+
+  const definitions = [
+    {
+      number: 1,
+      title: "تحلیل و طراحی",
+      description: "تبدیل ایده به نیازمندی‌ها و مشخصات فنی",
+      done: specApproved,
+      locked: false,
+    },
+    {
+      number: 2,
+      title: "تولید کد",
+      description: "ساخت صفحات، قابلیت‌ها و فایل‌های پروژه",
+      done: hasCode,
+      locked: !specApproved,
+    },
+    {
+      number: 3,
+      title: "GitHub و Build",
+      description: isWebsite
+        ? "ثبت کد و ساخت نسخه قابل انتشار سایت"
+        : "ثبت کد و تولید فایل APK",
+      done: buildSucceeded,
+      locked: !hasCode,
+    },
+    {
+      number: 4,
+      title:
+        project.hosting === "none"
+          ? "آماده‌سازی اپ"
+          : project.hosting === "vercel"
+            ? "استقرار روی Vercel"
+            : "استقرار روی VPS",
+      description:
+        project.hosting === "none"
+          ? "دریافت و نصب نسخه اندروید"
+          : project.hosting === "vercel"
+            ? "راه‌اندازی سرویس و دیتابیس ابری"
+            : "راه‌اندازی سرور و انتشار پروژه",
+      done: hostingReady,
+      locked: hostingLocked,
+    },
+  ];
+
+  const currentIndex = definitions.findIndex(
+    (step) => !step.done && !step.locked,
+  );
+
+  const completedCount = definitions.filter(
+    (step) => step.done,
+  ).length;
+
+  const percentage = Math.round(
+    (completedCount / definitions.length) * 100,
+  );
+
+  return (
+    <section
+      className="workspace-progress"
+      aria-label="پیشرفت ساخت پروژه"
+    >
+      <div className="workspace-progress-heading">
+        <div>
+          <span className="workspace-progress-eyebrow">
+            PROJECT WORKFLOW
+          </span>
+
+          <h2>مسیر ساخت پروژه</h2>
+
+          <p>از تحلیل ایده تا تولید و انتشار محصول</p>
+        </div>
+
+        <div className="workspace-progress-summary">
+          <strong>{percentage.toLocaleString("fa-IR")}٪</strong>
+          <span>
+            {completedCount.toLocaleString("fa-IR")} از{" "}
+            {definitions.length.toLocaleString("fa-IR")} مرحله
+          </span>
+        </div>
+      </div>
+
+      <div
+        className="workspace-progress-track"
+        role="progressbar"
+        aria-label="درصد تکمیل پروژه"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={percentage}
+      >
+        <div
+          className="workspace-progress-track-value"
+          style={{ width: `${percentage}%` }}
+        />
+      </div>
+
+      <div className="workspace-progress-steps">
+        {definitions.map((step, index) => {
+          const status: StepStatus = step.done
+            ? "complete"
+            : step.locked
+              ? "locked"
+              : index === currentIndex
+                ? "current"
+                : "pending";
+
+          return (
+            <div
+              key={step.number}
+              className={`workspace-progress-step is-${status}`}
+            >
+              <div className="workspace-progress-step-marker">
+                {status === "complete"
+                  ? "✓"
+                  : status === "locked"
+                    ? "🔒"
+                    : step.number.toLocaleString("fa-IR")}
+              </div>
+
+              <div className="workspace-progress-step-content">
+                <div className="workspace-progress-step-title">
+                  {step.title}
+                </div>
+
+                <p>{step.description}</p>
+
+                <span className="workspace-progress-step-state">
+                  {status === "complete"
+                    ? "تکمیل شده"
+                    : status === "current"
+                      ? "مرحله فعلی"
+                      : status === "locked"
+                        ? "در انتظار مراحل قبل"
+                        : "در انتظار انجام"}
+                </span>
+              </div>
+
+              {index < definitions.length - 1 && (
+                <div
+                  className="workspace-progress-connector"
+                  aria-hidden="true"
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {!githubConnected && hasCode && (
+        <div className="workspace-progress-hint">
+          <span>ⓘ</span>
+          برای ادامه مسیر، ابتدا حساب GitHub را متصل کن.
+        </div>
+      )}
+    </section>
+  );
+}
