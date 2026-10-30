@@ -1248,19 +1248,29 @@ function BuildStep({
                     {deployment.url}
                   </a>
                 </>
-              ) : deploymentStatus === "deploying" ||
-                deploymentStatus === "provisioning" ? (
-                <div className="flex items-center gap-2 text-sm text-emerald-800 dark:text-emerald-300">
-                  <span>✓</span>
-                  <span>
-                    Build موفق بود؛ استقرار سایت در حال انجام است.
-                  </span>
-                </div>
               ) : deploymentStatus === "failed" ? (
-                <div className="flex flex-col gap-2">
-                  <div className="font-medium text-red-700 dark:text-red-300">
-                    Build موفق بود، اما استقرار سایت با خطا مواجه شده است.
-                  </div>
+  <div className="flex flex-col gap-2">
+    <div className="font-medium text-red-700 dark:text-red-300">
+      Build موفق بود، اما استقرار سایت با خطا مواجه شده است.
+    </div>
+
+    {deployment?.error ? (
+      <pre
+        dir="auto"
+        className="overflow-x-auto whitespace-pre-wrap break-words rounded-lg bg-red-100 p-3 text-xs text-red-800 dark:bg-red-900/40 dark:text-red-200"
+      >
+        {deployment.error}
+      </pre>
+    ) : (
+      <p className="text-xs text-red-700 dark:text-red-300">
+        جزئیات خطای استقرار در دسترس نیست.
+      </p>
+    )}
+
+    <p className="text-xs text-red-700 dark:text-red-300">
+      برای بررسی وضعیت استقرار و رفع خطا، به مرحله استقرار ابری مراجعه کنید.
+    </p>
+  </div>
 
                   {deployment.error && (
                     <pre
