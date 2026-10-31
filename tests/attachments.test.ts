@@ -86,3 +86,22 @@ describe("images reach the models", () => {
     expect(JSON.parse(fetchMock.mock.calls[0]![1].body).messages[1].content).toBe("p");
   });
 });
+
+describe("editPrompt", () => {
+  it("carries the user's change, the files and marks template files read-only", async () => {
+    const { editPrompt } = await import("../src/lib/ai/prompts");
+    const spec = { appName: "Cafe" } as never;
+    const prompt = editPrompt(
+      spec,
+      [
+        { path: "src/App.tsx", content: "export default () => null" },
+        { path: "package.json", content: "{}" },
+      ],
+      "رنگ اصلی را سبز کن",
+      new Set(["src/App.tsx"]),
+    );
+    expect(prompt).toContain("رنگ اصلی را سبز کن");
+    expect(prompt).toContain("--- src/App.tsx\n");
+    expect(prompt).toContain("--- package.json (template, read-only)");
+  });
+});

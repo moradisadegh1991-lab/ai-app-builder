@@ -5,7 +5,7 @@ import { capacitorFiles, capacitorPermissions } from "./capacitor";
 import { MANIFEST_PATH, SHARED_GITIGNORE, androidPackageId, buildWorkflow, projectManifest, workflowPath } from "./common";
 import { expoFiles } from "./expo";
 import { ALLOWED_LIBRARIES } from "./libraries";
-import { replaceRemovedLucideIcons } from "./lucide";
+import { checkImports, type UnresolvedImport } from "./imports";
 import type { GeneratedFile } from "./types";
 import { webFiles } from "./web";
 
@@ -34,6 +34,8 @@ export function entryFiles(template: AppTemplate, needsBackend: boolean): string
 export interface SanitizeResult {
   files: GeneratedFile[];
   warnings: string[];
+  /** Named imports of known libraries that the library does not export (needs a repair round). */
+  unresolvedImports: UnresolvedImport[];
 }
 
 /** Validates AI-produced files: path traversal, size limits and ownership. */
@@ -44,6 +46,7 @@ export function sanitizeAiFiles(
   lockedPaths: Set<string>,
 ): SanitizeResult {
   const warnings: string[] = [];
+  const unresolvedImports: UnresolvedImport[] = [];
   const accepted = new Map<string, GeneratedFile>();
   let totalBytes = 0;
 
@@ -73,7 +76,13 @@ export function sanitizeAiFiles(
       continue;
     }
     totalBytes += bytes;
-    const content = /\.(tsx?|jsx?)$/.test(path) ? replaceRemovedLucideIcons(file.content) : file.content;
+    let content = file.content;
+    if (/\.(tsx?|jsx?)$/.test(path)) {
+      const checked = checkImports(path, content);
+      content = checked.content;
+      for (const fix of checked.fixed) warnings.push(`آیکن ناموجود جایگزین شد (${path}): ${fix}`);
+      unresolvedImports.push(...checked.unresolved);
+    }
     accepted.set(path, { path, content });
   }
 
@@ -82,7 +91,7 @@ export function sanitizeAiFiles(
   for (const entry of entryFiles(template, needsBackend)) {
     if (!accepted.has(entry)) throw new Error(`خروجی هوش مصنوعی فایل اصلی ${entry} را ندارد.`);
   }
-  return { files: [...accepted.values()], warnings };
+  return { files: [...accepted.values()], warnings, unresolvedImports };
 }
 
 export interface RenderInput {
@@ -96,6 +105,7 @@ export interface RenderInput {
 export interface RenderResult {
   files: GeneratedFile[];
   warnings: string[];
+  unresolvedImports: UnresolvedImport[];
 }
 
 /** Combines template-owned files with validated AI files into a full repository. */
@@ -138,10 +148,14 @@ export function renderProject(input: RenderInput): RenderResult {
 
   const locked = new Set(templateFiles.map((f) => f.path));
   const sanitized = sanitizeAiFiles(template, input.aiFiles, needsBackend, locked);
+  for (const item of sanitized.unresolvedImports) {
+    sanitized.warnings.push(`ایمپورت نامعتبر (${item.file}): «${item.name}» در ${item.module} وجود ندارد.`);
+  }
 
   return {
     files: [...templateFiles, ...sanitized.files].sort((a, b) => a.path.localeCompare(b.path)),
     warnings: [...warnings, ...sanitized.warnings],
+    unresolvedImports: sanitized.unresolvedImports,
   };
 }
 

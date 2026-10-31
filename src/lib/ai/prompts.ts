@@ -85,14 +85,14 @@ function attachmentsPrompt(attachments?: Attachment[] | null): string {
 // ---------------------------------------------------------------- code
 
 const WEB_RULES = `Stack: a responsive WEBSITE with React 19 + TypeScript + Vite + Tailwind CSS v4.
-Template files that ALREADY EXIST (do not output them): package.json, vite.config.ts, index.html, src/main.tsx (renders <App /> from "./App"), src/index.css (imports Tailwind; theme color available as bg-primary / text-primary), src/lib/storage.ts (exports loadJSON<T>(key, fallback) and saveJSON(key, value) over localStorage), src/lib/api.ts (exports apiFetch<T>(path, init) that calls the site's own /api).
+Template files that ALREADY EXIST (do not output them): package.json, vite.config.ts, index.html, src/main.tsx (renders <App /> from "./App"), src/index.css (imports Tailwind; theme color available as bg-primary / text-primary), src/lib/storage.ts (exports loadJSON<T>(key, fallback) and saveJSON(key, value) over localStorage), src/lib/api.ts (exports apiFetch<T>(path, init) that calls the site's own /api). src/lib/fa.ts (Persian helpers: toFaDigits, toEnDigits, formatNumber, formatToman, formatJalali(date, "short"|"long"|"full"|"dateTime"), gregorianToJalali, jalaliToGregorian, jalaliMonthLength, JALALI_MONTHS, WEEKDAYS_FA).
 You MUST output src/App.tsx with a default export. Put other code under src/ (e.g. src/components/, src/pages/, src/types.ts). Static assets (SVG only) may go in public/.
 Design a polished, modern, responsive layout (header/nav, hero or main content, footer) that works on phones and desktops. Use semantic HTML and good accessibility.
 If you use react-router-dom, use HashRouter.
 Use only relative imports (no "@/" alias).`;
 
 const CAPACITOR_RULES = `Stack: React 19 + TypeScript + Vite + Tailwind CSS v4, packaged as an Android app with Capacitor 8.
-Template files that ALREADY EXIST (do not output them): package.json, vite.config.ts, index.html, src/main.tsx (renders <App /> from "./App"), src/index.css (imports Tailwind; theme color available as bg-primary / text-primary), src/lib/storage.ts (exports loadJSON<T>(key, fallback) and saveJSON(key, value) over localStorage), src/lib/api.ts (exports API_URL and apiFetch<T>(path, init)).
+Template files that ALREADY EXIST (do not output them): package.json, vite.config.ts, index.html, src/main.tsx (renders <App /> from "./App"), src/index.css (imports Tailwind; theme color available as bg-primary / text-primary), src/lib/storage.ts (exports loadJSON<T>(key, fallback) and saveJSON(key, value) over localStorage), src/lib/api.ts (exports API_URL and apiFetch<T>(path, init)). src/lib/fa.ts (Persian helpers: toFaDigits, toEnDigits, formatNumber, formatToman, formatJalali(date, "short"|"long"|"full"|"dateTime"), gregorianToJalali, jalaliToGregorian, jalaliMonthLength, JALALI_MONTHS, WEEKDAYS_FA).
 You MUST output src/App.tsx with a default export. Put other code under src/ (e.g. src/components/, src/screens/, src/types.ts).
 Use Tailwind utility classes for styling. Mobile-first layout, touch-friendly (min 44px targets), bottom tab bar or simple in-app navigation.
 If you use react-router-dom you MUST use HashRouter.
@@ -138,6 +138,7 @@ Quality bar:
 - Implement every screen and feature in the requirements with realistic sample/empty states; no TODO placeholders.
 - No secrets, no analytics, no external network calls except the app's own backend.
 - UI text in the requirements' language; right-to-left layout for Persian.
+- For Persian UI: show dates with formatJalali (Jalali calendar), numbers with formatNumber, prices with formatToman, and use logical Tailwind classes (ms-/me-/ps-/pe-/text-start/text-end) instead of left/right. The Vazirmatn font is already bundled; do not load fonts from the internet.
 
 Respond with ONE JSON object only:
 { "files": [{ "path": string, "content": string }], "libraries": string[], "notes": string }`;
@@ -164,6 +165,28 @@ Build log (last lines):
 """
 ${buildLog}
 """
+
+Current repository files:
+${sources}`;
+}
+
+/** A change the user asked for in plain words, applied to the existing project. */
+export function editPrompt(spec: AppSpec, files: GeneratedFile[], instruction: string, editablePaths: Set<string>): string {
+  const sources = files
+    .map((f) => `--- ${f.path}${editablePaths.has(f.path) ? "" : " (template, read-only)"}\n${f.content}`)
+    .join("\n\n");
+  return `The user wants a CHANGE to this existing project. Apply exactly the requested change and keep everything else working.
+Output ONLY the files you change or add (full new content for each), never files marked read-only, and do not rewrite files that need no change.
+The result must still build without errors; import only names the libraries really export.
+Keep "libraries" as the full list of optional libraries the changed app needs. Use "notes" for a one-sentence summary of what you changed, in the app's language.
+
+Requested change (from the user):
+"""
+${instruction}
+"""
+
+Requirements the project was built from (JSON):
+${JSON.stringify(spec)}
 
 Current repository files:
 ${sources}`;

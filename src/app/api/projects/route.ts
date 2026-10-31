@@ -6,6 +6,7 @@ import { db, schema } from "@/lib/db";
 import { attachmentsSchema } from "@/lib/attachments";
 import { activePlan } from "@/lib/billing/subscription";
 import { HttpError, handleRoute, readJson } from "@/lib/http";
+import { enforce } from "@/lib/rate-limit";
 import { requireApiUser } from "@/lib/session";
 import { slugify } from "@/lib/templates";
 
@@ -60,6 +61,7 @@ export async function POST(request: Request) {
   return handleRoute(async () => {
     const user = await requireApiUser();
     const body = await readJson(request, (v) => createSchema.parse(v));
+    await enforce("project-create", user.id, 20, 3600, "ساخت پروژه");
     const { plan } = await activePlan(user.id);
     if (plan.maxProjects !== null) {
       const [row] = await db()

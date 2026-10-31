@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { generateStructured, isAiProvider, type AiProviderId } from "./ai";
 import { imagesOf } from "./attachments";
-import { SPEC_SYSTEM, codeOutputSchema, codePrompt, codeSystemPrompt, fixPrompt, specPrompt } from "./ai/prompts";
+import { SPEC_SYSTEM, codeOutputSchema, codePrompt, codeSystemPrompt, editPrompt, fixPrompt, specPrompt } from "./ai/prompts";
 import { decryptSecret, encryptSecret } from "./crypto";
 import { db, schema } from "./db";
 import { env } from "./env";
@@ -11,7 +11,9 @@ import { createNeonProject, runSchema } from "./integrations/neon";
 import { getIntegration } from "./integrations/store";
 import * as vercel from "./integrations/vercel";
 import {
+  MAX_AUTO_FIX_ROUNDS,
   currentGeneration,
+  fixRoundsSinceGreen,
   latestBuild,
   projectAgent,
   projectDeployment,
@@ -36,7 +38,7 @@ function assertNotBusy(project: schema.Project) {
   }
 }
 
-async function startJob(projectId: string, kind: "spec" | "code" | "fix", provider: string) {
+async function startJob(projectId: string, kind: "spec" | "code" | "fix" | "edit", provider: string) {
   const [job] = await db()
     .insert(schema.generationJobs)
     .values({ projectId, kind, provider, model: "pending" })
@@ -148,6 +150,52 @@ async function saveGeneration(
   return updateProject(project.id, { currentGenerationId: jobId, status: "generated", lastError: null });
 }
 
+interface RepairInput {
+  user: schema.User;
+  project: schema.Project;
+  provider: AiProviderId;
+  spec: AppSpec;
+  /** The rendered repository (template files are read-only context for the model). */
+  files: { path: string; content: string }[];
+  aiFiles: { path: string; content: string }[];
+  libraries: string[];
+  log: string;
+  /** "edit" turns `log` into the user's requested change instead of a failure report. */
+  mode?: "fix" | "edit";
+}
+
+/** One model round that edits only the files the log points at, merged into the AI-owned files. */
+async function repairWithModel(input: RepairInput) {
+  const editable = new Set(input.aiFiles.map((f) => f.path));
+  const mode = input.mode ?? "fix";
+  const { data, model } = await generateStructured({
+    userId: input.user.id,
+    projectId: input.project.id,
+    provider: input.provider,
+    purpose: mode,
+    system: codeSystemPrompt(input.project.template, input.spec.needsBackend),
+    prompt: (mode === "edit" ? editPrompt : fixPrompt)(input.spec, input.files, input.log, editable),
+    schema: codeOutputSchema,
+    maxOutputTokens: 64000,
+  });
+  const merged = new Map(input.aiFiles.map((f) => [f.path, f]));
+  for (const file of data.files) merged.set(file.path, file);
+  return {
+    aiFiles: [...merged.values()],
+    libraries: data.libraries.length ? data.libraries : input.libraries,
+    notes: data.notes,
+    model,
+  };
+}
+
+function importsLog(items: { file: string; module: string; name: string }[]) {
+  return [
+    "Vite would fail with [MISSING_EXPORT] for these imports (checked before pushing):",
+    ...items.map((i) => `- ${i.file}: "${i.name}" is not exported by "${i.module}"`),
+    "Use only names the library really exports.",
+  ].join("\n");
+}
+
 export async function generateCode(user: schema.User, project: schema.Project, providerOverride?: string) {
   assertNotBusy(project);
   if (!project.spec || !project.specApprovedAt) {
@@ -170,7 +218,28 @@ export async function generateCode(user: schema.User, project: schema.Project, p
       schema: codeOutputSchema,
       maxOutputTokens: 64000,
     });
-    return await saveGeneration(project, job.id, model, spec, data.files, data.libraries, data.notes);
+    let result = { aiFiles: data.files, libraries: data.libraries, notes: data.notes, model };
+    // Names a library does not export would only fail after a 5-15 minute CI run; one repair round is cheaper.
+    const preview = renderProject({
+      template: project.template,
+      slug: project.slug,
+      spec,
+      aiFiles: result.aiFiles,
+      requestedLibraries: result.libraries,
+    });
+    if (preview.unresolvedImports.length) {
+      result = await repairWithModel({
+        user,
+        project,
+        provider,
+        spec,
+        files: preview.files,
+        aiFiles: result.aiFiles,
+        libraries: result.libraries,
+        log: importsLog(preview.unresolvedImports),
+      });
+    }
+    return await saveGeneration(project, job.id, result.model, spec, result.aiFiles, result.libraries, result.notes);
   } catch (error) {
     await failJob(job.id, project.id, error, previousStatus === "generating" ? "spec_approved" : previousStatus);
     throw error;
@@ -277,8 +346,17 @@ export async function downloadApkUrl(user: schema.User, project: schema.Project)
 // ------------------------------------------------------------------- fix
 
 /** Sends the failed build log to the AI, re-renders the project and pushes the fix. */
-export async function autoFix(user: schema.User, project: schema.Project, providerOverride?: string) {
+export async function autoFix(
+  user: schema.User,
+  project: schema.Project,
+  providerOverride?: string,
+  options: { auto?: boolean } = {},
+) {
   assertNotBusy(project);
+  // The page triggers repairs by itself after a failed build; cap them so a stubborn error cannot burn tokens forever.
+  if (options.auto && (await fixRoundsSinceGreen(project.id)) >= MAX_AUTO_FIX_ROUNDS) {
+    throw new HttpError(429, "سقف اصلاح خودکار پر شد؛ گزارش Build را بررسی کنید یا دکمهٔ اصلاح را خودتان بزنید.");
+  }
   // The failure can come from the GitHub Actions build or from the VPS deploy.
   const build = await syncBuild(user, project);
   const agent = await projectAgent(project.id);
@@ -298,28 +376,61 @@ export async function autoFix(user: schema.User, project: schema.Project, provid
 
   const spec = project.spec;
   const provider = providerOf(project, providerOverride);
-  const editable = new Set(generation.aiFiles.map((f) => f.path));
   const job = await startJob(project.id, "fix", provider);
   await updateProject(project.id, { status: "generating", lastError: null });
 
   try {
-    const { data, model } = await generateStructured({
-      userId: user.id,
-      projectId: project.id,
+    const repaired = await repairWithModel({
+      user,
+      project,
       provider,
-      purpose: "fix",
-      system: codeSystemPrompt(project.template, spec.needsBackend),
-      prompt: fixPrompt(spec, generation.files, failureLog, editable),
-      schema: codeOutputSchema,
-      maxOutputTokens: 64000,
+      spec,
+      files: generation.files,
+      aiFiles: generation.aiFiles,
+      libraries: generation.libraries ?? [],
+      log: failureLog,
     });
-    const merged = new Map(generation.aiFiles.map((f) => [f.path, f]));
-    for (const file of data.files) merged.set(file.path, file);
-    const libraries = data.libraries.length ? data.libraries : (generation.libraries ?? []);
-    const updated = await saveGeneration(project, job.id, model, spec, [...merged.values()], libraries, data.notes);
+    const updated = await saveGeneration(project, job.id, repaired.model, spec, repaired.aiFiles, repaired.libraries, repaired.notes);
     return await pushToGitHub(user, updated, `fix: AI repair of ${label}`);
   } catch (error) {
     await failJob(job.id, project.id, error, "pushed");
+    throw error;
+  }
+}
+
+/**
+ * Applies a plain-language change request to the existing code, then commits it when the project
+ * is already on GitHub (which starts a new build).
+ */
+export async function editProject(user: schema.User, project: schema.Project, instruction: string, providerOverride?: string) {
+  assertNotBusy(project);
+  const generation = await currentGeneration(project);
+  if (!generation?.files || !generation.aiFiles || !project.spec) throw new HttpError(400, "ابتدا کد پروژه را تولید کنید.");
+
+  const spec = project.spec;
+  const provider = providerOf(project, providerOverride);
+  const previousStatus = project.status;
+  const job = await startJob(project.id, "edit", provider);
+  await updateProject(project.id, { status: "generating", lastError: null });
+
+  try {
+    const edited = await repairWithModel({
+      user,
+      project,
+      provider,
+      spec,
+      files: generation.files,
+      aiFiles: generation.aiFiles,
+      libraries: generation.libraries ?? [],
+      log: instruction,
+      mode: "edit",
+    });
+    const updated = await saveGeneration(project, job.id, edited.model, spec, edited.aiFiles, edited.libraries, edited.notes);
+    if (!project.githubRepo) return updated;
+    const summary = instruction.replace(/\s+/g, " ").trim().slice(0, 60);
+    return await pushToGitHub(user, updated, `edit: ${summary}`);
+  } catch (error) {
+    await failJob(job.id, project.id, error, previousStatus === "generating" ? "generated" : previousStatus);
     throw error;
   }
 }

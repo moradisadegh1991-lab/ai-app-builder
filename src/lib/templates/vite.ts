@@ -1,4 +1,5 @@
 import type { AppSpec } from "../spec";
+import { PERSIAN_HELPERS_PATH, PERSIAN_HELPERS_SOURCE } from "./persian";
 import type { GeneratedFile } from "./types";
 
 export interface TemplateContext {
@@ -46,6 +47,8 @@ export function viteAppFiles(
               ...extra.dependencies,
               react: "^19.3.0",
               "react-dom": "^19.3.0",
+              // Bundled with the app: works offline in the APK and where Google Fonts is blocked.
+              ...(rtl ? { "@fontsource-variable/vazirmatn": "^5.3.0" } : {}),
               ...ctx.dependencies,
             },
             devDependencies: {
@@ -110,8 +113,6 @@ export default defineConfig({
     <meta name="theme-color" content="${spec.primaryColor}" />
     <meta name="description" content="${escapeHtml(spec.summary.slice(0, 160))}" />
     <title>${escapeHtml(spec.appName)}</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700&display=swap" rel="stylesheet" />
   </head>
   <body>
     <div id="root"></div>
@@ -124,7 +125,7 @@ export default defineConfig({
       path: "src/main.tsx",
       content: `import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import App from "./App";
+${rtl ? 'import "@fontsource-variable/vazirmatn";\n' : ""}import App from "./App";
 import "./index.css";
 
 createRoot(document.getElementById("root")!).render(
@@ -140,7 +141,7 @@ createRoot(document.getElementById("root")!).render(
 
 @theme {
   --color-primary: ${spec.primaryColor};
-  --font-sans: "Vazirmatn", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: ${rtl ? '"Vazirmatn Variable", ' : ""}ui-sans-serif, system-ui, sans-serif;
 }
 
 html,
@@ -156,6 +157,7 @@ body {
 }
 `,
     },
+    { path: PERSIAN_HELPERS_PATH, content: PERSIAN_HELPERS_SOURCE },
     { path: "src/vite-env.d.ts", content: `/// <reference types="vite/client" />\n` },
     {
       path: "src/lib/storage.ts",

@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, gt, sql } from "drizzle-orm";
 import { attachmentSummary } from "./attachments";
 import { db, schema } from "./db";
 import { HttpError } from "./http";
@@ -44,6 +44,28 @@ export async function latestBuild(projectId: string) {
   return build ?? null;
 }
 
+/** Automatic repair rounds allowed after a failed build before the user has to step in. */
+export const MAX_AUTO_FIX_ROUNDS = 2;
+
+/** AI repair rounds since the last successful build (all of them if the build never succeeded). */
+export async function fixRoundsSinceGreen(projectId: string): Promise<number> {
+  const [green] = await db()
+    .select({ at: sql<Date | null>`max(${schema.buildJobs.createdAt})` })
+    .from(schema.buildJobs)
+    .where(and(eq(schema.buildJobs.projectId, projectId), eq(schema.buildJobs.conclusion, "success")));
+  const [row] = await db()
+    .select({ value: count() })
+    .from(schema.generationJobs)
+    .where(
+      and(
+        eq(schema.generationJobs.projectId, projectId),
+        eq(schema.generationJobs.kind, "fix"),
+        green?.at ? gt(schema.generationJobs.createdAt, new Date(green.at)) : undefined,
+      ),
+    );
+  return row?.value ?? 0;
+}
+
 export async function projectDeployment(projectId: string) {
   const [deployment] = await db()
     .select()
@@ -77,11 +99,12 @@ export function requireRepo(project: schema.Project) {
 
 /** Client-safe project view, used by pages and API responses. */
 export async function projectView(project: schema.Project) {
-  const [generation, build, deployment, agent] = await Promise.all([
+  const [generation, build, deployment, agent, fixRounds] = await Promise.all([
     currentGeneration(project),
     latestBuild(project.id),
     projectDeployment(project.id),
     projectAgent(project.id),
+    fixRoundsSinceGreen(project.id),
   ]);
   return {
     id: project.id,
@@ -99,6 +122,7 @@ export async function projectView(project: schema.Project) {
     spec: project.spec,
     specApprovedAt: project.specApprovedAt?.toISOString() ?? null,
     lastError: project.lastError,
+    autoFix: { used: fixRounds, max: MAX_AUTO_FIX_ROUNDS },
     repo:
       project.githubOwner && project.githubRepo
         ? {

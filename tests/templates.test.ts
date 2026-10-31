@@ -178,3 +178,25 @@ describe("removed lucide-react brand icons", () => {
     expect(out[1]!.content).toBe(`import { Play as Yt, X } from 'lucide-react';`);
   });
 });
+
+describe("Persian pack", () => {
+  const withLanguage = (language: "fa" | "en") => ({ ...spec, language });
+  const aiApp = [app];
+
+  it("bundles Vazirmatn and ships fa.ts for Persian projects, without Google Fonts", () => {
+    const files = renderProject({ template: "web", slug: "cafe", spec: withLanguage("fa"), aiFiles: aiApp, requestedLibraries: [] }).files;
+    const byPath = Object.fromEntries(files.map((f) => [f.path, f.content]));
+    expect(byPath["package.json"]).toContain("@fontsource-variable/vazirmatn");
+    expect(byPath["src/main.tsx"]).toContain('import "@fontsource-variable/vazirmatn"');
+    expect(byPath["src/index.css"]).toContain("Vazirmatn Variable");
+    expect(byPath["index.html"]).not.toContain("googleapis");
+    expect(byPath["src/lib/fa.ts"]).toContain("formatJalali");
+  });
+
+  it("does not add the font for English projects but still ships the helpers", () => {
+    const files = renderProject({ template: "capacitor", slug: "cafe", spec: withLanguage("en"), aiFiles: aiApp, requestedLibraries: [] }).files;
+    const byPath = Object.fromEntries(files.map((f) => [f.path, f.content]));
+    expect(byPath["package.json"]).not.toContain("fontsource");
+    expect(byPath["src/lib/fa.ts"]).toBeDefined();
+  });
+});

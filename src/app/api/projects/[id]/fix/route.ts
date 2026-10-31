@@ -6,12 +6,16 @@ import { projectRoute, type ProjectRouteContext } from "@/lib/route-helpers";
 
 export const maxDuration = 300;
 
-const bodySchema = z.object({ provider: z.enum(AI_PROVIDERS).optional() });
+const bodySchema = z.object({
+  provider: z.enum(AI_PROVIDERS).optional(),
+  // Set by the page when it repairs a failed build on its own; subject to the automatic-round cap.
+  auto: z.boolean().optional(),
+});
 
 /** Feeds the failed build log to the AI, then commits the repaired code. */
 export async function POST(request: Request, ctx: ProjectRouteContext) {
   return projectRoute(ctx, async (user, project) => {
     const body = await readJson(request, (v) => bodySchema.parse(v));
-    return autoFix(user, project, body.provider);
+    return autoFix(user, project, body.provider, { auto: body.auto });
   });
 }

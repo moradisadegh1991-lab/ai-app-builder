@@ -34,6 +34,9 @@ export const env = {
   // Google sign-in is optional; the button only appears when both are set.
   googleClientId: () => optional("GOOGLE_CLIENT_ID"),
   googleClientSecret: () => optional("GOOGLE_CLIENT_SECRET"),
+  // Cloudflare Turnstile on the e-mail code request (optional; both keys enable it).
+  turnstileSiteKey: () => optional("TURNSTILE_SITE_KEY"),
+  turnstileSecretKey: () => optional("TURNSTILE_SECRET_KEY"),
   // Comma-separated e-mails of developer accounts that get the unlimited plan.
   unlimitedEmails: () =>
     (optional("UNLIMITED_EMAILS") ?? "")

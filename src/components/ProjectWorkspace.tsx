@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ProjectView } from "@/lib/projects";
 import type { AppSpec } from "@/lib/spec";
 import { api, type ProviderInfo, type ProvidersResponse } from "./api";
@@ -18,6 +18,7 @@ type Busy =
   | "github"
   | "rebuild"
   | "fix"
+  | "edit"
   | "cloud";
 
 const BUSY_MESSAGES: Record<Exclude<Busy, null>, string> = {
@@ -27,6 +28,7 @@ const BUSY_MESSAGES: Record<Exclude<Busy, null>, string> = {
   github: "در حال ساخت Repository و ثبت کد در GitHub…",
   rebuild: "در حال شروع Build جدید…",
   fix: "هوش مصنوعی در حال بررسی گزارش خطا و اصلاح کد است…",
+  edit: "هوش مصنوعی در حال اعمال تغییر روی کد است؛ بعد از آن Build جدید شروع می‌شود…",
   cloud: "در حال ساخت دیتابیس Neon و پروژه Vercel…",
 };
 
@@ -88,8 +90,10 @@ export function ProjectWorkspace({
         });
 
         setProject(data.project);
+        return true;
       } catch (e) {
         setError((e as Error).message);
+        return false;
       } finally {
         setBusy(null);
       }
@@ -98,6 +102,28 @@ export function ProjectWorkspace({
   );
 
   const base = `/api/projects/${project.id}`;
+
+  // After a failed build the page repairs it by itself, up to project.autoFix.max rounds in a row.
+  const [autoFixEnabled, setAutoFixEnabled] = useState(true);
+  const autoFixedBuild = useRef<string | null>(null);
+
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem("i2a_autofix") === "off") setAutoFixEnabled(false);
+    } catch {
+      // storage unavailable: keep the default
+    }
+  }, []);
+
+  useEffect(() => {
+    const build = project.build;
+    if (!autoFixEnabled || busy !== null || !build || build.conclusion !== "failure") return;
+    if (project.autoFix.used >= project.autoFix.max || autoFixedBuild.current === build.id) return;
+    // Only for a failure that just happened, not an old one found when the page is opened later.
+    if (Date.now() - new Date(build.createdAt).getTime() > 60 * 60_000) return;
+    autoFixedBuild.current = build.id;
+    void run("fix", `${base}/fix`, "POST", { provider, auto: true });
+  }, [autoFixEnabled, busy, project.build, project.autoFix, base, provider, run]);
 
   const buildRunning =
     project.build !== null &&
@@ -268,8 +294,28 @@ export function ProjectWorkspace({
               provider,
             })
           }
+          autoFix={{
+            enabled: autoFixEnabled,
+            used: project.autoFix.used,
+            max: project.autoFix.max,
+            onChange: (value) => {
+              setAutoFixEnabled(value);
+              try {
+                window.localStorage.setItem("i2a_autofix", value ? "on" : "off");
+              } catch {
+                // storage unavailable: applies to this visit only
+              }
+            },
+          }}
         />
       </Step>
+
+      {hasCode && (
+        <EditPanel
+          disabled={busy !== null}
+          onEdit={(instruction) => run("edit", `${base}/edit`, "POST", { instruction, provider })}
+        />
+      )}
 
       {project.hosting === "none" ? (
         <Step
@@ -871,6 +917,43 @@ function buildStatusText(status: string, isWebsite: boolean) {
   return map[status] ?? status;
 }
 
+/** Describe a change in plain words; the AI edits only the files it needs and a new build starts. */
+function EditPanel({ disabled, onEdit }: { disabled: boolean; onEdit: (instruction: string) => Promise<boolean> }) {
+  const [instruction, setInstruction] = useState("");
+  const ready = instruction.trim().length >= 5;
+
+  return (
+    <section className="card flex flex-col gap-3 text-sm">
+      <div>
+        <h2 className="font-bold">ویرایش با گفتگو</h2>
+        <p className="mt-1 text-xs leading-6 text-slate-500">
+          تغییر دلخواه را بنویسید؛ مثلاً «رنگ اصلی را سبز کن»، «صفحهٔ تماس با ما اضافه کن» یا «منو را به سه دسته تقسیم کن». هوش مصنوعی فقط فایل‌های لازم را عوض می‌کند و نسخهٔ جدید به GitHub می‌رود.
+        </p>
+      </div>
+      <textarea
+        className="input min-h-24 resize-y leading-7"
+        aria-label="تغییر مورد نظر"
+        placeholder="چه چیزی عوض شود؟"
+        value={instruction}
+        maxLength={3000}
+        onChange={(event) => setInstruction(event.target.value)}
+        disabled={disabled}
+      />
+      <div>
+        <button
+          className="btn-primary"
+          disabled={disabled || !ready}
+          onClick={async () => {
+            if (await onEdit(instruction)) setInstruction("");
+          }}
+        >
+          ✏️ اعمال تغییر
+        </button>
+      </div>
+    </section>
+  );
+}
+
 function BuildStep({
   project,
   githubConnected,
@@ -878,6 +961,7 @@ function BuildStep({
   onPush,
   onRebuild,
   onFix,
+  autoFix,
 }: {
   project: ProjectView;
   githubConnected: boolean;
@@ -885,6 +969,7 @@ function BuildStep({
   onPush: () => void;
   onRebuild: () => void;
   onFix: () => void;
+  autoFix: { enabled: boolean; used: number; max: number; onChange: (value: boolean) => void };
 }) {
   const build = project.build;
   const pushedCurrent = project.status === "pushed";
@@ -1083,6 +1168,16 @@ function BuildStep({
               <span className="text-xs text-red-800 dark:text-red-300">
                 گزارش خطای Build برای مدل ارسال می‌شود و نسخه اصلاح‌شده دوباره Build می‌شود.
               </span>
+
+              <label className="flex w-full items-center gap-2 text-xs text-red-800 dark:text-red-300">
+                <input
+                  type="checkbox"
+                  checked={autoFix.enabled}
+                  onChange={(event) => autoFix.onChange(event.target.checked)}
+                />
+                اصلاح خودکار بعد از هر شکست (حداکثر {autoFix.max.toLocaleString("fa-IR")} بار پشت‌سرهم؛ تا الان{" "}
+                {autoFix.used.toLocaleString("fa-IR")} بار)
+              </label>
             </div>
           )}
         </div>
