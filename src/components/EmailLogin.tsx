@@ -78,9 +78,9 @@ export function EmailLogin({
   }
 
   return (
-    <div className="card w-full max-w-sm text-start">
-      <h2 className="mb-1 text-lg font-bold">ورود یا ثبت‌نام</h2>
-      <p className="mb-4 text-xs text-slate-500">بدون رمز عبور؛ با Google، GitHub یا کد ۶ رقمی ایمیل.</p>
+    <div className="card w-full max-w-md text-start shadow-card sm:!p-6">
+      <h2 className="text-lg font-bold text-fg">ورود یا ثبت‌نام</h2>
+      <p className="mb-5 mt-1 text-sm text-muted">بدون رمز عبور؛ با Google، GitHub یا کد ۶ رقمی ایمیل.</p>
       {(providers.google || providers.github) && !sentTo && (
         <>
           <div className="flex flex-col gap-2">
@@ -97,16 +97,16 @@ export function EmailLogin({
               </a>
             )}
           </div>
-          <div className="my-4 flex items-center gap-3 text-xs text-slate-400">
-            <span className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
+          <div className="my-4 flex items-center gap-3 text-xs text-faint">
+            <span className="h-px flex-1 bg-line" />
             یا با ایمیل
-            <span className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
+            <span className="h-px flex-1 bg-line" />
           </div>
         </>
       )}
       {!sentTo ? (
         <form onSubmit={requestCode} className="flex flex-col gap-3">
-          <label className="label" htmlFor="email">
+          <label className="label !mb-0" htmlFor="email">
             ایمیل
           </label>
           <input
@@ -122,15 +122,18 @@ export function EmailLogin({
           />
           {turnstileSiteKey && <Turnstile key={widgetKey} siteKey={turnstileSiteKey} onToken={setTurnstileToken} />}
           <button className="btn-primary" disabled={busy || !email || (Boolean(turnstileSiteKey) && !turnstileToken)}>
+            {busy && <span className="spinner" aria-hidden="true" />}
             {busy ? "در حال ارسال…" : "ارسال کد"}
           </button>
         </form>
       ) : (
         <form onSubmit={verify} className="flex flex-col gap-3">
-          <p className="text-sm">
-            کد به <span dir="ltr" className="font-mono">{sentTo}</span> فرستاده شد. پوشه Spam را هم ببینید.
+          <p className="alert alert-info">
+            <span>
+              کد به <span dir="ltr" className="font-mono">{sentTo}</span> فرستاده شد. پوشهٔ Spam را هم ببینید.
+            </span>
           </p>
-          <label className="label" htmlFor="code">
+          <label className="label !mb-0" htmlFor="code">
             کد ۶ رقمی
           </label>
           <input
@@ -145,19 +148,24 @@ export function EmailLogin({
             required
           />
           <button className="btn-primary" disabled={busy || code.length !== 6}>
+            {busy && <span className="spinner" aria-hidden="true" />}
             {busy ? "در حال بررسی…" : "ورود"}
           </button>
           <div className="flex justify-between text-xs">
-            <button type="button" className="text-slate-500 hover:underline" onClick={() => setSentTo(null)}>
+            <button type="button" className="text-muted hover:text-fg hover:underline" onClick={() => setSentTo(null)}>
               تغییر ایمیل
             </button>
-            <button type="button" className="text-brand-600 hover:underline" disabled={busy} onClick={() => requestCode()}>
+            <button type="button" className="text-primary hover:underline" disabled={busy} onClick={() => requestCode()}>
               ارسال دوباره کد
             </button>
           </div>
         </form>
       )}
-      {error && <p className="mt-3 text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {error && (
+        <p role="alert" className="alert alert-danger mt-3">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

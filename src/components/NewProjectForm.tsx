@@ -8,6 +8,7 @@ import type { Attachment } from "@/lib/attachments";
 import { prepareAttachments } from "@/lib/attachments-client";
 import { api, type ProviderInfo, type ProvidersResponse } from "./api";
 import { AttachmentPicker } from "./AttachmentPicker";
+import { Icon, type IconName } from "./ui/Icon";
 
 type Kind = "app" | "website";
 type Hosting = "vps" | "vercel";
@@ -45,47 +46,35 @@ function Choice({
 }: {
   selected: boolean;
   onClick: () => void;
-  icon: string;
+  icon: IconName;
   title: string;
   text: string;
   badge?: string;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={selected}
-      className={`project-choice group flex h-full flex-col items-start gap-3 rounded-2xl border-2 p-4 text-start transition duration-200 hover:-translate-y-0.5 hover:shadow-lg ${
-        selected
-          ? "project-choice-selected border-indigo-500 bg-indigo-50 shadow-md shadow-indigo-500/10 dark:bg-indigo-950/30"
-          : "border-slate-200 bg-white hover:border-indigo-300 dark:border-slate-700 dark:bg-slate-900"
-      }`}
-    >
+    <button type="button" onClick={onClick} aria-pressed={selected} className="choice group">
       <span className="flex w-full items-center justify-between">
-        <span className="text-3xl" aria-hidden="true">
-          {icon}
+        <span
+          className={`grid size-10 place-items-center rounded-lg transition ${
+            selected ? "bg-primary text-primary-fg" : "bg-surface-3 text-fg-2 group-hover:text-fg"
+          }`}
+        >
+          <Icon name={icon} size={20} />
         </span>
-
-        {selected && (
-          <span className="flex size-6 items-center justify-center rounded-full bg-indigo-600 text-xs text-white">
-            ✓
-          </span>
-        )}
+        <span
+          className={`grid size-5 place-items-center rounded-full border transition ${
+            selected ? "border-primary bg-primary text-primary-fg" : "border-line-strong"
+          }`}
+          aria-hidden="true"
+        >
+          {selected && <Icon name="check" size={12} strokeWidth={3} />}
+        </span>
       </span>
-
-      <span className="flex flex-wrap items-center gap-2 font-bold text-slate-900 dark:text-white">
+      <span className="mt-1 flex flex-wrap items-center gap-2 font-semibold text-fg">
         {title}
-
-        {badge && (
-          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-            {badge}
-          </span>
-        )}
+        {badge && <span className="badge badge-success">{badge}</span>}
       </span>
-
-      <span className="text-xs leading-6 text-slate-600 dark:text-slate-400">
-        {text}
-      </span>
+      <span className="text-xs leading-6 text-muted">{text}</span>
     </button>
   );
 }
@@ -103,93 +92,40 @@ function Question({
 }) {
   return (
     <fieldset className="flex min-w-0 flex-col gap-4">
-      <legend className="flex items-center gap-3 font-bold text-slate-900 dark:text-white">
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-sm text-white shadow-md shadow-indigo-600/20">
+      <legend className="flex items-center gap-3">
+        <span className="grid size-7 shrink-0 place-items-center rounded-full bg-primary-soft text-xs font-bold text-primary-soft-fg">
           {number.toLocaleString("fa-IR")}
         </span>
-        <span className="text-base">{title}</span>
+        <span className="text-base font-bold text-fg">{title}</span>
       </legend>
-
-      {description && (
-        <p className="text-xs leading-6 text-slate-500 dark:text-slate-400">
-          {description}
-        </p>
-      )}
-
+      {description && <p className="-mt-1 text-sm leading-7 text-muted">{description}</p>}
       {children}
     </fieldset>
   );
 }
 
-function Progress({
-  steps,
-  activeIndex,
-}: {
-  steps: { key: StepKey; title: string }[];
-  activeIndex: number;
-}) {
-  const percentage =
-    steps.length <= 1 ? 100 : (activeIndex / (steps.length - 1)) * 100;
-
+/** Stepper: completed steps are ticked, the current one is highlighted. */
+function Progress({ steps, activeIndex }: { steps: { key: StepKey; title: string }[]; activeIndex: number }) {
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
-          مرحله {Math.min(activeIndex + 1, steps.length).toLocaleString("fa-IR")} از{" "}
-          {steps.length.toLocaleString("fa-IR")}
-        </span>
-
-        <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">
-          {steps[activeIndex]?.title}
-        </span>
-      </div>
-
-      <div
-        className="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"
-        role="progressbar"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={Math.round(percentage)}
-      >
-        <div
-          className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 transition-all duration-300"
-          style={{ width: `${percentage}%` }}
-        />
-      </div>
-
-      <div className="grid grid-cols-4 gap-2">
-        {steps.map((step, index) => {
-          const completed = index < activeIndex;
-          const active = index === activeIndex;
-
-          return (
-            <div key={step.key} className="min-w-0 text-center">
-              <div
-                className={`mx-auto flex size-7 items-center justify-center rounded-full text-[10px] font-bold transition ${
-                  completed
-                    ? "bg-emerald-500 text-white"
-                    : active
-                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
-                      : "bg-slate-100 text-slate-400 dark:bg-slate-800"
-                }`}
-              >
-                {completed ? "✓" : (index + 1).toLocaleString("fa-IR")}
-              </div>
-
-              <p
-                className={`mt-2 truncate text-[9px] font-semibold sm:text-[10px] ${
-                  active
-                    ? "text-indigo-600 dark:text-indigo-400"
-                    : "text-slate-400"
-                }`}
-              >
-                {STEP_LABELS[step.key]}
-              </p>
-            </div>
-          );
-        })}
-      </div>
-    </div>
+    <ol className="flex items-center gap-2" aria-label="مراحل ساخت پروژه">
+      {steps.map((step, index) => {
+        const completed = index < activeIndex;
+        const active = index === activeIndex;
+        return (
+          <li key={step.key} className="flex min-w-0 flex-1 items-center gap-2" aria-current={active ? "step" : undefined}>
+            <span
+              className={`grid size-6 shrink-0 place-items-center rounded-full text-[11px] font-bold transition ${
+                completed ? "bg-success text-white" : active ? "bg-primary text-primary-fg" : "border border-line-strong bg-surface text-muted"
+              }`}
+            >
+              {completed ? <Icon name="check" size={12} strokeWidth={3} /> : (index + 1).toLocaleString("fa-IR")}
+            </span>
+            <span className={`hidden truncate text-xs font-semibold sm:block ${active ? "text-fg" : "text-muted"}`}>{STEP_LABELS[step.key]}</span>
+            {index < steps.length - 1 && <span className={`h-px min-w-4 flex-1 ${completed ? "bg-success" : "bg-line"}`} aria-hidden="true" />}
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 
@@ -407,33 +343,17 @@ export function NewProjectForm() {
   }
 
   return (
-    <form
-      onSubmit={handleFormSubmit}
-      className="project-creator card flex flex-col gap-7"
-    >
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
+    <form onSubmit={handleFormSubmit} className="flex flex-col gap-6" aria-labelledby="new-project-title">
+      <div className="flex flex-col gap-4 border-b border-line pb-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <span className="project-eyebrow">IDEA2APP BUILDER</span>
-
-          <h2 className="mt-2 text-xl font-extrabold text-slate-950 dark:text-white">
-            ایده‌ات را به محصول تبدیل کن
+          <h2 id="new-project-title" className="section-title">
+            پروژهٔ جدید
           </h2>
-
-          <p className="mt-2 max-w-xl text-xs leading-6 text-slate-500 dark:text-slate-400">
-            در چند مرحله ساده، مشخصات محصولت را انتخاب کن تا فرایند تحلیل و
-            ساخت پروژه شروع شود.
-          </p>
+          <p className="mt-0.5 text-sm text-muted">در چند مرحله نوع محصول و محل انتشار را انتخاب کنید و ایده را بنویسید.</p>
         </div>
-
-        <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-2xl text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-300">
-          ✦
-        </span>
-      </div>
-
-      {/* Progress */}
-      <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/50">
-        <Progress steps={steps} activeIndex={safeStep} />
+        <div className="w-full sm:max-w-md">
+          <Progress steps={steps} activeIndex={safeStep} />
+        </div>
       </div>
 
       {/* Step 1: Product type */}
@@ -447,7 +367,7 @@ export function NewProjectForm() {
             <Choice
               selected={kind === "website"}
               onClick={() => selectKind("website")}
-              icon="🌐"
+              icon="globe"
               title="وب‌سایت"
               text="سایت واکنش‌گرا برای موبایل و دسکتاپ؛ مناسب معرفی کسب‌وکار، پنل‌ها و سرویس‌های تحت وب."
             />
@@ -455,7 +375,7 @@ export function NewProjectForm() {
             <Choice
               selected={kind === "app"}
               onClick={() => selectKind("app")}
-              icon="📱"
+              icon="smartphone"
               title="اپ اندروید"
               text="ساخت اپلیکیشن اندروید و آماده‌سازی فایل APK با استفاده از GitHub Actions."
             />
@@ -479,7 +399,7 @@ export function NewProjectForm() {
                 setVpsProvider(null);
                 setError(null);
               }}
-              icon="📴"
+              icon="smartphone"
               title="فقط روی گوشی (محلی)"
               text="اطلاعات روی خود گوشی ذخیره می‌شوند؛ سرور لازم نیست. مناسب ابزارهای آفلاین، دفترچه و حسابداری شخصی."
               badge="ساده‌تر"
@@ -491,7 +411,7 @@ export function NewProjectForm() {
                 setNeedsCloud(true);
                 setError(null);
               }}
-              icon="☁️"
+              icon="cloud"
               title="با سرور و دیتابیس ابری"
               text="مناسب ورود کاربران، ذخیره اطلاعات مشترک، همگام‌سازی بین دستگاه‌ها و پنل مدیریت."
             />
@@ -514,7 +434,7 @@ export function NewProjectForm() {
                 setVpsProvider("own");
                 setError(null);
               }}
-              icon="🖥️"
+              icon="server"
               title="VPS خودم را دارم"
               text="یک دستور روی سرور اجرا می‌کنید؛ ایجنت Idea2App کد را از GitHub دریافت می‌کند، Build و با HTTPS اجرا می‌کند."
             />
@@ -526,7 +446,7 @@ export function NewProjectForm() {
                 setVpsProvider(null);
                 setError(null);
               }}
-              icon="🎁"
+              icon="sparkles"
               title="VPS رایگان می‌خواهم"
               text="انتخاب ارائه‌دهنده و دریافت راهنمای راه‌اندازی سرور از Oracle، Google یا AWS."
             />
@@ -538,7 +458,7 @@ export function NewProjectForm() {
                 setVpsProvider(null);
                 setError(null);
               }}
-              icon="⚡"
+              icon="zap"
               title="Vercel + Neon"
               text="استفاده از سرویس‌های ابری برای استقرار وب‌اپلیکیشن و دیتابیس، بدون مدیریت VPS."
               badge="راه‌اندازی ساده"
@@ -546,12 +466,12 @@ export function NewProjectForm() {
           </div>
 
           {hosting === "free-vps" && (
-            <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900/50">
+            <div className="panel-muted space-y-3 p-4">
               <div>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                <h3 className="text-sm font-bold text-fg">
                   ارائه‌دهنده VPS را انتخاب کنید
                 </h3>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-xs text-muted">
                   شرایط ثبت‌نام و دسترسی به پلن‌های رایگان به سیاست‌های هر
                   ارائه‌دهنده بستگی دارد.
                 </p>
@@ -561,7 +481,7 @@ export function NewProjectForm() {
                 <Choice
                   selected={vpsProvider === "oracle"}
                   onClick={() => setVpsProvider("oracle")}
-                  icon="🟥"
+                  icon="cloud"
                   title="Oracle Cloud"
                   text="گزینه‌های Always Free برای برخی منابع محاسباتی."
                   badge="پیشنهادی"
@@ -570,7 +490,7 @@ export function NewProjectForm() {
                 <Choice
                   selected={vpsProvider === "gcp"}
                   onClick={() => setVpsProvider("gcp")}
-                  icon="🟦"
+                  icon="cloud"
                   title="Google Cloud"
                   text="پلن‌های رایگان محدود و اعتبارهای آزمایشی."
                 />
@@ -578,13 +498,13 @@ export function NewProjectForm() {
                 <Choice
                   selected={vpsProvider === "aws"}
                   onClick={() => setVpsProvider("aws")}
-                  icon="🟧"
+                  icon="cloud"
                   title="Amazon AWS"
                   text="پلن‌های رایگان و اعتبارهای مشروط به شرایط حساب."
                 />
               </div>
 
-              <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-6 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+              <p className="rounded-xl border border-warning-line bg-warning-soft p-3 text-xs leading-6 text-warning-fg">
                 توجه: پیش از ثبت‌نام، شرایط احراز هویت، روش پرداخت، محدودیت
                 منطقه‌ای و اعتبار پلن رایگان را در وب‌سایت رسمی سرویس بررسی کنید.
               </p>
@@ -603,17 +523,17 @@ export function NewProjectForm() {
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
               <label
-                className="text-sm font-bold text-slate-800 dark:text-slate-200"
+                className="text-sm font-bold text-fg"
                 htmlFor="idea"
               >
                 توضیحات ایده
               </label>
 
               <span
-                className={`text-[10px] ${
+                className={`text-xs ${
                   idea.trim().length >= 15
-                    ? "text-emerald-600"
-                    : "text-slate-400"
+                    ? "text-success-fg"
+                    : "text-faint"
                 }`}
               >
                 {idea.trim().length.toLocaleString("fa-IR")} / حداقل ۱۵ کاراکتر
@@ -657,7 +577,7 @@ export function NewProjectForm() {
                   type="button"
                   key={example}
                   onClick={() => setIdea(example)}
-                  className="rounded-full border border-slate-200 bg-white px-3 py-2 text-start text-[10px] text-slate-600 transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-indigo-950/40"
+                  className="rounded-full border border-line bg-surface px-3 py-1.5 text-start text-xs text-fg-2 transition hover:border-primary-line hover:bg-primary-soft hover:text-primary-soft-fg"
                 >
                   {`نمونه ${index + 1}: ${example.slice(0, 35)}…`}
                 </button>
@@ -673,7 +593,7 @@ export function NewProjectForm() {
             <div>
               <label className="label" htmlFor="name">
                 نام انگلیسی پروژه
-                <span className="ms-1 font-normal text-slate-400">
+                <span className="ms-1 font-normal text-faint">
                   (اختیاری)
                 </span>
               </label>
@@ -711,7 +631,7 @@ export function NewProjectForm() {
                   </option>
                 </select>
 
-                <p className="mt-1 text-[10px] leading-5 text-slate-400">
+                <p className="form-hint">
                   فناوری موردنظر برای تولید اپلیکیشن
                 </p>
               </div>
@@ -754,7 +674,7 @@ export function NewProjectForm() {
               </select>
 
               {providerError && (
-                <p className="mt-1 text-[10px] leading-5 text-rose-500">
+                <p className="form-hint !text-danger-fg">
                   دریافت فهرست مدل‌ها ناموفق بود: {providerError}
                 </p>
               )}
@@ -762,25 +682,23 @@ export function NewProjectForm() {
           </div>
 
           {/* Configuration summary */}
-          <div className="rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4 dark:border-indigo-900/60 dark:bg-indigo-950/20">
-            <div className="mb-3 flex items-center gap-2">
-              <span className="text-lg">✓</span>
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                خلاصه تنظیمات پروژه
-              </h3>
-            </div>
+          <div className="panel-muted p-4">
+            <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-fg">
+              <Icon name="layers" size={16} className="text-primary" />
+              خلاصهٔ تنظیمات پروژه
+            </h3>
 
             <div className="grid gap-3 text-xs sm:grid-cols-2">
               <div>
-                <p className="text-slate-500">نوع محصول</p>
-                <p className="mt-1 font-bold text-slate-800 dark:text-slate-200">
+                <p className="text-muted">نوع محصول</p>
+                <p className="mt-1 font-bold text-fg">
                   {kind === "app" ? "اپلیکیشن اندروید" : "وب‌سایت"}
                 </p>
               </div>
 
               <div>
-                <p className="text-slate-500">زیرساخت</p>
-                <p className="mt-1 font-bold text-slate-800 dark:text-slate-200">
+                <p className="text-muted">زیرساخت</p>
+                <p className="mt-1 font-bold text-fg">
                   {!online
                     ? "محلی، بدون سرور"
                     : hosting === "vercel"
@@ -793,8 +711,8 @@ export function NewProjectForm() {
 
               {kind === "app" && (
                 <div>
-                  <p className="text-slate-500">فناوری اپ</p>
-                  <p className="mt-1 font-bold text-slate-800 dark:text-slate-200">
+                  <p className="text-muted">فناوری اپ</p>
+                  <p className="mt-1 font-bold text-fg">
                     {template === "capacitor"
                       ? "React + Capacitor"
                       : "React Native + Expo"}
@@ -803,8 +721,8 @@ export function NewProjectForm() {
               )}
 
               <div>
-                <p className="text-slate-500">مدل هوش مصنوعی</p>
-                <p className="mt-1 font-bold text-slate-800 dark:text-slate-200">
+                <p className="text-muted">مدل هوش مصنوعی</p>
+                <p className="mt-1 font-bold text-fg">
                   {providers.find((provider) => provider.id === aiProvider)
                     ?.label ?? "انتخاب نشده"}
                 </p>
@@ -818,22 +736,22 @@ export function NewProjectForm() {
       {error && (
         <div
           role="alert"
-          className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs leading-6 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300"
+          className="alert alert-danger"
         >
-          <span aria-hidden="true">⚠️</span>
+          <Icon name="alert-circle" className="mt-1" />
           <span>{error}</span>
         </div>
       )}
 
       {/* Navigation */}
-      <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col-reverse gap-3 border-t border-line pt-5 sm:flex-row sm:items-center sm:justify-between">
         <button
           type="button"
           onClick={goBack}
           disabled={safeStep === 0 || busy}
-          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 px-5 text-xs font-bold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+          className="btn-secondary"
         >
-          <span aria-hidden="true">→</span>
+          <Icon name="arrow-right" size={16} />
           مرحله قبل
         </button>
 
@@ -850,17 +768,17 @@ export function NewProjectForm() {
                   provider.id === aiProvider && provider.available,
               )
             }
-            className="btn-primary inline-flex min-h-11 items-center justify-center gap-2 px-6 disabled:cursor-not-allowed disabled:opacity-50"
+            className="btn-primary btn-lg"
           >
             {busy ? (
               <>
-                <span className="size-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                در حال ساخت پروژه...
+                <span className="spinner" aria-hidden="true" />
+                در حال ساخت پروژه…
               </>
             ) : (
               <>
+                <Icon name="sparkles" size={16} />
                 ساخت پروژه و شروع تحلیل
-                <span aria-hidden="true">←</span>
               </>
             )}
           </button>
@@ -869,10 +787,10 @@ export function NewProjectForm() {
             type="button"
             onClick={goNext}
             disabled={busy}
-            className="btn-primary inline-flex min-h-11 items-center justify-center gap-2 px-6"
+            className="btn-primary btn-lg"
           >
             ادامه
-            <span aria-hidden="true">←</span>
+            <Icon name="arrow-left" size={16} />
           </button>
         )}
       </div>

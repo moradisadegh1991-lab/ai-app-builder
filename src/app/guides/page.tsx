@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Header } from "@/components/Header";
 import { Guide } from "@/components/guides/Guide";
 import { GUIDES, type GuideId } from "@/components/guides/data";
@@ -15,27 +16,26 @@ export default async function GuidesPage({ searchParams }: { searchParams: Promi
   return (
     <>
       <Header user={user} />
-      <main className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-8">
+      <main className="page-container flex flex-col gap-6 py-8">
         <div>
-          <h1 className="text-2xl font-extrabold">آموزش‌های تصویری</h1>
-          <p className="text-sm text-slate-600 dark:text-slate-400">
-            هر مرحله با یک تصویر نمادین از صفحه‌ای که می‌بینید و جای دقیق کلیک توضیح داده شده است.
-          </p>
+          <h1 className="page-title">آموزش‌های تصویری</h1>
+          <p className="page-subtitle">هر مرحله با یک تصویر نمادین از صفحه‌ای که می‌بینید و جای دقیق کلیک توضیح داده شده است.</p>
         </div>
-        <nav className="flex flex-wrap gap-2">
-          {ORDER.map((id) => (
-            <a
-              key={id}
-              href={`/guides?g=${id}`}
-              className={`rounded-full px-3 py-1.5 text-sm ${
-                id === selected ? "bg-brand-600 text-white" : "bg-white text-slate-700 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-200"
-              }`}
-            >
-              {GUIDES[id].title}
-            </a>
-          ))}
-        </nav>
-        <Guide key={selected} id={selected} />
+        <div className="grid items-start gap-6 lg:grid-cols-[16rem_minmax(0,1fr)]">
+          <nav aria-label="فهرست آموزش‌ها" className="no-scrollbar -mx-4 flex gap-1 overflow-x-auto px-4 lg:sticky lg:top-20 lg:mx-0 lg:flex-col lg:px-0">
+            {ORDER.map((id) => (
+              <Link
+                key={id}
+                href={`/guides?g=${id}`}
+                aria-current={id === selected ? "page" : undefined}
+                className="nav-link shrink-0 lg:whitespace-normal"
+              >
+                {GUIDES[id].title}
+              </Link>
+            ))}
+          </nav>
+          <Guide key={selected} id={selected} />
+        </div>
       </main>
     </>
   );

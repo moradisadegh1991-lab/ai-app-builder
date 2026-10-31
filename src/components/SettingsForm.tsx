@@ -265,29 +265,29 @@ function ServiceCard({
     ? {
         label: "کلید شخصی ثبت شده",
         className:
-          "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
+          "bg-success-soft text-success-fg",
       }
     : platformAvailable
       ? {
           label: "کلید مرکزی فعال",
           className:
-            "bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-300",
+            "bg-info-soft text-info-fg",
         }
       : {
           label: "بدون کلید",
           className:
-            "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
+            "bg-surface-3 text-fg-2",
         };
 
   return (
     <form
       onSubmit={save}
-      className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700"
+      className="overflow-hidden rounded-2xl border border-line bg-surface shadow-sm transition hover:border-line-strong"
     >
       <div className="p-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 items-start gap-3">
-            <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-slate-100 text-xs font-black text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+            <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-surface-3 text-xs font-black text-fg-2">
               {service.id === "vercel"
                 ? "V"
                 : service.id === "neon"
@@ -300,18 +300,18 @@ function ServiceCard({
             </div>
 
             <div className="min-w-0">
-              <h4 className="text-sm font-extrabold text-slate-900 dark:text-white">
+              <h4 className="text-sm font-extrabold text-fg">
                 {service.title}
               </h4>
 
               <p
                 dir="ltr"
-                className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400"
+                className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-faint"
               >
                 {service.subtitle}
               </p>
 
-              <p className="mt-2 text-xs leading-6 text-slate-500 dark:text-slate-400">
+              <p className="mt-2 text-xs leading-6 text-muted">
                 {service.description}
               </p>
             </div>
@@ -325,14 +325,14 @@ function ServiceCard({
         </div>
 
         {current && (
-          <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl bg-emerald-50/70 px-3 py-2 dark:bg-emerald-950/30">
-            <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
+          <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl bg-success-soft px-3 py-2">
+            <span className="text-[10px] font-semibold text-success-fg">
               کلید ذخیره‌شده:
             </span>
 
             <code
               dir="ltr"
-              className="text-xs font-bold text-emerald-800 dark:text-emerald-200"
+              className="text-xs font-bold text-success-fg"
             >
               {current.secretHint}
             </code>
@@ -340,7 +340,7 @@ function ServiceCard({
         )}
 
         {!current && platformAvailable && (
-          <div className="mt-4 rounded-xl bg-sky-50/70 px-3 py-2 text-[11px] leading-6 text-sky-800 dark:bg-sky-950/30 dark:text-sky-300">
+          <div className="mt-4 rounded-xl bg-info-soft px-3 py-2 text-[11px] leading-6 text-info-fg">
             در صورت نبود کلید شخصی، کلید مرکزی پلتفرم برای این ارائه‌دهنده
             قابل استفاده است.
           </div>
@@ -350,7 +350,7 @@ function ServiceCard({
           <div>
             <label
               htmlFor={`${service.id}-secret`}
-              className="mb-2 block text-xs font-bold text-slate-700 dark:text-slate-300"
+              className="mb-2 block text-xs font-bold text-fg-2"
             >
               {service.secretLabel}
             </label>
@@ -378,7 +378,7 @@ function ServiceCard({
             <div>
               <label
                 htmlFor={`${service.id}-meta`}
-                className="mb-2 block text-xs font-bold text-slate-700 dark:text-slate-300"
+                className="mb-2 block text-xs font-bold text-fg-2"
               >
                 {service.meta.label}
               </label>
@@ -399,7 +399,7 @@ function ServiceCard({
           <button
             type="submit"
             disabled={busy || secret.trim().length < 8}
-            className="inline-flex min-h-10 items-center justify-center rounded-xl bg-brand-600 px-4 text-xs font-bold text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="btn-primary"
           >
             {busy ? "در حال پردازش..." : current ? "جایگزینی کلید" : "ذخیره کلید"}
           </button>
@@ -409,7 +409,7 @@ function ServiceCard({
               type="button"
               disabled={busy}
               onClick={remove}
-              className="inline-flex min-h-10 items-center justify-center rounded-xl border border-red-200 px-4 text-xs font-bold text-red-600 transition hover:bg-red-50 disabled:opacity-50 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/40"
+              className="btn-danger"
             >
               حذف اتصال
             </button>
@@ -419,7 +419,7 @@ function ServiceCard({
             href={service.helpUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-xs font-semibold text-brand-600 underline underline-offset-4 hover:text-brand-700 dark:text-brand-400"
+            className="text-xs font-semibold text-primary underline underline-offset-4 hover:text-primary-soft-fg"
           >
             دریافت کلید از سرویس
           </a>
@@ -430,8 +430,8 @@ function ServiceCard({
             role="status"
             className={`mt-4 rounded-xl px-3 py-2 text-xs leading-6 ${
               message.ok
-                ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
-                : "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300"
+                ? "bg-success-soft text-success-fg"
+                : "bg-danger-soft text-danger-fg"
             }`}
           >
             {message.text}

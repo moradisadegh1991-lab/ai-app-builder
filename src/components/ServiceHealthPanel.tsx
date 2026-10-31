@@ -116,26 +116,26 @@ function StatusBadge({
     success: {
       label: "فعال",
       className:
-        "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
-      dot: "bg-emerald-500",
+        "bg-success-soft text-success-fg",
+      dot: "bg-success",
     },
     danger: {
       label: "نیازمند تنظیم",
       className:
-        "bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300",
-      dot: "bg-red-500",
+        "bg-danger-soft text-danger-fg",
+      dot: "bg-danger",
     },
     neutral: {
       label: "اختیاری",
       className:
-        "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
-      dot: "bg-slate-400",
+        "bg-surface-3 text-fg-2",
+      dot: "bg-line-strong",
     },
     loading: {
       label: "در حال بررسی",
       className:
-        "bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-300",
-      dot: "bg-sky-500",
+        "bg-info-soft text-info-fg",
+      dot: "bg-info",
     },
   }[status];
 
@@ -234,17 +234,17 @@ function CheckCard({
         : null;
 
   return (
-    <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-4 transition hover:border-slate-200 dark:border-slate-800 dark:bg-slate-950/40 dark:hover:border-slate-700">
+    <div className="rounded-xl border border-line bg-surface-2 p-4 transition hover:border-line">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p
             dir="ltr"
-            className="text-xs font-bold text-slate-800 dark:text-slate-200"
+            className="text-xs font-bold text-fg"
           >
             {item.label}
           </p>
 
-          <p className="mt-1 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
+          <p className="mt-1 text-[11px] leading-5 text-muted">
             {item.description}
           </p>
         </div>
@@ -253,7 +253,7 @@ function CheckCard({
       </div>
 
       {extraDescription && (
-        <p className="mt-3 border-t border-slate-200 pt-2 text-[10px] leading-5 text-slate-500 dark:border-slate-800 dark:text-slate-400">
+        <p className="mt-3 border-t border-line pt-2 text-[10px] leading-5 text-muted">
           {extraDescription}
         </p>
       )}
@@ -261,7 +261,7 @@ function CheckCard({
       {data &&
         item.kind === "required" &&
         data.checks[item.key] === false && (
-          <p className="mt-3 border-t border-red-100 pt-2 text-[10px] leading-5 text-red-600 dark:border-red-900/50 dark:text-red-300">
+          <p className="mt-3 border-t border-danger-line pt-2 text-[10px] leading-5 text-danger-fg">
             این مورد در وضعیت سلامت اصلی سیستم تأثیر دارد.
           </p>
         )}
@@ -371,17 +371,17 @@ export function ServiceHealthPanel() {
   return (
     <div className="space-y-5">
       {/* Overview */}
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <section className="overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
         <div className="p-5 sm:p-6">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-4">
               <div
                 className={`grid size-12 shrink-0 place-items-center rounded-2xl ${
                   !data
-                    ? "bg-slate-100 text-slate-500 dark:bg-slate-800"
+                    ? "bg-surface-3 text-muted"
                     : data.ok
-                      ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-300"
-                      : "bg-amber-50 text-amber-600 dark:bg-amber-950 dark:text-amber-300"
+                      ? "bg-success-soft text-success-fg"
+                      : "bg-warning-soft text-warning-fg"
                 }`}
               >
                 <span className="text-xl" aria-hidden="true">
@@ -390,15 +390,15 @@ export function ServiceHealthPanel() {
               </div>
 
               <div className="min-w-0">
-                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-faint">
                   SYSTEM HEALTH
                 </p>
 
-                <h3 className="mt-2 text-lg font-extrabold text-slate-900 dark:text-white">
+                <h3 className="mt-2 text-lg font-extrabold text-fg">
                   سلامت پیکربندی سیستم
                 </h3>
 
-                <p className="mt-2 text-xs leading-6 text-slate-500 dark:text-slate-400">
+                <p className="mt-2 text-xs leading-6 text-muted">
                   {data
                     ? data.ok
                       ? "تمام بررسی‌های ضروری سیستم موفق بوده‌اند."
@@ -412,7 +412,7 @@ export function ServiceHealthPanel() {
               type="button"
               onClick={refresh}
               disabled={loading}
-              className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-bold text-slate-700 transition hover:border-brand-300 hover:text-brand-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+              className="btn-secondary shrink-0"
             >
               <span
                 className={loading ? "animate-spin" : ""}
@@ -429,17 +429,17 @@ export function ServiceHealthPanel() {
           {data && (
             <div className="mt-6">
               <div className="mb-2 flex items-center justify-between gap-3">
-                <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                <span className="text-xs font-bold text-fg-2">
                   بررسی‌های ضروری
                 </span>
 
-                <span className="text-xs font-bold tabular-nums text-slate-700 dark:text-slate-300">
+                <span className="text-xs font-bold tabular-nums text-fg-2">
                   {summary.passed} از {summary.total}
                 </span>
               </div>
 
               <div
-                className="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"
+                className="h-2 overflow-hidden rounded-full bg-surface-3"
                 role="progressbar"
                 aria-label="درصد بررسی‌های ضروری موفق"
                 aria-valuenow={Math.round(healthPercentage)}
@@ -449,19 +449,19 @@ export function ServiceHealthPanel() {
                 <div
                   className={`h-full rounded-full transition-all duration-500 ${
                     summary.failed > 0
-                      ? "bg-amber-500"
-                      : "bg-emerald-500"
+                      ? "bg-warning"
+                      : "bg-success"
                   }`}
                   style={{ width: `${healthPercentage}%` }}
                 />
               </div>
 
               <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-[10px]">
-                <span className="text-emerald-700 dark:text-emerald-300">
+                <span className="text-success-fg">
                   {summary.passed} مورد موفق
                 </span>
 
-                <span className="text-red-600 dark:text-red-300">
+                <span className="text-danger-fg">
                   {summary.failed} مورد نیازمند تنظیم
                 </span>
               </div>
@@ -470,8 +470,8 @@ export function ServiceHealthPanel() {
 
           {/* Last checked */}
           {lastChecked && (
-            <div className="mt-5 border-t border-slate-100 pt-4 dark:border-slate-800">
-              <p className="text-[10px] text-slate-400">
+            <div className="mt-5 border-t border-line pt-4">
+              <p className="text-[10px] text-faint">
                 آخرین بررسی:{" "}
                 <span className="font-semibold tabular-nums">
                   {lastChecked.toLocaleString("fa-IR", {
@@ -488,7 +488,7 @@ export function ServiceHealthPanel() {
           {error && (
             <div
               role="alert"
-              className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-xs leading-6 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300"
+              className="mt-4 rounded-xl border border-danger-line bg-danger-soft p-3 text-xs leading-6 text-danger-fg"
             >
               <p className="font-bold">خطا در دریافت وضعیت سرویس‌ها</p>
               <p className="mt-1">{error}</p>
@@ -512,15 +512,15 @@ export function ServiceHealthPanel() {
         return (
           <section
             key={group}
-            className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900"
+            className="rounded-2xl border border-line bg-surface p-5"
           >
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <h4 className="text-sm font-extrabold text-slate-800 dark:text-slate-200">
+              <h4 className="text-sm font-extrabold text-fg">
                 {group}
               </h4>
 
               {data && (
-                <span className="text-[10px] font-semibold text-slate-400">
+                <span className="text-[10px] font-semibold text-faint">
                   {groupPassed} از {items.length} فعال
                 </span>
               )}
@@ -542,12 +542,12 @@ export function ServiceHealthPanel() {
 
       {/* AI configuration note */}
       {data && summary.platformMissing > 0 && (
-        <div className="rounded-2xl border border-sky-200 bg-sky-50/70 p-4 dark:border-sky-900 dark:bg-sky-950/30">
-          <p className="text-xs font-bold text-sky-900 dark:text-sky-200">
+        <div className="rounded-2xl border border-info-line bg-info-soft p-4">
+          <p className="text-xs font-bold text-info-fg">
             درباره کلیدهای مرکزی هوش مصنوعی
           </p>
 
-          <p className="mt-2 text-xs leading-6 text-sky-800/80 dark:text-sky-300/80">
+          <p className="mt-2 text-xs leading-6 text-info-fg">
             نبود کلید مرکزی در متغیرهای محیطی سرور، به‌تنهایی به معنی
             غیرفعال بودن ارائه‌دهنده نیست. اگر کاربر کلید شخصی ثبت کرده
             باشد، سیستم می‌تواند مطابق منطق فعلی از کلید شخصی او استفاده کند.
@@ -556,12 +556,12 @@ export function ServiceHealthPanel() {
       )}
 
       {/* Technical note */}
-      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/50">
-        <p className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+      <div className="rounded-xl border border-line bg-surface-2 p-4">
+        <p className="text-[11px] font-bold text-fg-2">
           محدوده بررسی سلامت
         </p>
 
-        <p className="mt-2 text-[11px] leading-7 text-slate-500 dark:text-slate-400">
+        <p className="mt-2 text-[11px] leading-7 text-muted">
           این پنل وضعیت پیکربندی و دسترسی پایه پایگاه داده را از API سلامت
           سیستم دریافت می‌کند. فعال بودن یک مورد به معنی آزمایش واقعی API
           خارجی، اعتبارسنجی توکن سرویس یا موفقیت عملیات انتشار و تولید کد
