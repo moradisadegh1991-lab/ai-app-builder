@@ -119,7 +119,7 @@ export interface StructuredCallOptions<T> {
   userId: string;
   projectId?: string;
   provider: AiProviderId;
-  purpose: "spec" | "code" | "fix";
+  purpose: "spec" | "code" | "fix" | "edit";
   system: string;
   prompt: string;
   /** Reference images sent along with the prompt (vision). */

@@ -40,7 +40,7 @@ export const projectStatus = pgEnum("project_status", [
   "failed",
 ]);
 
-export const jobKind = pgEnum("job_kind", ["spec", "code", "fix"]);
+export const jobKind = pgEnum("job_kind", ["spec", "code", "fix", "edit"]);
 export const jobStatus = pgEnum("job_status", ["running", "succeeded", "failed"]);
 
 const timestamps = {

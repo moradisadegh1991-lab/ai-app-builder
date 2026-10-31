@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { generateStructured, isAiProvider, type AiProviderId } from "./ai";
 import { imagesOf } from "./attachments";
-import { SPEC_SYSTEM, codeOutputSchema, codePrompt, codeSystemPrompt, fixPrompt, specPrompt } from "./ai/prompts";
+import { SPEC_SYSTEM, codeOutputSchema, codePrompt, codeSystemPrompt, editPrompt, fixPrompt, specPrompt } from "./ai/prompts";
 import { decryptSecret, encryptSecret } from "./crypto";
 import { db, schema } from "./db";
 import { env } from "./env";
@@ -38,7 +38,7 @@ function assertNotBusy(project: schema.Project) {
   }
 }
 
-async function startJob(projectId: string, kind: "spec" | "code" | "fix", provider: string) {
+async function startJob(projectId: string, kind: "spec" | "code" | "fix" | "edit", provider: string) {
   const [job] = await db()
     .insert(schema.generationJobs)
     .values({ projectId, kind, provider, model: "pending" })
@@ -160,18 +160,21 @@ interface RepairInput {
   aiFiles: { path: string; content: string }[];
   libraries: string[];
   log: string;
+  /** "edit" turns `log` into the user's requested change instead of a failure report. */
+  mode?: "fix" | "edit";
 }
 
 /** One model round that edits only the files the log points at, merged into the AI-owned files. */
 async function repairWithModel(input: RepairInput) {
   const editable = new Set(input.aiFiles.map((f) => f.path));
+  const mode = input.mode ?? "fix";
   const { data, model } = await generateStructured({
     userId: input.user.id,
     projectId: input.project.id,
     provider: input.provider,
-    purpose: "fix",
+    purpose: mode,
     system: codeSystemPrompt(input.project.template, input.spec.needsBackend),
-    prompt: fixPrompt(input.spec, input.files, input.log, editable),
+    prompt: (mode === "edit" ? editPrompt : fixPrompt)(input.spec, input.files, input.log, editable),
     schema: codeOutputSchema,
     maxOutputTokens: 64000,
   });
@@ -391,6 +394,43 @@ export async function autoFix(
     return await pushToGitHub(user, updated, `fix: AI repair of ${label}`);
   } catch (error) {
     await failJob(job.id, project.id, error, "pushed");
+    throw error;
+  }
+}
+
+/**
+ * Applies a plain-language change request to the existing code, then commits it when the project
+ * is already on GitHub (which starts a new build).
+ */
+export async function editProject(user: schema.User, project: schema.Project, instruction: string, providerOverride?: string) {
+  assertNotBusy(project);
+  const generation = await currentGeneration(project);
+  if (!generation?.files || !generation.aiFiles || !project.spec) throw new HttpError(400, "ابتدا کد پروژه را تولید کنید.");
+
+  const spec = project.spec;
+  const provider = providerOf(project, providerOverride);
+  const previousStatus = project.status;
+  const job = await startJob(project.id, "edit", provider);
+  await updateProject(project.id, { status: "generating", lastError: null });
+
+  try {
+    const edited = await repairWithModel({
+      user,
+      project,
+      provider,
+      spec,
+      files: generation.files,
+      aiFiles: generation.aiFiles,
+      libraries: generation.libraries ?? [],
+      log: instruction,
+      mode: "edit",
+    });
+    const updated = await saveGeneration(project, job.id, edited.model, spec, edited.aiFiles, edited.libraries, edited.notes);
+    if (!project.githubRepo) return updated;
+    const summary = instruction.replace(/\s+/g, " ").trim().slice(0, 60);
+    return await pushToGitHub(user, updated, `edit: ${summary}`);
+  } catch (error) {
+    await failJob(job.id, project.id, error, previousStatus === "generating" ? "generated" : previousStatus);
     throw error;
   }
 }

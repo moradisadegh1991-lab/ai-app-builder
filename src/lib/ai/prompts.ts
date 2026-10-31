@@ -168,3 +168,25 @@ ${buildLog}
 Current repository files:
 ${sources}`;
 }
+
+/** A change the user asked for in plain words, applied to the existing project. */
+export function editPrompt(spec: AppSpec, files: GeneratedFile[], instruction: string, editablePaths: Set<string>): string {
+  const sources = files
+    .map((f) => `--- ${f.path}${editablePaths.has(f.path) ? "" : " (template, read-only)"}\n${f.content}`)
+    .join("\n\n");
+  return `The user wants a CHANGE to this existing project. Apply exactly the requested change and keep everything else working.
+Output ONLY the files you change or add (full new content for each), never files marked read-only, and do not rewrite files that need no change.
+The result must still build without errors; import only names the libraries really export.
+Keep "libraries" as the full list of optional libraries the changed app needs. Use "notes" for a one-sentence summary of what you changed, in the app's language.
+
+Requested change (from the user):
+"""
+${instruction}
+"""
+
+Requirements the project was built from (JSON):
+${JSON.stringify(spec)}
+
+Current repository files:
+${sources}`;
+}

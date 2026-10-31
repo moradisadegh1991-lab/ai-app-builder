@@ -18,6 +18,7 @@ type Busy =
   | "github"
   | "rebuild"
   | "fix"
+  | "edit"
   | "cloud";
 
 const BUSY_MESSAGES: Record<Exclude<Busy, null>, string> = {
@@ -27,6 +28,7 @@ const BUSY_MESSAGES: Record<Exclude<Busy, null>, string> = {
   github: "در حال ساخت Repository و ثبت کد در GitHub…",
   rebuild: "در حال شروع Build جدید…",
   fix: "هوش مصنوعی در حال بررسی گزارش خطا و اصلاح کد است…",
+  edit: "هوش مصنوعی در حال اعمال تغییر روی کد است؛ بعد از آن Build جدید شروع می‌شود…",
   cloud: "در حال ساخت دیتابیس Neon و پروژه Vercel…",
 };
 
@@ -88,8 +90,10 @@ export function ProjectWorkspace({
         });
 
         setProject(data.project);
+        return true;
       } catch (e) {
         setError((e as Error).message);
+        return false;
       } finally {
         setBusy(null);
       }
@@ -305,6 +309,13 @@ export function ProjectWorkspace({
           }}
         />
       </Step>
+
+      {hasCode && (
+        <EditPanel
+          disabled={busy !== null}
+          onEdit={(instruction) => run("edit", `${base}/edit`, "POST", { instruction, provider })}
+        />
+      )}
 
       {project.hosting === "none" ? (
         <Step
@@ -904,6 +915,43 @@ function buildStatusText(status: string, isWebsite: boolean) {
   };
 
   return map[status] ?? status;
+}
+
+/** Describe a change in plain words; the AI edits only the files it needs and a new build starts. */
+function EditPanel({ disabled, onEdit }: { disabled: boolean; onEdit: (instruction: string) => Promise<boolean> }) {
+  const [instruction, setInstruction] = useState("");
+  const ready = instruction.trim().length >= 5;
+
+  return (
+    <section className="card flex flex-col gap-3 text-sm">
+      <div>
+        <h2 className="font-bold">ویرایش با گفتگو</h2>
+        <p className="mt-1 text-xs leading-6 text-slate-500">
+          تغییر دلخواه را بنویسید؛ مثلاً «رنگ اصلی را سبز کن»، «صفحهٔ تماس با ما اضافه کن» یا «منو را به سه دسته تقسیم کن». هوش مصنوعی فقط فایل‌های لازم را عوض می‌کند و نسخهٔ جدید به GitHub می‌رود.
+        </p>
+      </div>
+      <textarea
+        className="input min-h-24 resize-y leading-7"
+        aria-label="تغییر مورد نظر"
+        placeholder="چه چیزی عوض شود؟"
+        value={instruction}
+        maxLength={3000}
+        onChange={(event) => setInstruction(event.target.value)}
+        disabled={disabled}
+      />
+      <div>
+        <button
+          className="btn-primary"
+          disabled={disabled || !ready}
+          onClick={async () => {
+            if (await onEdit(instruction)) setInstruction("");
+          }}
+        >
+          ✏️ اعمال تغییر
+        </button>
+      </div>
+    </section>
+  );
 }
 
 function BuildStep({

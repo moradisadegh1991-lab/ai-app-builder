@@ -25,13 +25,18 @@ export async function GET() {
   try {
     await db().execute(sql`select 1`);
     checks.database = true;
-    // Migrations 0002 (users.google_id) and 0003 (projects.attachments) must both be applied.
+    // Migrations 0002 (users.google_id), 0003 (projects.attachments) and 0004 (job_kind edit) must be applied.
     const columns = await db().execute(
       sql`select 1 from information_schema.columns
           where (table_name = 'users' and column_name = 'google_id')
              or (table_name = 'projects' and column_name = 'attachments')`,
     );
-    checks.schema = (Array.isArray(columns) ? columns.length : (columns as { rows?: unknown[] }).rows?.length ?? 0) >= 2;
+    const edit = await db().execute(
+      sql`select 1 from pg_enum e join pg_type t on t.oid = e.enumtypid where t.typname = 'job_kind' and e.enumlabel = 'edit'`,
+    );
+    const count = (result: unknown) => (Array.isArray(result) ? result.length : ((result as { rows?: unknown[] }).rows?.length ?? 0));
+    // 0004 (job_kind 'edit') is only needed by "edit with chat", but it is part of the schema all the same.
+    checks.schema = count(columns) >= 2 && count(edit) >= 1;
   } catch {
     // keep whatever was verified before the failure
   }
