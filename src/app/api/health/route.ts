@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const checks: Record<string, boolean> = {
     database: false,
-    // Migrations applied (0002 adds users.google_id); sign-in fails with a database error when this is false.
+    // Migrations applied; sign-in or project creation fails with a database error when this is false.
     schema: false,
     appUrl: Boolean(process.env.APP_URL),
     // Valid, not just present: AES-256 needs exactly 32 bytes (base64); session tokens need 32+ characters.
@@ -25,10 +25,13 @@ export async function GET() {
   try {
     await db().execute(sql`select 1`);
     checks.database = true;
+    // Migrations 0002 (users.google_id) and 0003 (projects.attachments) must both be applied.
     const columns = await db().execute(
-      sql`select 1 from information_schema.columns where table_name = 'users' and column_name = 'google_id'`,
+      sql`select 1 from information_schema.columns
+          where (table_name = 'users' and column_name = 'google_id')
+             or (table_name = 'projects' and column_name = 'attachments')`,
     );
-    checks.schema = (Array.isArray(columns) ? columns.length : (columns as { rows?: unknown[] }).rows?.length ?? 0) > 0;
+    checks.schema = (Array.isArray(columns) ? columns.length : (columns as { rows?: unknown[] }).rows?.length ?? 0) >= 2;
   } catch {
     // keep whatever was verified before the failure
   }

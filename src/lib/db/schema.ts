@@ -11,6 +11,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { Attachment } from "../attachments";
 import type { AppSpec } from "../spec";
 import type { GeneratedFile } from "../templates/types";
 
@@ -102,6 +103,8 @@ export const projects = pgTable(
     name: text("name").notNull(),
     slug: text("slug").notNull(),
     idea: text("idea").notNull(),
+    // Reference images and text files the user attached to the idea (used when writing the requirements).
+    attachments: jsonb("attachments").$type<Attachment[]>(),
     kind: projectKind("kind").notNull().default("app"),
     template: appTemplate("template").notNull().default("capacitor"),
     // Whether the user asked for a server/database (cloud) part.

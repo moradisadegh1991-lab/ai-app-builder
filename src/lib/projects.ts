@@ -1,4 +1,5 @@
 import { and, desc, eq } from "drizzle-orm";
+import { attachmentSummary } from "./attachments";
 import { db, schema } from "./db";
 import { HttpError } from "./http";
 import { getIntegration } from "./integrations/store";
@@ -87,6 +88,7 @@ export async function projectView(project: schema.Project) {
     name: project.name,
     slug: project.slug,
     idea: project.idea,
+    attachments: attachmentSummary(project.attachments),
     kind: project.kind,
     template: project.template,
     needsCloud: project.needsCloud,

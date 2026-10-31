@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { generateStructured, isAiProvider, type AiProviderId } from "./ai";
+import { imagesOf } from "./attachments";
 import { SPEC_SYSTEM, codeOutputSchema, codePrompt, codeSystemPrompt, fixPrompt, specPrompt } from "./ai/prompts";
 import { decryptSecret, encryptSecret } from "./crypto";
 import { db, schema } from "./db";
@@ -68,7 +69,8 @@ export async function generateSpec(user: schema.User, project: schema.Project, f
       provider,
       purpose: "spec",
       system: SPEC_SYSTEM,
-      prompt: specPrompt(project.idea, specContext(project), feedback, project.spec ?? undefined),
+      prompt: specPrompt(project.idea, specContext(project), feedback, project.spec ?? undefined, project.attachments),
+      images: imagesOf(project.attachments),
       schema: appSpecSchema,
       maxOutputTokens: 8000,
     });

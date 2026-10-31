@@ -7,6 +7,12 @@ export const AI_PROVIDER_LABELS: Record<AiProviderId, string> = {
   gemini: "Gemini (Google)",
 };
 
+export interface CompletionImage {
+  mime: string;
+  /** Base64, without a data: prefix. */
+  data: string;
+}
+
 export interface CompletionRequest {
   apiKey: string;
   /** Set to route the call through an OpenAI-compatible gateway instead of the provider's own API. */
@@ -14,6 +20,7 @@ export interface CompletionRequest {
   model: string;
   system: string;
   prompt: string;
+  images?: CompletionImage[];
   maxOutputTokens: number;
 }
 
