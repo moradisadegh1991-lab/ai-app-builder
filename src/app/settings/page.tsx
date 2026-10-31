@@ -1,6 +1,7 @@
 
 import Link from "next/link";
 import { Header } from "@/components/Header";
+import { Icon } from "@/components/ui/Icon";
 import { SettingsForm } from "@/components/SettingsForm";
 import { UsageMeter } from "@/components/UsageMeter";
 import { GuideToggle } from "@/components/guides/Guide";
@@ -46,16 +47,16 @@ function SectionHeading({
 }) {
   return (
     <div className="mb-5">
-      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-brand-600">
+      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">
         {eyebrow}
       </p>
 
-      <h2 className="mt-2 text-xl font-extrabold tracking-tight text-slate-900 dark:text-white">
+      <h2 className="mt-2 text-xl font-extrabold tracking-tight text-fg">
         {title}
       </h2>
 
       {description && (
-        <p className="mt-2 max-w-2xl text-sm leading-7 text-slate-500 dark:text-slate-400">
+        <p className="mt-2 max-w-2xl text-sm leading-7 text-muted">
           {description}
         </p>
       )}
@@ -75,13 +76,13 @@ function SettingsNav() {
   return (
     <nav
       aria-label="بخش‌های تنظیمات"
-      className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+      className="flex flex-wrap gap-2 rounded-2xl border border-line bg-surface p-2 shadow-sm"
     >
       {items.map((item) => (
         <a
           key={item.href}
           href={item.href}
-          className="rounded-xl px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-brand-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-brand-300"
+          className="rounded-xl px-3 py-2 text-xs font-semibold text-fg-2 transition hover:bg-surface-3 hover:text-primary-soft-fg"
         >
           {item.label}
         </a>
@@ -124,24 +125,24 @@ export default async function SettingsPage({
   );
 
   return (
-    <div className="app-shell">
+    <div>
       <Header user={user} />
 
-      <main className="page-container page-section max-w-6xl">
+      <main className="page-container flex !max-w-6xl flex-col gap-10 py-8">
         {/* Page heading */}
         <header className="mb-8">
           <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
             <div>
-              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-3 py-1.5 text-[11px] font-bold text-brand-700 dark:border-brand-900 dark:bg-brand-950/40 dark:text-brand-300">
-                <span className="size-1.5 rounded-full bg-brand-500" />
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary-line bg-primary-soft px-3 py-1.5 text-[11px] font-bold text-primary-soft-fg">
+                <span className="size-1.5 rounded-full bg-primary" />
                 ACCOUNT CONTROL CENTER
               </div>
 
-              <h1 className="text-3xl font-black tracking-tight text-slate-950 dark:text-white sm:text-4xl">
+              <h1 className="text-3xl font-black tracking-tight text-fg sm:text-4xl">
                 تنظیمات حساب
               </h1>
 
-              <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-500 dark:text-slate-400">
+              <p className="mt-3 max-w-2xl text-sm leading-7 text-muted">
                 اتصال‌ها، کلیدهای دسترسی، وضعیت سرویس‌ها و تنظیمات
                 امنیتی حساب Idea2App AI را از یک پنل مدیریت کنید.
               </p>
@@ -149,7 +150,7 @@ export default async function SettingsPage({
 
             <Link
               href="/dashboard"
-              className="inline-flex min-h-10 items-center justify-center gap-2 self-start rounded-xl border border-slate-200 bg-white px-4 text-xs font-bold text-slate-700 shadow-sm transition hover:border-brand-300 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+              className="btn-secondary self-start"
             >
               <span aria-hidden="true">←</span>
               بازگشت به داشبورد
@@ -159,20 +160,20 @@ export default async function SettingsPage({
 
         {/* Account summary */}
         <section className="mb-6 grid gap-4 md:grid-cols-[1.5fr_1fr_1fr]">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="rounded-2xl border border-line bg-surface p-5 shadow-sm">
             <div className="flex items-center gap-3">
-              <div className="grid size-11 shrink-0 place-items-center rounded-2xl bg-brand-100 text-lg font-black text-brand-700 dark:bg-brand-950 dark:text-brand-300">
+              <div className="grid size-11 shrink-0 place-items-center rounded-2xl bg-primary-soft text-lg font-black text-primary-soft-fg">
                 {(user.name ?? user.email).slice(0, 1).toUpperCase()}
               </div>
 
               <div className="min-w-0">
-                <p className="text-xs font-semibold text-slate-400">
+                <p className="text-xs font-semibold text-faint">
                   حساب کاربری
                 </p>
 
                 <p
                   dir="ltr"
-                  className="mt-1 truncate text-sm font-bold text-slate-900 dark:text-white"
+                  className="mt-1 truncate text-sm font-bold text-fg"
                 >
                   {user.email}
                 </p>
@@ -180,14 +181,14 @@ export default async function SettingsPage({
             </div>
 
             <div className="mt-4 flex flex-wrap items-center gap-2">
-              <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+              <span className="rounded-full bg-success-soft px-2.5 py-1 text-[10px] font-bold text-success-fg">
                 حساب فعال
               </span>
 
               {user.githubLogin && (
                 <span
                   dir="ltr"
-                  className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                  className="rounded-full bg-surface-3 px-2.5 py-1 text-[10px] font-semibold text-fg-2"
                 >
                   @{user.githubLogin}
                 </span>
@@ -195,40 +196,40 @@ export default async function SettingsPage({
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <p className="text-xs font-semibold text-slate-400">
+          <div className="rounded-2xl border border-line bg-surface p-5 shadow-sm">
+            <p className="text-xs font-semibold text-faint">
               اتصال GitHub
             </p>
 
             <div className="mt-3 flex items-center gap-2">
               <span
                 className={`size-2 rounded-full ${
-                  githubConnected ? "bg-emerald-500" : "bg-amber-500"
+                  githubConnected ? "bg-success" : "bg-warning"
                 }`}
               />
 
-              <span className="text-lg font-extrabold text-slate-900 dark:text-white">
+              <span className="text-lg font-extrabold text-fg">
                 {githubConnected ? "متصل" : "نیازمند اتصال"}
               </span>
             </div>
 
-            <p className="mt-2 text-xs text-slate-500">
+            <p className="mt-2 text-xs text-muted">
               {githubConnected
                 ? "امکان استفاده از مخازن و Build"
                 : "برای ساخت و ذخیره کد متصل شوید"}
             </p>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <p className="text-xs font-semibold text-slate-400">
+          <div className="rounded-2xl border border-line bg-surface p-5 shadow-sm">
+            <p className="text-xs font-semibold text-faint">
               اتصال‌های ذخیره‌شده
             </p>
 
-            <p className="mt-2 text-2xl font-black tabular-nums text-slate-900 dark:text-white">
+            <p className="mt-2 text-2xl font-black tabular-nums text-fg">
               {integrations.length}
             </p>
 
-            <p className="mt-2 text-xs text-slate-500">
+            <p className="mt-2 text-xs text-muted">
               شامل GitHub و کلیدهای سرویس
             </p>
           </div>
@@ -245,8 +246,8 @@ export default async function SettingsPage({
             role="status"
             className={`mb-8 rounded-2xl border p-4 ${
               message.ok
-                ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200"
-                : "border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200"
+                ? "border-success-line bg-success-soft text-success-fg"
+                : "border-danger-line bg-danger-soft text-danger-fg"
             }`}
           >
             <div className="flex items-start gap-3">
@@ -285,19 +286,19 @@ export default async function SettingsPage({
               description="حساب GitHub برای ذخیره کد پروژه‌ها، ساخت Repository خصوصی و اجرای گردش کار Build استفاده می‌شود."
             />
 
-            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
               <div className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
                 <div className="flex items-center gap-4">
-                  <div className="grid size-14 shrink-0 place-items-center rounded-2xl bg-slate-950 text-xl font-black text-white shadow-lg shadow-slate-950/10">
-                    GH
+                  <div className="grid size-12 shrink-0 place-items-center rounded-xl bg-surface-3 text-fg">
+                    <Icon name="github" size={24} />
                   </div>
 
                   <div>
-                    <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+                    <h3 className="text-base font-extrabold text-fg">
                       GitHub Account
                     </h3>
 
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="mt-1 text-xs text-muted">
                       {githubConnected
                         ? "حساب GitHub به Idea2App متصل است."
                         : "هنوز حساب GitHub متصل نشده است."}
@@ -306,7 +307,7 @@ export default async function SettingsPage({
                     {githubConnected && user.githubLogin && (
                       <p
                         dir="ltr"
-                        className="mt-2 text-sm font-bold text-slate-800 dark:text-slate-200"
+                        className="mt-2 text-sm font-bold text-fg"
                       >
                         @{user.githubLogin}
                       </p>
@@ -317,13 +318,13 @@ export default async function SettingsPage({
                 <span
                   className={`inline-flex w-fit items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold ${
                     githubConnected
-                      ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-                      : "bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                      ? "bg-success-soft text-success-fg"
+                      : "bg-warning-soft text-warning-fg"
                   }`}
                 >
                   <span
                     className={`size-1.5 rounded-full ${
-                      githubConnected ? "bg-emerald-500" : "bg-amber-500"
+                      githubConnected ? "bg-success" : "bg-warning"
                     }`}
                   />
 
@@ -331,9 +332,9 @@ export default async function SettingsPage({
                 </span>
               </div>
 
-              <div className="border-t border-slate-100 bg-slate-50/70 px-5 py-4 dark:border-slate-800 dark:bg-slate-950/40 sm:px-6">
+              <div className="border-t border-line bg-surface-2 px-5 py-4 sm:px-6">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="max-w-2xl text-xs leading-6 text-slate-500 dark:text-slate-400">
+                  <p className="max-w-2xl text-xs leading-6 text-muted">
                     برای اتصال یا تغییر حساب، فرایند رسمی OAuth اجرا می‌شود.
                     مجوزهای دسترسی توسط GitHub مدیریت می‌شوند.
                   </p>
@@ -341,7 +342,7 @@ export default async function SettingsPage({
                   <div className="flex flex-wrap items-center gap-3">
                     <a
                       href="/api/auth/github"
-                      className="inline-flex min-h-10 items-center justify-center rounded-xl bg-slate-950 px-4 text-xs font-bold text-white shadow-sm transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+                      className="btn-primary"
                     >
                       {githubConnected
                         ? "اتصال مجدد / تغییر حساب"
@@ -363,18 +364,18 @@ export default async function SettingsPage({
               description="کلیدهای اختصاصی سرویس‌های انتشار و هوش مصنوعی را مدیریت کنید. مقدار کلید ذخیره‌شده قابل مشاهده نیست و برای جایگزینی باید کلید جدید وارد شود."
             />
 
-            <div className="mb-4 rounded-2xl border border-sky-200 bg-sky-50/70 p-4 dark:border-sky-900 dark:bg-sky-950/30">
+            <div className="mb-4 rounded-2xl border border-info-line bg-info-soft p-4">
               <div className="flex items-start gap-3">
                 <span className="text-lg" aria-hidden="true">
                   ⓘ
                 </span>
 
                 <div>
-                  <p className="text-sm font-bold text-sky-900 dark:text-sky-200">
+                  <p className="text-sm font-bold text-info-fg">
                     مدیریت اتصال‌های شخصی
                   </p>
 
-                  <p className="mt-1 text-xs leading-6 text-sky-800/80 dark:text-sky-300/80">
+                  <p className="mt-1 text-xs leading-6 text-info-fg">
                     اگر کلید شخصی ثبت کنید، سیستم مطابق منطق فعلی از آن
                     استفاده می‌کند. در صورت نبود کلید شخصی، کلید مرکزی
                     پلتفرم در صورت پیکربندی در دسترس خواهد بود.
@@ -384,7 +385,7 @@ export default async function SettingsPage({
             </div>
 
             <div className="mb-6">
-              <h3 className="mb-3 text-sm font-extrabold text-slate-800 dark:text-slate-200">
+              <h3 className="mb-3 text-sm font-extrabold text-fg">
                 زیرساخت و انتشار
               </h3>
 
@@ -400,7 +401,7 @@ export default async function SettingsPage({
             </div>
 
             <div>
-              <h3 className="mb-3 text-sm font-extrabold text-slate-800 dark:text-slate-200">
+              <h3 className="mb-3 text-sm font-extrabold text-fg">
                 ارائه‌دهندگان هوش مصنوعی
               </h3>
 
@@ -436,48 +437,48 @@ export default async function SettingsPage({
             />
 
             <div className="grid gap-4 md:grid-cols-2">
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+              <div className="rounded-2xl border border-line bg-surface p-5">
                 <div className="flex items-center gap-3">
-                  <div className="grid size-10 place-items-center rounded-xl bg-emerald-50 text-lg dark:bg-emerald-950">
-                    🔐
+                  <div className="grid size-10 place-items-center rounded-xl bg-success-soft text-success-fg">
+                    <Icon name="key" />
                   </div>
 
                   <div>
-                    <h3 className="text-sm font-extrabold text-slate-900 dark:text-white">
+                    <h3 className="text-sm font-extrabold text-fg">
                       حفاظت از کلیدها
                     </h3>
 
-                    <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-300">
+                    <p className="mt-1 text-xs text-success-fg">
                       رمزنگاری در سمت سرور
                     </p>
                   </div>
                 </div>
 
-                <p className="mt-4 text-xs leading-7 text-slate-500 dark:text-slate-400">
+                <p className="mt-4 text-xs leading-7 text-muted">
                   کلیدهای API با AES-256-GCM رمزنگاری می‌شوند. مقدار کامل
                   کلید ذخیره‌شده به مرورگر بازگردانده نمی‌شود و فقط
                   نشانه ماسک‌شده آن در رابط کاربری نمایش داده می‌شود.
                 </p>
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+              <div className="rounded-2xl border border-line bg-surface p-5">
                 <div className="flex items-center gap-3">
-                  <div className="grid size-10 place-items-center rounded-xl bg-indigo-50 text-lg dark:bg-indigo-950">
-                    🛡️
+                  <div className="grid size-10 place-items-center rounded-xl bg-primary-soft text-primary-soft-fg">
+                    <Icon name="shield" />
                   </div>
 
                   <div>
-                    <h3 className="text-sm font-extrabold text-slate-900 dark:text-white">
+                    <h3 className="text-sm font-extrabold text-fg">
                       نشست ورود
                     </h3>
 
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="mt-1 text-xs text-muted">
                       کوکی امن و HttpOnly
                     </p>
                   </div>
                 </div>
 
-                <p className="mt-4 text-xs leading-7 text-slate-500 dark:text-slate-400">
+                <p className="mt-4 text-xs leading-7 text-muted">
                   نشست حساب در کوکی HttpOnly نگهداری می‌شود. زمان اعتبار
                   نشست فعلی طبق تنظیمات سیستم هفت روز است. در محیط
                   Production، ویژگی Secure نیز فعال می‌شود.
@@ -486,7 +487,7 @@ export default async function SettingsPage({
                 <form action="/api/auth/logout" method="post" className="mt-4">
                   <button
                     type="submit"
-                    className="inline-flex min-h-9 items-center rounded-xl border border-red-200 px-3 text-xs font-bold text-red-600 transition hover:bg-red-50 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/40"
+                    className="btn-danger btn-sm"
                   >
                     خروج از حساب کاربری
                   </button>
@@ -494,8 +495,8 @@ export default async function SettingsPage({
               </div>
             </div>
 
-            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/50">
-              <p className="text-xs leading-7 text-slate-500 dark:text-slate-400">
+            <div className="mt-4 rounded-2xl border border-line bg-surface-2 p-4">
+              <p className="text-xs leading-7 text-muted">
                 در نسخه فعلی، امکان تغییر رمز عبور، مشاهده نشست‌های فعال
                 دیگر یا لغو دسترسی GitHub از داخل این صفحه پیاده‌سازی
                 نشده است. این بخش صرفاً وضعیت و سازوکارهای موجود را
@@ -516,12 +517,12 @@ export default async function SettingsPage({
           </section>
 
           {/* Guides */}
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-            <h3 className="text-sm font-extrabold text-slate-900 dark:text-white">
+          <section className="rounded-2xl border border-line bg-surface p-5">
+            <h3 className="text-sm font-extrabold text-fg">
               راهنما و مستندات اتصال
             </h3>
 
-            <p className="mt-2 text-xs leading-6 text-slate-500">
+            <p className="mt-2 text-xs leading-6 text-muted">
               برای دریافت توکن‌های زیرساخت و راه‌اندازی سرویس‌ها از
               راهنماهای مربوط استفاده کنید.
             </p>
@@ -537,7 +538,7 @@ export default async function SettingsPage({
           </section>
         </div>
 
-        <footer className="mt-12 border-t border-slate-200 py-6 text-center text-[11px] text-slate-400 dark:border-slate-800">
+        <footer className="mt-12 border-t border-line py-6 text-center text-[11px] text-faint">
           Idea2App AI · Account Settings
         </footer>
       </main>

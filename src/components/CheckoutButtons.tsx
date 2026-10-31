@@ -27,7 +27,7 @@ export function CheckoutButtons({
     );
   }
   if (gateways.length === 0) {
-    return <p className="text-xs text-slate-500">درگاه پرداخت هنوز روی این پلتفرم فعال نشده است.</p>;
+    return <p className="text-xs text-muted">درگاه پرداخت هنوز روی این پلتفرم فعال نشده است.</p>;
   }
 
   async function pay(gateway: "zarinpal" | "stripe") {
@@ -57,7 +57,7 @@ export function CheckoutButtons({
           {busy === "stripe" ? "Redirecting…" : `پرداخت ${usdPrice.toLocaleString("fa-IR")} دلار (Stripe)`}
         </button>
       )}
-      {error && <p className="text-xs text-red-600">{error}</p>}
+      {error && <p className="text-xs text-danger-fg">{error}</p>}
     </div>
   );
 }

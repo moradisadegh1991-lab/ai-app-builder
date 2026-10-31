@@ -2,121 +2,40 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Icon, type IconName } from "./ui/Icon";
 
-const NAV_ITEMS = [
+const NAV_ITEMS: { href: string; label: string; icon: IconName }[] = [
   { href: "/dashboard", label: "پروژه‌ها", icon: "grid" },
   { href: "/guides", label: "راهنماها", icon: "book" },
-  { href: "/settings", label: "اتصال‌ها و کلیدها", icon: "settings" },
-] as const;
+  { href: "/settings", label: "اتصال‌ها", icon: "settings" },
+  { href: "/pricing", label: "طرح‌ها", icon: "credit-card" },
+];
 
-type IconName = (typeof NAV_ITEMS)[number]["icon"];
-type NavigationVariant = "desktop" | "mobile";
-
-function NavIcon({ name }: { name: IconName }) {
-  const props = {
-    width: 18,
-    height: 18,
-    viewBox: "0 0 24 24",
-    fill: "none",
-    stroke: "currentColor",
-    strokeWidth: 1.8,
-    strokeLinecap: "round" as const,
-    strokeLinejoin: "round" as const,
-    "aria-hidden": true as const,
-  };
-
-  switch (name) {
-    case "grid":
-      return (
-        <svg {...props}>
-          <rect x="3" y="3" width="7" height="7" rx="1.5" />
-          <rect x="14" y="3" width="7" height="7" rx="1.5" />
-          <rect x="3" y="14" width="7" height="7" rx="1.5" />
-          <rect x="14" y="14" width="7" height="7" rx="1.5" />
-        </svg>
-      );
-
-    case "book":
-      return (
-        <svg {...props}>
-          <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21z" />
-          <path d="M4 5.5v13A2.5 2.5 0 0 1 6.5 16H20" />
-          <path d="M8 7h8M8 10h6" />
-        </svg>
-      );
-
-    case "settings":
-      return (
-        <svg {...props}>
-          <circle cx="12" cy="12" r="3" />
-          <path d="m19.4 15 .1.1a1.7 1.7 0 0 1-2.4 2.4l-.1-.1a1.7 1.7 0 0 0-2.9 1.2v.2a1.7 1.7 0 0 1-3.4 0v-.2a1.7 1.7 0 0 0-2.9-1.2l-.1.1a1.7 1.7 0 0 1-2.4-2.4l.1-.1a1.7 1.7 0 0 0-1.2-2.9H4a1.7 1.7 0 0 1 0-3.4h.2a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a1.7 1.7 0 0 1 2.4-2.4l.1.1a1.7 1.7 0 0 0 2.9-1.2V2a1.7 1.7 0 0 1 3.4 0v.2a1.7 1.7 0 0 0 2.9 1.2l.1-.1a1.7 1.7 0 0 1 2.4 2.4l-.1.1a1.7 1.7 0 0 0 1.2 2.9h.2a1.7 1.7 0 0 1 0 3.4h-.2a1.7 1.7 0 0 0-1.2 2.9z" />
-        </svg>
-      );
-  }
-}
-
-function isActivePath(pathname: string, href: string) {
+function isActive(pathname: string, href: string) {
+  // A project workspace belongs to "پروژه‌ها".
+  if (href === "/dashboard" && pathname.startsWith("/projects/")) return true;
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function HeaderNavigation({
-  variant,
-}: {
-  variant: NavigationVariant;
-}) {
+export function HeaderNavigation({ variant }: { variant: "desktop" | "mobile" }) {
   const pathname = usePathname() || "";
-
-  const items = (
-    <>
-      {NAV_ITEMS.map((item) => {
-        const active = isActivePath(pathname, item.href);
-
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            aria-current={active ? "page" : undefined}
-            className={`nav-link gap-2 ${
-              active ? "nav-link-active" : ""
-            }`}
-          >
-            <NavIcon name={item.icon} />
-            <span>{item.label}</span>
-          </Link>
-        );
-      })}
-
-      {variant === "mobile" && (
-        <Link
-          href="/pricing"
-          aria-current={pathname === "/pricing" ? "page" : undefined}
-          className={`nav-link shrink-0 ${
-            pathname === "/pricing" ? "nav-link-active" : ""
-          }`}
-        >
-          تعرفه‌ها
-        </Link>
-      )}
-    </>
-  );
-
-  if (variant === "desktop") {
-    return (
-      <nav
-        aria-label="منوی اصلی"
-        className="hidden items-center gap-1 md:flex"
-      >
-        {items}
-      </nav>
-    );
-  }
 
   return (
     <nav
-      aria-label="منوی موبایل"
-      className="flex gap-1 overflow-x-auto border-t border-slate-100 py-2 md:hidden"
+      aria-label={variant === "desktop" ? "منوی اصلی" : "منوی اصلی (موبایل)"}
+      className={variant === "desktop" ? "hidden items-center gap-1 md:flex" : "no-scrollbar -mx-1 flex gap-1 overflow-x-auto px-1 pb-2 md:hidden"}
     >
-      {items}
+      {NAV_ITEMS.map((item) => (
+        <Link
+          key={item.href}
+          href={item.href}
+          aria-current={isActive(pathname, item.href) ? "page" : undefined}
+          className="nav-link shrink-0"
+        >
+          <Icon name={item.icon} size={16} />
+          {item.label}
+        </Link>
+      ))}
     </nav>
   );
 }

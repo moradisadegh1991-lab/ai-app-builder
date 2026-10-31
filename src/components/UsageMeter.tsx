@@ -16,19 +16,19 @@ function formatReset(iso: string | null) {
 function Bar({ label, used, limit, resetsAt }: { label: string; used: number; limit: number; resetsAt: string | null }) {
   const unlimited = limit >= UNLIMITED_TOKENS;
   const percent = unlimited ? 0 : Math.min(100, Math.round((used / limit) * 100));
-  const color = percent >= 90 ? "bg-red-500" : percent >= 70 ? "bg-amber-500" : "bg-emerald-500";
+  const color = percent >= 90 ? "bg-danger" : percent >= 70 ? "bg-warning" : "bg-success";
   return (
     <div>
       <div className="mb-1 flex justify-between text-xs">
         <span>{label}</span>
-        <span className="text-slate-500">
+        <span className="text-muted">
           {unlimited ? `${formatTokens(used)} توکن · نامحدود` : `${formatTokens(used)} از ${formatTokens(limit)} توکن`}
         </span>
       </div>
-      <div className="h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800" role="progressbar" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100}>
+      <div className="h-2 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100}>
         <div className={`h-full ${color}`} style={{ width: `${percent}%` }} />
       </div>
-      {resetsAt && used > 0 && <div className="mt-1 text-[11px] text-slate-500">آزاد شدن کامل: {formatReset(resetsAt)}</div>}
+      {resetsAt && used > 0 && <div className="mt-1 text-[11px] text-muted">آزاد شدن کامل: {formatReset(resetsAt)}</div>}
     </div>
   );
 }
@@ -40,7 +40,7 @@ export function UsageMeter({ usage }: { usage: UsageSummary }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="font-bold">طرح {usage.plan.name}</h2>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-muted">
             {usage.currentPeriodEnd
               ? `اعتبار تا ${new Date(usage.currentPeriodEnd).toLocaleDateString("fa-IR", { timeZone: "Asia/Tehran" })}`
               : usage.plan.priceUsd === 0 && usage.plan.id === "max"
@@ -56,7 +56,7 @@ export function UsageMeter({ usage }: { usage: UsageSummary }) {
       </div>
       <Bar label="مصرف ۵ ساعت اخیر" {...usage.window} />
       <Bar label="مصرف ۷ روز اخیر" {...usage.week} />
-      <p className="text-[11px] text-slate-500">
+      <p className="text-[11px] text-muted">
         سقف‌ها فقط برای کلیدهای مرکزی پلتفرم است. با وارد کردن کلید API شخصی، محدودیت توکن ندارید.
       </p>
     </section>
