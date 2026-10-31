@@ -1,6 +1,15 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { AiProviderId, CompletionRequest, CompletionResult } from "./types";
 
+// User message for OpenAI-style APIs: plain text, or text plus images as data URLs.
+function openAiUserContent(req: CompletionRequest) {
+  if (!req.images?.length) return req.prompt;
+  return [
+    { type: "text", text: req.prompt },
+    ...req.images.map((image) => ({ type: "image_url", image_url: { url: `data:${image.mime};base64,${image.data}` } })),
+  ];
+}
+
 // One client per provider behind a common interface; all are asked for JSON
 // output. Claude goes through the official SDK (streaming); OpenAI and Gemini
 // use their REST APIs directly.
@@ -29,7 +38,7 @@ async function callOpenAI(req: CompletionRequest): Promise<CompletionResult> {
       model: req.model,
       messages: [
         { role: "system", content: req.system },
-        { role: "user", content: req.prompt },
+        { role: "user", content: openAiUserContent(req) },
       ],
       response_format: { type: "json_object" },
       max_completion_tokens: req.maxOutputTokens,
@@ -55,7 +64,24 @@ async function callAnthropic(req: CompletionRequest): Promise<CompletionResult> 
       model: req.model,
       max_tokens: req.maxOutputTokens,
       system: req.system,
-      messages: [{ role: "user", content: req.prompt }],
+      messages: [
+        {
+          role: "user",
+          content: req.images?.length
+            ? [
+                ...req.images.map((image) => ({
+                  type: "image" as const,
+                  source: {
+                    type: "base64" as const,
+                    media_type: image.mime as "image/png" | "image/jpeg" | "image/webp" | "image/gif",
+                    data: image.data,
+                  },
+                })),
+                { type: "text" as const, text: req.prompt },
+              ]
+            : req.prompt,
+        },
+      ],
       output_config: { effort: "high" },
       ...(useFallbacks ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
     })
@@ -86,7 +112,15 @@ async function callGemini(req: CompletionRequest): Promise<CompletionResult> {
     { "x-goog-api-key": req.apiKey },
     {
       systemInstruction: { parts: [{ text: req.system }] },
-      contents: [{ role: "user", parts: [{ text: req.prompt }] }],
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { text: req.prompt },
+            ...(req.images ?? []).map((image) => ({ inlineData: { mimeType: image.mime, data: image.data } })),
+          ],
+        },
+      ],
       generationConfig: { responseMimeType: "application/json", maxOutputTokens: req.maxOutputTokens },
     },
   );
@@ -113,7 +147,7 @@ async function callGateway(req: CompletionRequest): Promise<CompletionResult> {
     model: req.model,
     messages: [
       { role: "system", content: req.system },
-      { role: "user", content: req.prompt },
+      { role: "user", content: openAiUserContent(req) },
     ],
     max_tokens: req.maxOutputTokens,
   };

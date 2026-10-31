@@ -4,7 +4,10 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
+import type { Attachment } from "@/lib/attachments";
+import { prepareAttachments } from "@/lib/attachments-client";
 import { api, type ProviderInfo, type ProvidersResponse } from "./api";
+import { AttachmentPicker } from "./AttachmentPicker";
 
 type Kind = "app" | "website";
 type Hosting = "vps" | "vercel";
@@ -199,6 +202,9 @@ export function NewProjectForm() {
   const [vpsProvider, setVpsProvider] = useState<VpsProvider | null>(null);
 
   const [idea, setIdea] = useState("");
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [attachErrors, setAttachErrors] = useState<string[]>([]);
+  const [attachWorking, setAttachWorking] = useState(false);
   const [name, setName] = useState("");
   const [template, setTemplate] = useState<Template>("capacitor");
 
@@ -323,6 +329,15 @@ export function NewProjectForm() {
     setActiveStep((current) => Math.max(0, current - 1));
   }
 
+  async function addAttachments(files: File[]) {
+    if (!files.length) return;
+    setAttachWorking(true);
+    const result = await prepareAttachments(files, attachments);
+    setAttachWorking(false);
+    setAttachErrors(result.errors);
+    setAttachments(result.items);
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -356,6 +371,7 @@ export function NewProjectForm() {
         method: "POST",
         body: JSON.stringify({
           idea,
+          attachments,
           name: name || undefined,
           kind,
           template,
@@ -611,8 +627,28 @@ export function NewProjectForm() {
               placeholder="با جزئیات توضیح دهید: محصول برای چه کسانی است؟ چه امکاناتی دارد؟ چه صفحاتی لازم است؟ چه اطلاعاتی باید ثبت یا نمایش داده شود؟"
               value={idea}
               onChange={(event) => setIdea(event.target.value)}
+              onPaste={(event) => {
+                // A pasted screenshot becomes an attachment; pasted text behaves as usual.
+                const images = Array.from(event.clipboardData.files).filter((file) => file.type.startsWith("image/"));
+                if (images.length) {
+                  event.preventDefault();
+                  void addAttachments(images);
+                }
+              }}
               required
               minLength={15}
+            />
+
+            <AttachmentPicker
+              value={attachments}
+              onAdd={(files) => void addAttachments(files)}
+              onRemove={(index) => {
+                setAttachments((current) => current.filter((_, i) => i !== index));
+                setAttachErrors([]);
+              }}
+              working={attachWorking}
+              errors={attachErrors}
+              disabled={busy}
             />
 
             <div className="flex flex-wrap gap-2">

@@ -6,7 +6,7 @@ import { HttpError } from "../http";
 import { getIntegration } from "../integrations/store";
 import { extractJsonObject } from "./json";
 import { callProvider } from "./providers";
-import { AI_PROVIDERS, AI_PROVIDER_LABELS, type AiProviderId } from "./types";
+import { AI_PROVIDERS, AI_PROVIDER_LABELS, type AiProviderId, type CompletionImage } from "./types";
 
 export { AI_PROVIDERS, AI_PROVIDER_LABELS, type AiProviderId };
 
@@ -122,6 +122,8 @@ export interface StructuredCallOptions<T> {
   purpose: "spec" | "code" | "fix";
   system: string;
   prompt: string;
+  /** Reference images sent along with the prompt (vision). */
+  images?: CompletionImage[];
   schema: z.ZodType<T>;
   maxOutputTokens: number;
 }
@@ -140,6 +142,7 @@ export async function generateStructured<T>(options: StructuredCallOptions<T>): 
     model: key.model,
     system: options.system,
     prompt: options.prompt,
+    images: options.images,
     maxOutputTokens: options.maxOutputTokens,
   });
 

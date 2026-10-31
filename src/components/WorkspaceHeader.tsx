@@ -53,6 +53,16 @@ export function WorkspaceHeader({
               <span aria-hidden="true">{isWebsite ? "⌘" : "▣"}</span>
               {isWebsite ? "وب‌سایت" : "اپلیکیشن"}
             </span>
+
+            {project.attachments.length > 0 && (
+              <span
+                className="inline-flex max-w-full items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-1.5 dark:bg-slate-800"
+                title={project.attachments.map((item) => item.name).join("، ")}
+              >
+                <span aria-hidden="true">📎</span>
+                {project.attachments.length.toLocaleString("fa-IR")} پیوست
+              </span>
+            )}
           </div>
         </div>
 

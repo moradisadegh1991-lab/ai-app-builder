@@ -3,6 +3,10 @@ import type { GeneratedFile } from "../templates/types";
 
 const API = "https://api.github.com";
 
+/** GitHub answered 401: the stored token was revoked, expired or belongs to a reset OAuth app. */
+export const GITHUB_TOKEN_REJECTED =
+  "GitHub توکن ذخیره‌شده را نپذیرفت (باطل یا لغو شده است). در صفحه «اتصال‌ها و کلیدها» روی «اتصال دوباره / تغییر حساب» بزنید و بعد دوباره تلاش کنید.";
+
 export class GitHubError extends Error {
   constructor(
     public readonly status: number,
@@ -33,7 +37,10 @@ async function gh<T = any>(token: string, method: string, path: string, body?: u
     } catch {
       // keep raw text
     }
-    throw new GitHubError(response.status, `GitHub ${method} ${path} → ${response.status}: ${message}`);
+    throw new GitHubError(
+      response.status,
+      response.status === 401 ? GITHUB_TOKEN_REJECTED : `GitHub ${method} ${path} → ${response.status}: ${message}`,
+    );
   }
   return (text ? JSON.parse(text) : undefined) as T;
 }
@@ -51,7 +58,10 @@ async function signedRedirect(token: string, path: string, accept: string): Prom
   });
   const location = response.headers.get("location");
   if (response.status >= 300 && response.status < 400 && location) return location;
-  throw new GitHubError(response.status, `GitHub download ${path} did not return a redirect (${response.status})`);
+  throw new GitHubError(
+    response.status,
+    response.status === 401 ? GITHUB_TOKEN_REJECTED : `GitHub download ${path} did not return a redirect (${response.status})`,
+  );
 }
 
 // ------------------------------------------------------------------ OAuth

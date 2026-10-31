@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { AI_PROVIDERS } from "@/lib/ai";
 import { db, schema } from "@/lib/db";
+import { attachmentsSchema } from "@/lib/attachments";
 import { activePlan } from "@/lib/billing/subscription";
 import { HttpError, handleRoute, readJson } from "@/lib/http";
 import { requireApiUser } from "@/lib/session";
@@ -11,6 +12,7 @@ import { slugify } from "@/lib/templates";
 const createSchema = z
   .object({
     idea: z.string().trim().min(15, "ایده را کمی کامل‌تر توضیح دهید.").max(5000),
+    attachments: attachmentsSchema.default([]),
     kind: z.enum(["app", "website"]),
     // Apps: Capacitor or Expo. Websites always use the web template.
     template: z.enum(["capacitor", "expo"]).default("capacitor"),
@@ -81,6 +83,7 @@ export async function POST(request: Request) {
         name,
         slug,
         idea: body.idea,
+        attachments: body.attachments.length ? body.attachments : null,
         kind: body.kind,
         template: body.kind === "website" ? "web" : body.template,
         needsCloud: body.kind === "website" || body.needsCloud,
