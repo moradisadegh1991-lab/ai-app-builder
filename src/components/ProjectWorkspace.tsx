@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ProjectView } from "@/lib/projects";
 import type { AppSpec } from "@/lib/spec";
 import { api, type ProviderInfo, type ProvidersResponse } from "./api";
@@ -98,6 +98,28 @@ export function ProjectWorkspace({
   );
 
   const base = `/api/projects/${project.id}`;
+
+  // After a failed build the page repairs it by itself, up to project.autoFix.max rounds in a row.
+  const [autoFixEnabled, setAutoFixEnabled] = useState(true);
+  const autoFixedBuild = useRef<string | null>(null);
+
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem("i2a_autofix") === "off") setAutoFixEnabled(false);
+    } catch {
+      // storage unavailable: keep the default
+    }
+  }, []);
+
+  useEffect(() => {
+    const build = project.build;
+    if (!autoFixEnabled || busy !== null || !build || build.conclusion !== "failure") return;
+    if (project.autoFix.used >= project.autoFix.max || autoFixedBuild.current === build.id) return;
+    // Only for a failure that just happened, not an old one found when the page is opened later.
+    if (Date.now() - new Date(build.createdAt).getTime() > 60 * 60_000) return;
+    autoFixedBuild.current = build.id;
+    void run("fix", `${base}/fix`, "POST", { provider, auto: true });
+  }, [autoFixEnabled, busy, project.build, project.autoFix, base, provider, run]);
 
   const buildRunning =
     project.build !== null &&
@@ -268,6 +290,19 @@ export function ProjectWorkspace({
               provider,
             })
           }
+          autoFix={{
+            enabled: autoFixEnabled,
+            used: project.autoFix.used,
+            max: project.autoFix.max,
+            onChange: (value) => {
+              setAutoFixEnabled(value);
+              try {
+                window.localStorage.setItem("i2a_autofix", value ? "on" : "off");
+              } catch {
+                // storage unavailable: applies to this visit only
+              }
+            },
+          }}
         />
       </Step>
 
@@ -878,6 +913,7 @@ function BuildStep({
   onPush,
   onRebuild,
   onFix,
+  autoFix,
 }: {
   project: ProjectView;
   githubConnected: boolean;
@@ -885,6 +921,7 @@ function BuildStep({
   onPush: () => void;
   onRebuild: () => void;
   onFix: () => void;
+  autoFix: { enabled: boolean; used: number; max: number; onChange: (value: boolean) => void };
 }) {
   const build = project.build;
   const pushedCurrent = project.status === "pushed";
@@ -1083,6 +1120,16 @@ function BuildStep({
               <span className="text-xs text-red-800 dark:text-red-300">
                 گزارش خطای Build برای مدل ارسال می‌شود و نسخه اصلاح‌شده دوباره Build می‌شود.
               </span>
+
+              <label className="flex w-full items-center gap-2 text-xs text-red-800 dark:text-red-300">
+                <input
+                  type="checkbox"
+                  checked={autoFix.enabled}
+                  onChange={(event) => autoFix.onChange(event.target.checked)}
+                />
+                اصلاح خودکار بعد از هر شکست (حداکثر {autoFix.max.toLocaleString("fa-IR")} بار پشت‌سرهم؛ تا الان{" "}
+                {autoFix.used.toLocaleString("fa-IR")} بار)
+              </label>
             </div>
           )}
         </div>
