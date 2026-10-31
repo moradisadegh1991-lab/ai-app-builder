@@ -3,6 +3,7 @@ import { activePlan, usageSummary } from "../billing/subscription";
 import { db, schema } from "../db";
 import { env } from "../env";
 import { HttpError } from "../http";
+import { enforce } from "../rate-limit";
 import { getIntegration } from "../integrations/store";
 import { extractJsonObject } from "./json";
 import { callProvider } from "./providers";
@@ -133,6 +134,8 @@ export interface StructuredCallOptions<T> {
  * plan's usage windows and recording token usage for cost control.
  */
 export async function generateStructured<T>(options: StructuredCallOptions<T>): Promise<{ data: T; model: string }> {
+  // A burst guard on top of the plan's token windows (which do not apply to users' own keys).
+  await enforce("ai", options.userId, 60, 3600, "درخواست هوش مصنوعی");
   const key = await resolveKey(options.userId, options.provider);
   if (key.usedPlatformKey) await assertWithinPlan(options.userId);
 

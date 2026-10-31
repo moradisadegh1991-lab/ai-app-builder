@@ -282,6 +282,13 @@ export const usageRecords = pgTable(
   (t) => [index("usage_records_user_created_idx").on(t.userId, t.createdAt)],
 );
 
+/** Fixed-window request counters for rate limiting (works across serverless instances). */
+export const rateLimits = pgTable("rate_limits", {
+  key: text("key").primaryKey(),
+  windowStart: timestamp("window_start", { withTimezone: true }).notNull().defaultNow(),
+  count: integer("count").notNull().default(0),
+});
+
 export type User = typeof users.$inferSelect;
 export type Project = typeof projects.$inferSelect;
 export type GenerationJob = typeof generationJobs.$inferSelect;

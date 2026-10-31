@@ -1,4 +1,4 @@
--- Idea2App AI: full database setup (= drizzle/0000 .. 0004) as ONE statement.
+-- Idea2App AI: full database setup (= drizzle/0000 .. 0005) as ONE statement.
 -- Neon's SQL Editor runs a single statement per click, so everything is wrapped in a DO block.
 -- Run it once on an EMPTY database. Turn the editor's "Read-only" switch OFF first.
 -- Existing database? Run only the newest drizzle/000N_*.sql files you have not applied yet.
@@ -200,5 +200,10 @@ ALTER TABLE "users" ADD COLUMN "google_id" text;
 ALTER TABLE "users" ADD CONSTRAINT "users_google_id_unique" UNIQUE("google_id");
 ALTER TABLE "projects" ADD COLUMN "attachments" jsonb;
 ALTER TYPE "public"."job_kind" ADD VALUE 'edit';
+CREATE TABLE "rate_limits" (
+	"key" text PRIMARY KEY NOT NULL,
+	"window_start" timestamp with time zone DEFAULT now() NOT NULL,
+	"count" integer DEFAULT 0 NOT NULL
+);
 END
 $setup$;

@@ -3,6 +3,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { EmailLogin } from "@/components/EmailLogin";
 import { enabledSocialProviders } from "@/lib/auth/providers";
+import { env } from "@/lib/env";
+import { turnstileEnabled } from "@/lib/turnstile";
 import { getCurrentUser } from "@/lib/session";
 
 const ERRORS: Record<string, string> = {
@@ -18,6 +20,7 @@ const ERRORS: Record<string, string> = {
   account_conflict:
     "این ایمیل قبلاً به حساب دیگری از همین سرویس وصل شده است.",
   provider_disabled: "این روش ورود فعال نیست.",
+  rate_limited: "تعداد تلاش‌ها زیاد بود؛ چند دقیقه صبر کنید و دوباره امتحان کنید.",
 };
 
 const STEPS = [
@@ -448,7 +451,7 @@ export default async function LandingPage({
               </div>
             )}
 
-            <EmailLogin providers={enabledSocialProviders()} />
+            <EmailLogin providers={enabledSocialProviders()} turnstileSiteKey={turnstileEnabled() ? env.turnstileSiteKey() : undefined} />
 
             <p className="mt-3 text-center text-[10px] leading-6 text-slate-400">
               با ورود یا ثبت‌نام، استفاده از سرویس را می‌پذیرید.

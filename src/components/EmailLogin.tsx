@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api } from "./api";
+import { Turnstile } from "./Turnstile";
 
 function GoogleIcon() {
   return (
@@ -23,13 +24,23 @@ function GitHubIcon() {
   );
 }
 
-export function EmailLogin({ providers }: { providers: { google: boolean; github: boolean } }) {
+export function EmailLogin({
+  providers,
+  turnstileSiteKey,
+}: {
+  providers: { google: boolean; github: boolean };
+  /** When set, a Cloudflare Turnstile check is required before a code is sent. */
+  turnstileSiteKey?: string;
+}) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  // Tokens are single use: remounting the widget after each attempt gives a fresh one.
+  const [widgetKey, setWidgetKey] = useState(0);
 
   async function requestCode(event?: React.FormEvent) {
     event?.preventDefault();
@@ -38,13 +49,17 @@ export function EmailLogin({ providers }: { providers: { google: boolean; github
     try {
       const data = await api<{ email: string }>("/api/auth/email/request", {
         method: "POST",
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, turnstileToken: turnstileToken ?? undefined }),
       });
       setSentTo(data.email);
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setBusy(false);
+      if (turnstileSiteKey) {
+        setTurnstileToken(null);
+        setWidgetKey((key) => key + 1);
+      }
     }
   }
 
@@ -105,7 +120,8 @@ export function EmailLogin({ providers }: { providers: { google: boolean; github
             onChange={(e) => setEmail(e.target.value)}
             required
           />
-          <button className="btn-primary" disabled={busy || !email}>
+          {turnstileSiteKey && <Turnstile key={widgetKey} siteKey={turnstileSiteKey} onToken={setTurnstileToken} />}
+          <button className="btn-primary" disabled={busy || !email || (Boolean(turnstileSiteKey) && !turnstileToken)}>
             {busy ? "در حال ارسال…" : "ارسال کد"}
           </button>
         </form>

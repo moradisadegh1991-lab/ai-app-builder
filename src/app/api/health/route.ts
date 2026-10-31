@@ -21,6 +21,9 @@ export async function GET() {
     gemini: Boolean(process.env.GEMINI_API_KEY),
     // Optional: one OpenAI-compatible gateway (e.g. Liara AI) in front of all providers.
     aiGateway: Boolean(process.env.AI_GATEWAY_BASE_URL && process.env.AI_GATEWAY_API_KEY),
+    // Optional: bot check on the e-mail code request, and the rate-limit table (migration 0005).
+    turnstile: Boolean(process.env.TURNSTILE_SITE_KEY && process.env.TURNSTILE_SECRET_KEY),
+    rateLimits: false,
   };
   try {
     await db().execute(sql`select 1`);
@@ -37,6 +40,9 @@ export async function GET() {
     const count = (result: unknown) => (Array.isArray(result) ? result.length : ((result as { rows?: unknown[] }).rows?.length ?? 0));
     // 0004 (job_kind 'edit') is only needed by "edit with chat", but it is part of the schema all the same.
     checks.schema = count(columns) >= 2 && count(edit) >= 1;
+    // Rate limiting fails open when this table is missing, so it is reported but not required for ok.
+    const limits = await db().execute(sql`select 1 from information_schema.tables where table_name = 'rate_limits'`);
+    checks.rateLimits = count(limits) >= 1;
   } catch {
     // keep whatever was verified before the failure
   }
