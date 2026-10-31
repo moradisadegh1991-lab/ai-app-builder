@@ -5,7 +5,11 @@ import { Icon } from "../ui/Icon";
 import type { SectionId, WorkspaceSection } from "./model";
 import { StepMarker } from "./parts";
 
-/** Section navigation: a vertical list on large screens, a scrollable tab bar on small ones. */
+/**
+ * Section navigation: a vertical list on large screens, a scrollable button bar on small ones.
+ * These are ordinary navigation buttons (no tab/tablist semantics, which would require arrow-key
+ * handling): the current section is announced with aria-current, Tab/Enter/Space work natively.
+ */
 export function WorkspaceNav({
   sections,
   active,
@@ -21,7 +25,7 @@ export function WorkspaceNav({
 
   // Keep the selected tab visible in the scrollable bar.
   useEffect(() => {
-    tabs.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    tabs.current?.querySelector('[aria-current="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [active]);
 
   if (variant === "sidebar") {
@@ -35,7 +39,7 @@ export function WorkspaceNav({
                 <button
                   type="button"
                   onClick={() => onSelect(section.id)}
-                  aria-current={selected ? "page" : undefined}
+                  aria-current={selected ? "true" : undefined}
                   className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-start transition ${
                     selected ? "bg-surface shadow-xs ring-1 ring-line" : "hover:bg-surface-3"
                   }`}
@@ -64,7 +68,7 @@ export function WorkspaceNav({
       <nav aria-label="بخش‌های پروژه" className="no-scrollbar -mx-4 overflow-x-auto px-4 lg:hidden">
         <div ref={tabs} className="segmented min-w-max">
           {sections.map((section) => (
-            <button key={section.id} type="button" aria-selected={section.id === active} onClick={() => onSelect(section.id)}>
+            <button key={section.id} type="button" aria-current={section.id === active ? "true" : undefined} onClick={() => onSelect(section.id)}>
               <Icon
                 name={section.state === "done" && section.id !== "overview" && section.id !== "preview" ? "check" : section.icon}
                 size={15}

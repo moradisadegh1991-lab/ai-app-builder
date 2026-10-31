@@ -70,7 +70,7 @@ describe("workspace model", () => {
   });
 
   it("uses the VPS agent status for VPS hosting", () => {
-    const vps = view({ hosting: "vps", vpsProvider: "own", repo: { owner: "o", name: "r", url: "u" }, vps: { status: "error" } });
+    const vps = view({ hosting: "vps", vpsProvider: "own", repo: { owner: "o", name: "r", url: "u" }, vps: { status: "error", registered: true } });
     expect(workspaceFacts(vps).deployFailed).toBe(true);
     expect(workspaceSections(vps, false).find((s) => s.id === "deploy")!.state).toBe("error");
   });

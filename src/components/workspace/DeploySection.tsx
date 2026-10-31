@@ -6,7 +6,9 @@ import { api } from "../api";
 import { GuideToggle } from "../guides/Guide";
 import type { GuideId } from "../guides/data";
 import { Icon } from "../ui/Icon";
-import { DEPLOYMENT_STATUS, TONE_BADGE, VPS_STATUS } from "../ui/status";
+import { TONE_BADGE, VPS_STATUS, type Tone } from "../ui/status";
+import { deployInfo, type DeployPhase } from "./model";
+import { useAfterDelay } from "./useAfterDelay";
 import { CopyBox, ExternalLink, Fact, Section } from "./parts";
 
 /** On-device app: nothing to host, just install the APK. */
@@ -24,15 +26,54 @@ export function LocalDeploySection() {
   );
 }
 
+const PHASE_TONE: Record<DeployPhase, Tone> = { idle: "neutral", waiting: "warning", provisioning: "info", deploying: "info", ready: "success", failed: "danger" };
+
+/** How long the user may watch "provisioning" before we say it looks stuck (client-side observation only). */
+const PROVISIONING_SLOW_MS = 5 * 60_000;
+
+function PhaseSteps({ phase }: { phase: DeployPhase }) {
+  const steps: { id: DeployPhase; label: string }[] = [
+    { id: "provisioning", label: "آماده‌سازی زیرساخت" },
+    { id: "deploying", label: "استقرار روی Vercel" },
+    { id: "ready", label: "منتشر شده" },
+  ];
+  const current = steps.findIndex((step) => step.id === phase);
+  return (
+    <ol className="flex flex-col gap-2 sm:flex-row sm:items-center" aria-label="مراحل استقرار">
+      {steps.map((step, index) => {
+        const done = index < current || phase === "ready";
+        const active = index === current && phase !== "ready";
+        return (
+          <li key={step.id} aria-current={active ? "step" : undefined} className="flex items-center gap-2 sm:flex-1">
+            <span
+              className={`grid size-6 shrink-0 place-items-center rounded-full text-[11px] font-bold ${
+                done ? "bg-success text-white" : active ? "bg-info-soft text-info-fg ring-1 ring-info-line" : "border border-line-strong text-muted"
+              }`}
+            >
+              {done ? <Icon name="check" size={12} strokeWidth={3} /> : active ? <span className="spinner !size-3" aria-hidden="true" /> : (index + 1).toLocaleString("fa-IR")}
+            </span>
+            <span className={`text-sm ${active ? "font-semibold text-fg" : done ? "text-fg-2" : "text-muted"}`}>{step.label}</span>
+            {index < steps.length - 1 && <span className={`hidden h-px flex-1 sm:block ${done ? "bg-success" : "bg-line"}`} aria-hidden="true" />}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 /** Vercel (+ Neon when the project needs a database). */
 export function CloudDeploySection({ project, disabled, onProvision }: { project: ProjectView; disabled: boolean; onProvision: () => void }) {
   const deployment = project.deployment;
+  const info = deployInfo(project);
   const needsBackend = Boolean(project.spec?.needsBackend);
   const isWebsite = project.kind === "website";
-  const status = deployment ? (DEPLOYMENT_STATUS[deployment.status] ?? { label: deployment.status, tone: "neutral" as const }) : null;
-  const busy = deployment?.status === "provisioning" || deployment?.status === "deploying";
-  const ready = deployment?.status === "ready" && Boolean(deployment.url);
-  const failed = deployment?.status === "failed";
+  const phase = info.phase;
+  const busy = phase === "provisioning" || phase === "deploying";
+  const ready = phase === "ready";
+  const failed = phase === "failed";
+  const slowProvisioning = useAfterDelay(phase === "provisioning", PROVISIONING_SLOW_MS);
+  // The address is shown only once the deployment is really ready.
+  const liveUrl = ready && deployment?.url && /^https?:\/\//.test(deployment.url) ? deployment.url : null;
 
   return (
     <Section
@@ -45,7 +86,7 @@ export function CloudDeploySection({ project, disabled, onProvision }: { project
             ? "سایت روی Vercel منتشر می‌شود و یک نشانی ‎*.vercel.app‎ با HTTPS می‌گیرد."
             : "این اپلیکیشن بدون سرور اجرا می‌شود."
       }
-      actions={status && <span className={`${TONE_BADGE[status.tone]} badge-dot`}>{status.label}</span>}
+      actions={deployment && <span className={`${TONE_BADGE[PHASE_TONE[phase]]} badge-dot`}>{info.label}</span>}
     >
       <div className="flex flex-col gap-4 text-sm">
         {!needsBackend && !isWebsite ? (
@@ -73,14 +114,16 @@ export function CloudDeploySection({ project, disabled, onProvision }: { project
 
             {deployment && (
               <>
-                <div className="grid gap-3 sm:grid-cols-2">
+                {(busy || ready) && <PhaseSteps phase={phase} />}
+
+                <div className={`grid gap-3 ${needsBackend ? "sm:grid-cols-2" : ""}`}>
                   {needsBackend && (
                     <div className="panel-muted flex items-start gap-3 p-3">
                       <Icon name="database" className="mt-0.5 text-muted" />
                       <div>
                         <div className="font-semibold text-fg">Neon PostgreSQL</div>
-                        <div className={`mt-0.5 text-xs ${deployment.hasDatabase ? "text-success-fg" : "text-warning-fg"}`}>
-                          {deployment.hasDatabase ? "دیتابیس متصل است" : "اتصال دیتابیس تأیید نشده است"}
+                        <div className={`mt-0.5 text-xs ${deployment.hasDatabase ? "text-success-fg" : phase === "provisioning" ? "text-info-fg" : "text-warning-fg"}`}>
+                          {deployment.hasDatabase ? "دیتابیس متصل است" : phase === "provisioning" ? "در حال ساخت دیتابیس" : "اتصال دیتابیس تأیید نشده است"}
                         </div>
                       </div>
                     </div>
@@ -89,44 +132,62 @@ export function CloudDeploySection({ project, disabled, onProvision }: { project
                     <Icon name="cloud" className="mt-0.5 text-muted" />
                     <div>
                       <div className="font-semibold text-fg">Vercel</div>
-                      <div className={`mt-0.5 text-xs ${ready ? "text-success-fg" : failed ? "text-danger-fg" : "text-info-fg"}`}>
-                        {ready ? "منتشر شده است" : failed ? "استقرار ناموفق" : "در انتظار تکمیل استقرار"}
+                      <div className={`mt-0.5 text-xs ${ready ? "text-success-fg" : failed ? "text-danger-fg" : phase === "deploying" ? "text-info-fg" : "text-muted"}`}>
+                        {ready ? "منتشر شده است" : failed ? "استقرار ناموفق" : phase === "deploying" ? "در حال Build و انتشار" : phase === "provisioning" ? "در حال ساخت پروژه" : "پروژه هنوز ساخته نشده است"}
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {deployment.url && (
-                  <div className="panel-muted flex flex-wrap items-center justify-between gap-3 p-3">
-                    <div className="min-w-0">
-                      <div className="text-xs text-muted">نشانی سایت / API</div>
-                      <ExternalLink href={deployment.url} className="ltr mt-0.5 break-all">
-                        {deployment.url}
-                      </ExternalLink>
-                    </div>
-                    <a href={deployment.url} target="_blank" rel="noopener noreferrer" className="btn-secondary btn-sm">
-                      <Icon name="external" size={14} />
-                      باز کردن
-                    </a>
-                  </div>
-                )}
-
                 {busy && (
                   <div role="status" className="alert alert-info">
                     <span className="spinner mt-1.5" aria-hidden="true" />
-                    <span>عملیات استقرار در حال اجراست؛ وضعیت خودکار به‌روز می‌شود.</span>
+                    <div>
+                      <div className="font-semibold">{info.label}</div>
+                      <div className="text-xs leading-6">{info.description} وضعیت خودکار به‌روز می‌شود.</div>
+                    </div>
                   </div>
                 )}
 
-                {ready && (
-                  <div className="alert alert-success">
-                    <Icon name="check-circle" className="mt-1" />
-                    <span>{needsBackend ? "زیرساخت ابری پروژه آمادهٔ استفاده است." : "سایت روی Vercel منتشر شده و در دسترس است."}</span>
+                {slowProvisioning && (
+                  <div role="note" className="alert alert-warning">
+                    <Icon name="alert" className="mt-1" />
+                    <span className="text-xs leading-6">
+                      بیش از ۵ دقیقه است که این مرحله تغییری نکرده است. اگر درخواست ساخت در میانهٔ کار قطع شده باشد، از داخل صفحه قابل ادامه نیست و نیاز به بازیابی سمت سرور دارد؛ صفحه را دوباره باز کنید؛ اگر وضعیت همچنان همین بود، این حالت از داخل برنامه قابل ادامه نیست.
+                    </span>
                   </div>
+                )}
+
+                {ready && !liveUrl && (
+                  <div className="alert alert-warning">
+                    <Icon name="alert" className="mt-1" />
+                    <span>{info.description}</span>
+                  </div>
+                )}
+
+                {liveUrl && (
+                  <>
+                    <div className="alert alert-success">
+                      <Icon name="check-circle" className="mt-1" />
+                      <span>{needsBackend ? "زیرساخت ابری پروژه آمادهٔ استفاده است." : info.description}</span>
+                    </div>
+                    <div className="panel-muted flex flex-wrap items-center justify-between gap-3 p-3">
+                      <div className="min-w-0">
+                        <div className="text-xs text-muted">نشانی سایت / API</div>
+                        <ExternalLink href={liveUrl} className="ltr mt-0.5 break-all">
+                          {liveUrl}
+                        </ExternalLink>
+                      </div>
+                      <a href={liveUrl} target="_blank" rel="noopener noreferrer" className="btn-secondary btn-sm">
+                        <Icon name="external" size={14} />
+                        باز کردن
+                      </a>
+                    </div>
+                  </>
                 )}
 
                 {failed && (
-                  <div className="flex flex-col gap-2 rounded-xl border border-danger-line bg-danger-soft p-3 text-danger-fg">
+                  <div role="alert" className="flex flex-col gap-3 rounded-xl border border-danger-line bg-danger-soft p-3 text-danger-fg">
                     <div className="font-semibold">استقرار با خطا مواجه شد.</div>
                     {deployment.error ? (
                       <pre dir="auto" className="max-h-64 overflow-auto rounded-lg bg-surface p-3 text-xs whitespace-pre-wrap break-words text-fg-2">
@@ -135,7 +196,13 @@ export function CloudDeploySection({ project, disabled, onProvision }: { project
                     ) : (
                       <p className="text-xs">جزئیات خطا از سرور دریافت نشده است.</p>
                     )}
-                    <p className="text-xs">تنظیمات اتصال Vercel و Neon را در صفحهٔ «اتصال‌ها و کلیدها» بررسی کنید.</p>
+                    <p className="text-xs leading-6">{info.description} تنظیمات اتصال Vercel و Neon را در صفحهٔ «اتصال‌ها و کلیدها» بررسی کنید.</p>
+                    <div>
+                      <button type="button" className="btn-primary btn-sm" disabled={disabled} onClick={onProvision}>
+                        <Icon name="refresh" size={14} />
+                        تلاش دوباره
+                      </button>
+                    </div>
                   </div>
                 )}
               </>
@@ -173,6 +240,7 @@ export function VpsDeploySection({
   onError,
   onFix,
   canFix,
+  track,
 }: {
   project: ProjectView;
   disabled: boolean;
@@ -180,6 +248,8 @@ export function VpsDeploySection({
   onError: (message: string | null) => void;
   onFix: () => void;
   canFix: boolean;
+  /** Runs a request as a tracked operation so background polling cannot overwrite its result. */
+  track: <T>(operation: () => Promise<T>) => Promise<T>;
 }) {
   const [install, setInstall] = useState<InstallInstructions | null>(null);
   const [busy, setBusy] = useState(false);
@@ -191,9 +261,11 @@ export function VpsDeploySection({
     setBusy(true);
     onError(null);
     try {
-      const data = await api<{ install: InstallInstructions; project: ProjectView }>(`/api/projects/${project.id}/vps`, { method: "POST" });
-      setInstall(data.install);
-      onChange(data.project);
+      await track(async () => {
+        const data = await api<{ install: InstallInstructions; project: ProjectView }>(`/api/projects/${project.id}/vps`, { method: "POST" });
+        setInstall(data.install);
+        onChange(data.project);
+      });
     } catch (e) {
       onError((e as Error).message);
     } finally {
@@ -205,9 +277,11 @@ export function VpsDeploySection({
     if (!confirm("اتصال این سرور حذف شود؟ کلید استقرار از GitHub پاک می‌شود؛ خود سرور دست نمی‌خورد.")) return;
     setBusy(true);
     try {
-      const data = await api<{ project: ProjectView }>(`/api/projects/${project.id}/vps`, { method: "DELETE" });
-      setInstall(null);
-      onChange(data.project);
+      await track(async () => {
+        const data = await api<{ project: ProjectView }>(`/api/projects/${project.id}/vps`, { method: "DELETE" });
+        setInstall(null);
+        onChange(data.project);
+      });
     } catch (e) {
       onError((e as Error).message);
     } finally {
@@ -220,7 +294,15 @@ export function VpsDeploySection({
       icon="server"
       title={own ? "استقرار روی VPS شخصی" : "استقرار روی VPS رایگان"}
       description={`ایجنت Idea2App کد را با یک کلید فقط‌خواندنی از GitHub می‌گیرد، Build می‌کند${project.spec?.needsBackend ? "، PostgreSQL و API را راه می‌اندازد" : ""}، با HTTPS منتشر می‌کند و هر ۲ دقیقه Commit جدید را خودکار مستقر می‌کند.`}
-      actions={status && vps?.registered && <span className={`${TONE_BADGE[status.tone]} badge-dot`}>{status.label}</span>}
+      actions={
+        status &&
+        vps?.registered && (
+          // An online agent that stopped reporting is not shown as a plain success.
+          <span className={`${TONE_BADGE[vps.stale && vps.status === "online" ? "warning" : status.tone]} badge-dot`}>
+            {vps.stale && vps.status === "online" ? "فعال، بدون گزارش اخیر" : status.label}
+          </span>
+        )
+      }
     >
       <div className="flex flex-col gap-4 text-sm">
         {vps && vps.registered && status && (
