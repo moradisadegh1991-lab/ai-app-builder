@@ -4,9 +4,12 @@ import type { ProjectView } from "@/lib/projects";
 import { GuideToggle } from "../guides/Guide";
 import { Icon } from "../ui/Icon";
 import { TONE_BADGE, buildStatus } from "../ui/status";
+import { deployInfo } from "./model";
 import { ExternalLink, Section } from "./parts";
 
 export interface AutoFixControl {
+  /** The saved choice has been read; until then the checkbox is disabled. */
+  loaded: boolean;
   enabled: boolean;
   used: number;
   max: number;
@@ -39,7 +42,9 @@ export function BuildSection({
   const build = project.build;
   const isWebsite = project.kind === "website";
   const pushedCurrent = project.status === "pushed";
-  const deployment = project.deployment;
+  const deploy = deployInfo(project);
+  // Only a really deployed site has an address worth showing.
+  const liveUrl = deploy.phase === "ready" && project.deployment?.url && /^https?:\/\//.test(project.deployment.url) ? project.deployment.url : null;
   const status = buildStatus(build, isWebsite);
   const running = Boolean(build && build.status !== "completed");
 
@@ -162,18 +167,21 @@ export function BuildSection({
 
             {build.conclusion === "success" && isWebsite && (
               <div className="border-t border-line px-4 py-3 text-sm">
-                {deployment?.status === "ready" && deployment.url ? (
+                {deploy.phase === "ready" && liveUrl ? (
                   <div className="flex flex-wrap items-center gap-2 text-success-fg">
                     <Icon name="check-circle" size={16} />
-                    سایت منتشر شده است:
-                    <ExternalLink href={deployment.url} className="ltr break-all">
-                      {deployment.url}
+                    {deploy.description}
+                    <ExternalLink href={liveUrl} className="ltr break-all">
+                      {liveUrl}
                     </ExternalLink>
                   </div>
-                ) : deployment?.status === "failed" ? (
-                  <div className="text-danger-fg">Build موفق بود، اما استقرار سایت ناموفق است؛ بخش «استقرار» را ببینید.</div>
-                ) : deployment?.status === "deploying" || deployment?.status === "provisioning" ? (
-                  <div className="text-info-fg">کد سایت ساخته شد؛ استقرار در حال انجام است.</div>
+                ) : deploy.phase === "failed" ? (
+                  <div className="text-danger-fg">Build موفق بود، اما استقرار ناموفق است؛ بخش «استقرار» را ببینید.</div>
+                ) : deploy.phase === "provisioning" || deploy.phase === "deploying" ? (
+                  <div className="flex items-center gap-2 text-info-fg">
+                    <span className="spinner" aria-hidden="true" />
+                    Build موفق بود. {deploy.label}: {deploy.description}
+                  </div>
                 ) : (
                   <div className="text-success-fg">کد سایت با موفقیت ساخته شد. برای انتشار به بخش «استقرار» بروید.</div>
                 )}
@@ -190,7 +198,7 @@ export function BuildSection({
                   <span className="text-xs leading-6 text-danger-fg">گزارش خطای Build برای مدل ارسال می‌شود و نسخهٔ اصلاح‌شده دوباره Build می‌شود.</span>
                 </div>
                 <label className="flex items-center gap-2 text-xs text-danger-fg">
-                  <input type="checkbox" className="checkbox" checked={autoFix.enabled} onChange={(event) => autoFix.onChange(event.target.checked)} />
+                  <input type="checkbox" className="checkbox" checked={autoFix.enabled} disabled={!autoFix.loaded} onChange={(event) => autoFix.onChange(event.target.checked)} />
                   اصلاح خودکار بعد از هر شکست (حداکثر {autoFix.max.toLocaleString("fa-IR")} بار پشت‌سرهم؛ تا الان {autoFix.used.toLocaleString("fa-IR")} بار)
                 </label>
               </div>

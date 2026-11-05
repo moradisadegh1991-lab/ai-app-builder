@@ -36,7 +36,9 @@ function EditWithAi({ disabled, onEdit }: { disabled: boolean; onEdit: (instruct
       />
       <div className="flex items-center justify-between gap-2">
         <span className="text-[11px] text-faint">
-          <kbd className="kbd">Ctrl</kbd> + <kbd className="kbd">Enter</kbd>
+          <span dir="ltr" className="inline-flex items-center gap-1">
+            <kbd className="kbd">Ctrl</kbd>+<kbd className="kbd">Enter</kbd>
+          </span>
         </span>
         <button type="submit" className="btn-primary btn-sm" disabled={disabled || !ready}>
           <Icon name="pencil" size={14} />
@@ -55,6 +57,7 @@ export function ActivityPanel({
   project,
   busyMessage,
   next,
+  activeSection,
   onNavigate,
   canEdit,
   editDisabled,
@@ -63,6 +66,8 @@ export function ActivityPanel({
   project: ProjectView;
   busyMessage: string | null;
   next: NextAction;
+  /** The section on screen: a running operation shown there is not repeated in full here. */
+  activeSection: SectionId;
   onNavigate: (id: SectionId) => void;
   canEdit: boolean;
   editDisabled: boolean;
@@ -91,13 +96,13 @@ export function ActivityPanel({
               onClick={() => onNavigate(next.section)}
               className="group flex items-start gap-3 rounded-xl border border-line bg-surface-2 p-3 text-start transition hover:border-primary-line"
             >
-              <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary-soft text-primary-soft-fg">
-                <Icon name="sparkles" size={16} />
+              <span className={`grid size-8 shrink-0 place-items-center rounded-lg ${next.running ? "bg-info-soft text-info-fg" : "bg-primary-soft text-primary-soft-fg"}`}>
+                {next.running ? <span className="spinner" aria-hidden="true" /> : <Icon name="sparkles" size={16} />}
               </span>
               <span className="min-w-0">
-                <span className="block text-xs text-muted">اقدام پیشنهادی</span>
+                <span className="block text-xs text-muted">{next.running ? "در حال انجام" : "اقدام پیشنهادی"}</span>
                 <span className="block text-sm font-semibold text-fg group-hover:text-primary">{next.title}</span>
-                <span className="mt-0.5 block text-xs leading-6 text-muted">{next.description}</span>
+                {!(next.running && next.section === activeSection) && <span className="mt-0.5 block text-xs leading-6 text-muted">{next.description}</span>}
               </span>
             </button>
           )}

@@ -95,7 +95,7 @@ export function CodeSection({
       }
     >
       <div className="grid min-w-0 gap-4 lg:grid-cols-[17rem_minmax(0,1fr)]">
-        <nav aria-label="فایل‌های پروژه" className="panel-muted flex max-h-[34rem] min-w-0 flex-col overflow-hidden">
+        <nav aria-label="فایل‌های پروژه" className="panel-muted flex max-h-64 min-w-0 flex-col overflow-hidden lg:max-h-[34rem]">
           <div className="border-b border-line p-2">
             <div className="relative">
               <Icon name="search" size={15} className="pointer-events-none absolute start-2.5 top-1/2 -translate-y-1/2 text-faint" />
@@ -129,7 +129,7 @@ export function CodeSection({
                       onClick={() => setSelectedPath(file.path)}
                       aria-current={selected ? "true" : undefined}
                       title={file.path}
-                      className={`flex w-full min-w-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-start font-mono text-xs transition ${
+                      className={`touch-target flex w-full min-w-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-start font-mono text-xs transition ${
                         folder ? "ps-5" : ""
                       } ${selected ? "bg-primary-soft font-semibold text-primary-soft-fg" : "text-fg-2 hover:bg-surface-3"}`}
                     >
@@ -152,7 +152,7 @@ export function CodeSection({
               <span>{lines.length.toLocaleString("en-US")} lines</span>
               <button
                 type="button"
-                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-code-fg/80 transition hover:bg-white/10 hover:text-code-fg"
+                className="touch-target inline-flex items-center gap-1 rounded-md px-2 py-1 text-code-fg/80 transition hover:bg-white/10 hover:text-code-fg"
                 onClick={() =>
                   navigator.clipboard.writeText(current.content).then(() => {
                     setCopied(true);

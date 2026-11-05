@@ -4,7 +4,11 @@ import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 import { Icon } from "./ui/Icon";
 
-/** Account button with a small menu (plan, settings, sign out). Closes on outside click and Escape. */
+/**
+ * Account button that discloses a few links (plan, settings, sign out). A disclosure, not an ARIA
+ * "menu": the entries are ordinary links/buttons reachable with Tab. Closes on outside click and
+ * Escape (focus returns to the button).
+ */
 export function UserMenu({
   displayName,
   email,
@@ -18,6 +22,7 @@ export function UserMenu({
 }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
   const menuId = useId();
 
   useEffect(() => {
@@ -26,7 +31,10 @@ export function UserMenu({
       if (!root.current?.contains(event.target as Node)) setOpen(false);
     };
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") {
+        setOpen(false);
+        trigger.current?.focus();
+      }
     };
     document.addEventListener("pointerdown", onPointer);
     document.addEventListener("keydown", onKey);
@@ -39,9 +47,9 @@ export function UserMenu({
   return (
     <div ref={root} className="relative">
       <button
+        ref={trigger}
         type="button"
-        className="flex min-h-10 items-center gap-2 rounded-lg px-1.5 transition hover:bg-surface-3"
-        aria-haspopup="menu"
+        className="flex min-h-11 items-center gap-2 rounded-lg px-1.5 transition hover:bg-surface-3"
         aria-expanded={open}
         aria-controls={menuId}
         onClick={() => setOpen((value) => !value)}
@@ -61,7 +69,6 @@ export function UserMenu({
       {open && (
         <div
           id={menuId}
-          role="menu"
           className="absolute end-0 top-full z-50 mt-2 w-64 overflow-hidden rounded-xl border border-line bg-surface shadow-pop"
         >
           <div className="border-b border-line px-4 py-3">
@@ -70,16 +77,16 @@ export function UserMenu({
             <span className="badge badge-brand mt-2">طرح {planName}</span>
           </div>
           <div className="p-1.5">
-            <Link role="menuitem" href="/pricing" className="nav-link w-full" onClick={() => setOpen(false)}>
+            <Link href="/pricing" className="nav-link w-full" onClick={() => setOpen(false)}>
               <Icon name="credit-card" size={16} />
               طرح‌ها و اشتراک
             </Link>
-            <Link role="menuitem" href="/settings" className="nav-link w-full" onClick={() => setOpen(false)}>
+            <Link href="/settings" className="nav-link w-full" onClick={() => setOpen(false)}>
               <Icon name="settings" size={16} />
               اتصال‌ها و کلیدها
             </Link>
             <form action="/api/auth/logout" method="post">
-              <button role="menuitem" type="submit" className="nav-link w-full text-danger-fg hover:!bg-danger-soft hover:!text-danger-fg">
+              <button type="submit" className="nav-link w-full text-danger-fg hover:!bg-danger-soft hover:!text-danger-fg">
                 <Icon name="logout" size={16} />
                 خروج
               </button>

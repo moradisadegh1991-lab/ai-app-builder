@@ -690,11 +690,41 @@
   }
 
   .segmented > [aria-pressed="true"],
-  .segmented > [aria-selected="true"],
+  .segmented > [aria-current="true"],
   .segmented > [aria-current="page"] {
     background: var(--surface);
     color: var(--fg);
     box-shadow: var(--shadow-sm);
+  }
+
+  /* The container scrolls or clips, so the focus ring is drawn inside the control. */
+  .segmented > :focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: -2px;
+  }
+
+  /* Touch screens: comfortable targets (44 px) for navigation and compact controls. */
+  @media (pointer: coarse) {
+    .segmented > button,
+    .segmented > a,
+    .nav-link,
+    .btn-sm {
+      min-height: 2.75rem;
+    }
+
+    .btn-icon {
+      min-width: 2.75rem;
+    }
+
+    .touch-target,
+    details > summary {
+      min-height: 2.75rem;
+    }
+
+    details > summary {
+      display: flex;
+      align-items: center;
+    }
   }
 
   /* Code */

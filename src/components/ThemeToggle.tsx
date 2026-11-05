@@ -56,17 +56,15 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
   }, [preference]);
 
   return (
-    <div role="radiogroup" aria-label="پوسته" className="segmented">
+    <div role="group" aria-label="پوسته" className="segmented">
       {OPTIONS.map((option) => (
         <button
           key={option.value}
           type="button"
-          role="radio"
-          aria-checked={preference === option.value}
           aria-pressed={preference === option.value}
           title={option.label}
           onClick={() => apply(option.value)}
-          className={compact ? "!px-2" : ""}
+          className={compact ? "!px-2.5" : ""}
         >
           <Icon name={option.icon} size={16} />
           <span className={compact ? "sr-only" : "hidden lg:inline"}>{option.label}</span>

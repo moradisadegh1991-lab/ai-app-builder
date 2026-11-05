@@ -15,6 +15,10 @@ import { OverviewSection } from "./workspace/OverviewSection";
 import { PreviewSection } from "./workspace/PreviewSection";
 import { RequirementsSection } from "./workspace/RequirementsSection";
 import { WorkspaceNav } from "./workspace/WorkspaceNav";
+import { readTriggeredBuild, safeStorage, shouldAutoFix, writeTriggeredBuild } from "./workspace/autofix";
+import { ResponseGate } from "./workspace/sync";
+import { useAutoFixPreference } from "./workspace/useAutoFixPreference";
+import { useProjectSync } from "./workspace/useProjectSync";
 
 type Busy = null | "spec" | "approve" | "code" | "github" | "rebuild" | "fix" | "edit" | "cloud";
 
@@ -49,7 +53,22 @@ export function ProjectWorkspace({ initialProject, githubConnected }: { initialP
       .catch(() => undefined);
   }, []);
 
+  // Stops a slow poll response from overwriting the result of an operation started from this page.
+  const [gate] = useState(() => new ResponseGate());
+  const track = useCallback(
+    async <T,>(operation: () => Promise<T>): Promise<T> => {
+      gate.beginOperation();
+      try {
+        return await operation();
+      } finally {
+        gate.endOperation();
+      }
+    },
+    [gate],
+  );
+
   const run = useCallback(async (kind: Exclude<Busy, null>, url: string, method: string, body?: unknown) => {
+    gate.beginOperation();
     setBusy(kind);
     setError(null);
     try {
@@ -63,9 +82,10 @@ export function ProjectWorkspace({ initialProject, githubConnected }: { initialP
       setError((e as Error).message);
       return false;
     } finally {
+      gate.endOperation();
       setBusy(null);
     }
-  }, []);
+  }, [gate]);
 
   const base = `/api/projects/${project.id}`;
 
@@ -97,60 +117,33 @@ export function ProjectWorkspace({ initialProject, githubConnected }: { initialP
 
   // ---------------------------------------------------------------- automatic build repair
   // After a failed build the page repairs it by itself, up to project.autoFix.max rounds in a row.
-  const [autoFixEnabled, setAutoFixEnabled] = useState(true);
+  // Nothing starts before the saved preference has been read (see useAutoFixPreference).
+  const { preference: autoFixPreference, loaded: autoFixLoaded, setPreference: setAutoFixPreference } = useAutoFixPreference();
   const autoFixedBuild = useRef<string | null>(null);
 
   useEffect(() => {
-    try {
-      if (window.localStorage.getItem("i2a_autofix") === "off") setAutoFixEnabled(false);
-    } catch {
-      // storage unavailable: keep the default
-    }
-  }, []);
-
-  useEffect(() => {
     const build = project.build;
-    if (!autoFixEnabled || busy !== null || !build || build.conclusion !== "failure") return;
-    if (project.autoFix.used >= project.autoFix.max || autoFixedBuild.current === build.id) return;
-    // Only for a failure that just happened, not an old one found when the page is opened later.
-    if (Date.now() - new Date(build.createdAt).getTime() > 60 * 60_000) return;
+    const session = safeStorage("session");
+    const start = shouldAutoFix({
+      preference: autoFixPreference,
+      busy: busy !== null,
+      projectStatus: project.status,
+      build: build ? { id: build.id, conclusion: build.conclusion, createdAt: build.createdAt } : null,
+      used: project.autoFix.used,
+      max: project.autoFix.max,
+      alreadyTriggeredFor: autoFixedBuild.current ?? readTriggeredBuild(session),
+      now: Date.now(),
+    });
+    if (!start || !build) return;
+    // Mark first: a re-render, a second tab or StrictMode must never start a second repair for this build.
     autoFixedBuild.current = build.id;
+    writeTriggeredBuild(session, build.id);
     void run("fix", `${base}/fix`, "POST", { provider, auto: true });
-  }, [autoFixEnabled, busy, project.build, project.autoFix, base, provider, run]);
+  }, [autoFixPreference, busy, project.build, project.status, project.autoFix, base, provider, run]);
 
-  // ---------------------------------------------------------------- polling of long-running work
-  const buildRunning = project.build !== null && project.build.status !== "completed";
-  useEffect(() => {
-    if (!buildRunning) return;
-    const timer = setInterval(() => {
-      api<{ project: ProjectView }>(`${base}/build`)
-        .then((data) => setProject(data.project))
-        .catch(() => undefined);
-    }, 10_000);
-    return () => clearInterval(timer);
-  }, [buildRunning, base]);
-
-  const deploying = project.deployment?.status === "deploying";
-  useEffect(() => {
-    if (!deploying) return;
-    const timer = setInterval(() => {
-      api<{ project: ProjectView }>(`${base}/cloud`)
-        .then((data) => setProject(data.project))
-        .catch(() => undefined);
-    }, 8_000);
-    return () => clearInterval(timer);
-  }, [deploying, base]);
-
-  const vpsBusy = project.vps !== null && (project.vps.status === "pending" || project.vps.status === "deploying");
-  useEffect(() => {
-    if (!vpsBusy) return;
-    const timer = setInterval(() => {
-      api<{ project: ProjectView }>(base)
-        .then((data) => setProject(data.project))
-        .catch(() => undefined);
-    }, 10_000);
-    return () => clearInterval(timer);
-  }, [vpsBusy, base]);
+  // ---------------------------------------------------------------- following long-running work
+  // One interval for builds, Vercel provisioning/deployment and VPS installs; cleared on terminal states.
+  useProjectSync(project, base, setProject, gate);
 
   // ---------------------------------------------------------------- derived view
   const facts = workspaceFacts(project);
@@ -160,14 +153,6 @@ export function ProjectWorkspace({ initialProject, githubConnected }: { initialP
   const activeSection: SectionId = section === "preview" && !facts.previewUrl ? "overview" : section;
   const activeProvider = providers.find((item) => item.id === provider);
 
-  const setAutoFix = (value: boolean) => {
-    setAutoFixEnabled(value);
-    try {
-      window.localStorage.setItem("i2a_autofix", value ? "on" : "off");
-    } catch {
-      // storage unavailable: applies to this visit only
-    }
-  };
 
   return (
     <div className="flex flex-col gap-5">
@@ -175,7 +160,7 @@ export function ProjectWorkspace({ initialProject, githubConnected }: { initialP
       <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div className="min-w-0">
           <nav aria-label="مسیر صفحه" className="mb-1.5 flex items-center gap-1.5 text-xs text-muted">
-            <Link href="/dashboard" className="hover:text-fg">
+            <Link href="/dashboard" className="touch-target inline-flex items-center hover:text-fg">
               پروژه‌ها
             </Link>
             <Icon name="chevron-left" size={13} />
@@ -229,6 +214,7 @@ export function ProjectWorkspace({ initialProject, githubConnected }: { initialP
             project={project}
             busyMessage={busy ? BUSY_MESSAGES[busy] : null}
             next={next}
+            activeSection={activeSection}
             onNavigate={go}
             canEdit={facts.hasCode}
             editDisabled={busy !== null}
@@ -291,7 +277,13 @@ export function ProjectWorkspace({ initialProject, githubConnected }: { initialP
                 onPush={() => run("github", `${base}/github`, "POST")}
                 onRebuild={() => run("rebuild", `${base}/build`, "POST")}
                 onFix={() => run("fix", `${base}/fix`, "POST", { provider })}
-                autoFix={{ enabled: autoFixEnabled, used: project.autoFix.used, max: project.autoFix.max, onChange: setAutoFix }}
+                autoFix={{
+                  loaded: autoFixLoaded,
+                  enabled: autoFixPreference !== "off",
+                  used: project.autoFix.used,
+                  max: project.autoFix.max,
+                  onChange: (value) => setAutoFixPreference(value ? "on" : "off"),
+                }}
               />
             ) : (
               <LockedSection message="ابتدا کد پروژه را تولید کنید." onGo={() => go("code")} action="رفتن به کد پروژه" />
@@ -316,6 +308,7 @@ export function ProjectWorkspace({ initialProject, githubConnected }: { initialP
                 onError={setError}
                 onFix={() => run("fix", `${base}/fix`, "POST", { provider })}
                 canFix={project.vps?.status === "error"}
+                track={track}
               />
             ))}
         </main>
