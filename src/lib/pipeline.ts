@@ -514,18 +514,7 @@ export async function provisionCloud(user: schema.User, project: schema.Project)
   if (!vercelAuth) throw new HttpError(400, "ابتدا توکن Vercel را در صفحه تنظیمات وارد کنید.");
   const teamId = vercelAuth.metadata.teamId || undefined;
 
-  const existing = await projectDeployment(project.id);
-  if (existing && existing.status !== "failed") {
-    throw new HttpError(409, "زیرساخت ابری این پروژه قبلاً ساخته شده است.");
-  }
-  const [deployment] = existing
-    ? await db()
-        .update(schema.deployments)
-        .set({ status: "provisioning", error: null, updatedAt: new Date() })
-        .where(eq(schema.deployments.id, existing.id))
-        .returning()
-    : await db().insert(schema.deployments).values({ projectId: project.id }).returning();
-
+    const deployment = await claimCloudDeployment(project.id);
   try {
     let databaseUrl: string | null = deployment!.encryptedDatabaseUrl
   ? decryptSecret(deployment!.encryptedDatabaseUrl)
