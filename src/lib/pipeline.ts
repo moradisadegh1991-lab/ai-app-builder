@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, lt, or } from "drizzle-orm";
 import { generateStructured, isAiProvider, type AiProviderId } from "./ai";
 import { imagesOf } from "./attachments";
 import { SPEC_SYSTEM, codeOutputSchema, codePrompt, codeSystemPrompt, editPrompt, fixPrompt, specPrompt } from "./ai/prompts";
