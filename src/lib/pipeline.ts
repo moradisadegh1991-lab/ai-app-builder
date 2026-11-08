@@ -7,7 +7,8 @@ import { db, schema } from "./db";
 import { env } from "./env";
 import { HttpError } from "./http";
 import * as github from "./integrations/github";
-import { createNeonProject, runSchema } from "./integrations/neon";
+import { getOrCreateNeonProject, runSchema } from "./integrations/neon";
+neon";
 import { getIntegration } from "./integrations/store";
 import * as vercel from "./integrations/vercel";
 import {
