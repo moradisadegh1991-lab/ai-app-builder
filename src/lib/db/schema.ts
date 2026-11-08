@@ -190,8 +190,16 @@ export const deployments = pgTable(
     vercelDeploymentId: text("vercel_deployment_id"),
     url: text("url"),
     // provisioning | deploying | ready | failed
+        // provisioning | deploying | ready | failed
     status: text("status").notNull().default("provisioning"),
     error: text("error"),
+
+    // Unique owner token for the active provisioning worker.
+    provisioningToken: text("provisioning_token"),
+
+    // The provisioning claim expires unless the owner renews it.
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+
     ...timestamps,
   },
   (t) => [uniqueIndex("deployments_project_idx").on(t.projectId)],
