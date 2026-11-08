@@ -583,7 +583,6 @@ if (project.spec?.needsBackend) {
   if (schemaSql && databaseUrl) {
     await runSchema(databaseUrl, schemaSql);
   }
-}
     }
 
     const hasWeb = project.template !== "expo";
