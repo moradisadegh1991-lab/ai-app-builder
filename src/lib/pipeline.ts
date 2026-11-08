@@ -434,7 +434,71 @@ export async function editProject(user: schema.User, project: schema.Project, in
     throw error;
   }
 }
+/**
+ * Atomically claims the cloud deployment for one project.
+ *
+ * The unique projectId index ensures that only one request can create
+ * the initial deployment row. Failed deployments can be claimed again,
+ * but only by one concurrent retry.
+ */
+async function claimCloudDeployment(projectId: string) {
+  const [created] = await db()
+    .insert(schema.deployments)
+    .values({
+      projectId,
+      status: "provisioning",
+      error: null,
+    })
+    .onConflictDoNothing({
+      target: schema.deployments.projectId,
+    })
+    .returning();
 
+  // First request owns the newly inserted row.
+  if (created) return created;
+
+  // A row already exists. Only failed deployments are retryable.
+  const existing = await projectDeployment(projectId);
+
+  if (!existing) {
+    throw new HttpError(
+      409,
+      "وضعیت زیرساخت پروژه قابل تشخیص نیست؛ دوباره تلاش کنید.",
+    );
+  }
+
+  if (existing.status !== "failed") {
+    throw new HttpError(
+      409,
+      "عملیات زیرساخت این پروژه قبلاً شروع شده یا تکمیل شده است.",
+    );
+  }
+
+  // Compare-and-set: only one concurrent request can change failed -> provisioning.
+  const [claimed] = await db()
+    .update(schema.deployments)
+    .set({
+      status: "provisioning",
+      error: null,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(schema.deployments.id, existing.id),
+        eq(schema.deployments.status, "failed"),
+      ),
+    )
+    .returning();
+
+  if (!claimed) {
+    throw new HttpError(
+      409,
+      "درخواست دیگری در حال شروع مجدد زیرساخت این پروژه است.",
+    );
+  }
+
+  return claimed;
+}
 // ----------------------------------------------------------------- cloud
 
 /**
