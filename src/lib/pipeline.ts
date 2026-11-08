@@ -465,28 +465,73 @@ export async function provisionCloud(user: schema.User, project: schema.Project)
 
   try {
     let databaseUrl: string | null = deployment!.encryptedDatabaseUrl
-      ? decryptSecret(deployment!.encryptedDatabaseUrl)
-      : null;
-    let neonProjectId = deployment!.neonProjectId;
+  ? decryptSecret(deployment!.encryptedDatabaseUrl)
+  : null;
 
-    if (project.spec?.needsBackend && !databaseUrl) {
-      const neonAuth = await getIntegration(user.id, "neon");
-      const neonKey = neonAuth?.secret ?? env.neonApiKey();
-      if (!neonKey) throw new HttpError(400, "کلید API نئون تنظیم نشده است (در صفحه تنظیمات وارد کنید).");
-      const neonProject = await createNeonProject(
-        neonKey,
-        project.slug,
-        neonAuth ? neonAuth.metadata.orgId || undefined : env.neonOrgId(),
-      );
-      databaseUrl = neonProject.connectionUri;
-      neonProjectId = neonProject.projectId;
-      await db()
-        .update(schema.deployments)
-        .set({ neonProjectId, encryptedDatabaseUrl: encryptSecret(databaseUrl) })
-        .where(eq(schema.deployments.id, deployment!.id));
+let neonProjectId = deployment!.neonProjectId;
 
-      const schemaSql = generation?.files?.find((f) => f.path === "db/schema.sql")?.content;
-      if (schemaSql) await runSchema(databaseUrl, schemaSql);
+if (project.spec?.needsBackend) {
+  const neonAuth = await getIntegration(user.id, "neon");
+
+  const neonKey = neonAuth?.secret ?? env.neonApiKey();
+
+  if (!neonKey) {
+    throw new HttpError(
+      400,
+      "کلید API نئون تنظیم نشده است (در صفحه تنظیمات وارد کنید).",
+    );
+  }
+
+  /*
+   * A deterministic name is essential:
+   * if Neon creates the project but the local DB write fails,
+   * the next attempt can find the same Neon project.
+   *
+   * UUID prevents collisions between different Idea2App projects.
+   */
+  if (!databaseUrl || !neonProjectId) {
+    const neonProjectName = `idea2app-${project.id}`;
+
+    const neonProject = await getOrCreateNeonProject(
+      neonKey,
+      neonProjectName,
+      neonAuth
+        ? neonAuth.metadata.orgId || undefined
+        : env.neonOrgId(),
+    );
+
+    databaseUrl = neonProject.connectionUri;
+    neonProjectId = neonProject.projectId;
+
+    /*
+     * Persist the Neon resource immediately.
+     * This must happen before schema execution and Vercel deployment.
+     */
+    await db()
+      .update(schema.deployments)
+      .set({
+        neonProjectId,
+        encryptedDatabaseUrl: encryptSecret(databaseUrl),
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.deployments.id, deployment!.id));
+  }
+
+  /*
+   * schema.sql is required to be idempotent by BACKEND_RULES
+   * in src/lib/ai/prompts.ts.
+   *
+   * Running it again makes provisioning recoverable after
+   * a previous partial failure.
+   */
+  const schemaSql = generation?.files?.find(
+    (file) => file.path === "db/schema.sql",
+  )?.content;
+
+  if (schemaSql && databaseUrl) {
+    await runSchema(databaseUrl, schemaSql);
+  }
+}
     }
 
     const hasWeb = project.template !== "expo";
