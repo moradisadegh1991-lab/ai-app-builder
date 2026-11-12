@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appSpecSchema } from "../src/lib/spec";
 import { runAgents, type AgentContext } from "../src/lib/agents/orchestrator";
-import { mergeOwnedFiles, roleProvider, type Verification } from "../src/lib/agents/contracts";
+import { architectureSchema, mergeOwnedFiles, roleProvider, type Verification } from "../src/lib/agents/contracts";
 import type { schema } from "../src/lib/db";
 
 const { model } = vi.hoisted(() => ({ model: vi.fn() }));
@@ -41,6 +41,11 @@ const design = {
   ],
   accessibility: ["labels"],
 };
+it("accepts an API contract for a bodyless GET request", () => {
+  expect(
+    architectureSchema.parse({ ...architecture, api: [{ ...architecture.api[0], request: "" }] }).api[0]?.request,
+  ).toBe("");
+});
 const frontend = {
   files: [
     {

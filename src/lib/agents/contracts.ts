@@ -50,7 +50,8 @@ export const architectureSchema = z.object({
       z.object({
         method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]),
         path: z.string().regex(/^\/api\//),
-        request: text,
+        // A bodyless GET/DELETE legitimately has an empty request description.
+        request: z.string().max(2000),
         response: text,
       }),
     )
