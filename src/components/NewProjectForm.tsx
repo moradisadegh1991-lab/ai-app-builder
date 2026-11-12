@@ -9,6 +9,7 @@ import { prepareAttachments } from "@/lib/attachments-client";
 import { api, type ProviderInfo, type ProvidersResponse } from "./api";
 import { AttachmentPicker } from "./AttachmentPicker";
 import { Icon, type IconName } from "./ui/Icon";
+import { IDEA_DRAFT_KEY } from "@/lib/idea-draft";
 
 type Kind = "app" | "website";
 type Hosting = "vps" | "vercel";
@@ -152,6 +153,13 @@ export function NewProjectForm() {
   const [activeStep, setActiveStep] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const draft = sessionStorage.getItem(IDEA_DRAFT_KEY);
+      if (draft) setIdea((current) => current || draft.slice(0, 5000));
+    } catch { /* The form also works when browser storage is unavailable. */ }
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -325,6 +333,7 @@ export function NewProjectForm() {
         }),
       });
 
+      try { sessionStorage.removeItem(IDEA_DRAFT_KEY); } catch { /* Optional browser draft. */ }
       router.push(`/projects/${id}`);
     } catch (e) {
       setError((e as Error).message);
@@ -757,6 +766,7 @@ export function NewProjectForm() {
 
         {isLastStep ? (
           <button
+            key="submit-project"
             type="submit"
             disabled={
               busy ||
@@ -784,8 +794,9 @@ export function NewProjectForm() {
           </button>
         ) : (
           <button
+            key="next-step"
             type="button"
-            onClick={goNext}
+            onClick={(event) => { event.preventDefault(); goNext(); }}
             disabled={busy}
             className="btn-primary btn-lg"
           >

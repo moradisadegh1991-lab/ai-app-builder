@@ -2,6 +2,20 @@
 
 import type { ProjectView } from "@/lib/projects";
 import { AGENT_LABELS } from "@/lib/agents/contracts";
+import { useState } from "react";
+import { Icon, type IconName } from "../ui/Icon";
+import { api } from "../api";
+
+const ROLE_ICONS: Record<string, IconName> = {
+  architect: "layers",
+  designer: "pencil",
+  frontend: "monitor",
+  backend: "database",
+  reviewer: "shield",
+  debugger: "hammer",
+  verifier: "check-circle",
+  publisher: "git-branch",
+};
 
 const STATUS: Record<string, string> = {
   queued: "در صف",
@@ -11,6 +25,8 @@ const STATUS: Record<string, string> = {
   cancelled: "متوقف شد",
 };
 export function AgentTeamPanel({ workflow, base }: { workflow: ProjectView["workflow"]; base: string }) {
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState("");
   if (!workflow) return null;
   const report = workflow.evaluation?.report as
     | {
@@ -24,13 +40,28 @@ export function AgentTeamPanel({ workflow, base }: { workflow: ProjectView["work
       }
     | undefined;
   const active = ["queued", "running"].includes(workflow.status);
+  const completed = workflow.tasks.filter((task) => task.status === "succeeded").length;
+  const badge =
+    workflow.status === "failed"
+      ? "badge-danger"
+      : active
+        ? "badge-info"
+        : workflow.status === "succeeded"
+          ? "badge-success"
+          : "";
   return (
-    <section className="panel p-4 shadow-xs" aria-label="تیم تخصصی هوش مصنوعی" aria-live="polite">
+    <section className="panel p-4 shadow-xs" aria-label="تیم تخصصی هوش مصنوعی">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-bold text-fg">تیم تخصصی هوش مصنوعی</h2>
-        <span
-          className={`badge ${workflow.status === "failed" ? "badge-danger" : active ? "badge-info" : "badge-success"}`}
-        >
+        <div className="agent-panel-heading">
+          <span className="agent-panel-avatar">
+            <Icon name="sparkles" size={18} />
+          </span>
+          <div>
+            <h2 className="text-sm font-bold text-fg">تیم ساخت تو</h2>
+            <p className="mt-1 text-[10px] text-muted">هر تخصص، یک قدم رو به جلو</p>
+          </div>
+        </div>
+        <span role="status" className={`badge ${badge}`}>
           {STATUS[workflow.status] ?? workflow.status}
         </span>
       </div>
@@ -39,25 +70,68 @@ export function AgentTeamPanel({ workflow, base }: { workflow: ProjectView["work
           درخواست ثبت شد. تیم پس از رسیدن نوبت شروع می‌کند؛ می‌توانید صفحه را ببندید.
         </p>
       )}
-      <ol className="mt-3 flex flex-col gap-2">
+      {workflow.tasks.length > 0 && (
+        <div>
+          <div className="agent-progress-label">
+            <span>مراحل ثبت‌شده</span>
+            <span>
+              {completed.toLocaleString("fa-IR")} از {workflow.tasks.length.toLocaleString("fa-IR")}
+            </span>
+          </div>
+          <div
+            role="progressbar"
+            aria-label="پیشرفت مراحل ثبت‌شده"
+            aria-valuemin={0}
+            aria-valuemax={workflow.tasks.length}
+            aria-valuenow={completed}
+            className="progress"
+          >
+            <span style={{ width: `${(completed / workflow.tasks.length) * 100}%` }} />
+          </div>
+        </div>
+      )}
+      <ol className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
         {workflow.tasks.map((task) => (
-          <li key={task.id} className="rounded-lg border border-line p-2.5">
-            <div className="flex items-center justify-between gap-2 text-xs">
-              <span className="font-semibold">{AGENT_LABELS[task.role as keyof typeof AGENT_LABELS] ?? task.role}</span>
-              <span className={task.status === "failed" ? "text-danger-fg" : "text-muted"}>
-                {STATUS[task.status] ?? task.status}
-              </span>
+          <li key={task.id} className="agent-task" data-status={task.status}>
+            <span className="agent-task-icon">
+              {task.status === "running" ? (
+                <span className="spinner !size-3" />
+              ) : (
+                <Icon
+                  name={
+                    task.status === "succeeded"
+                      ? "check"
+                      : task.status === "failed"
+                        ? "alert-circle"
+                        : (ROLE_ICONS[task.role] ?? "sparkles")
+                  }
+                  size={14}
+                  className={
+                    task.status === "succeeded" ? "text-success-fg" : task.status === "failed" ? "text-danger-fg" : ""
+                  }
+                />
+              )}
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <span className="min-w-0 flex-1 font-semibold leading-6">
+                  {AGENT_LABELS[task.role as keyof typeof AGENT_LABELS] ?? task.role}
+                </span>
+                <span className={`shrink-0 text-[10px] ${task.status === "failed" ? "text-danger-fg" : "text-muted"}`}>
+                  {STATUS[task.status] ?? task.status}
+                </span>
+              </div>
+              {task.model && (
+                <span className="mt-1 block truncate text-[10px] text-muted" dir="ltr">
+                  {task.model}
+                </span>
+              )}
+              {task.error && (
+                <p className="mt-1 text-[11px] leading-5 text-danger-fg" dir="auto">
+                  {task.error}
+                </p>
+              )}
             </div>
-            {task.model && (
-              <span className="mt-1 block truncate text-[10px] text-faint" dir="ltr">
-                {task.model}
-              </span>
-            )}
-            {task.error && (
-              <p className="mt-1 text-[11px] leading-5 text-danger-fg" dir="auto">
-                {task.error}
-              </p>
-            )}
           </li>
         ))}
       </ol>
@@ -116,13 +190,28 @@ export function AgentTeamPanel({ workflow, base }: { workflow: ProjectView["work
       {active && (
         <button
           type="button"
-          className="btn-secondary btn-sm mt-3"
+          className="btn-secondary btn-sm mt-4 w-full sm:w-auto"
+          disabled={cancelling}
           onClick={async () => {
-            await fetch(`${base}/workflow`, { method: "DELETE" });
+            setCancelling(true);
+            setCancelError("");
+            try {
+              await api(`${base}/workflow`, { method: "DELETE" });
+            } catch (error) {
+              setCancelError(error instanceof Error ? error.message : "توقف تیم انجام نشد؛ دوباره تلاش کنید.");
+            } finally {
+              setCancelling(false);
+            }
           }}
         >
-          توقف تیم
+          {cancelling ? <span className="spinner" /> : <Icon name="x" size={14} />}
+          {cancelling ? "در حال توقف…" : "توقف اجرای تیم"}
         </button>
+      )}
+      {cancelError && (
+        <p role="alert" className="mt-2 text-xs leading-6 text-danger-fg">
+          {cancelError}
+        </p>
       )}
     </section>
   );
