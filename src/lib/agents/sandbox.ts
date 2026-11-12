@@ -298,7 +298,7 @@ export const verifyInSandbox: AgentContext["verify"] = async (files, template, n
       "--network",
       network,
       "--network-alias",
-      "app",
+      "preview.test",
       "-v",
       `${path.resolve("worker/serve.mjs")}:/opt/runner/serve.mjs:ro`,
       "-e",

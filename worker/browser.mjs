@@ -3,7 +3,9 @@ import { chromium } from "playwright-core";
 // This process runs in a DIFFERENT container from generated code. Page code cannot
 // write its report, change its tests or access the Docker socket/platform secrets.
 const journeys = JSON.parse(process.env.JOURNEYS ?? "[]");
-const baseUrl = (process.env.SANDBOX_BASE_URL ?? "http://app:4173").replace(/\/$/, "");
+// .app is HSTS-preloaded in Chromium. A reserved .test hostname keeps the isolated
+// HTTP preview from being silently upgraded to HTTPS.
+const baseUrl = (process.env.SANDBOX_BASE_URL ?? "http://preview.test:4173").replace(/\/$/, "");
 const browser = await chromium.launch({
   executablePath: process.env.CHROMIUM_PATH ?? "/usr/bin/chromium",
   headless: true,
