@@ -1,7 +1,11 @@
 import type { NextConfig } from "next";
+import { withWorkflow } from "workflow/next";
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  outputFileTracingIncludes: {
+    "/.well-known/workflow/v1/**": ["./worker/browser.mjs", "./worker/serve.mjs"],
+  },
   async headers() {
     return [
       {
@@ -16,4 +20,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withWorkflow(nextConfig);

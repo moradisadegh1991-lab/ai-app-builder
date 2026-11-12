@@ -1,6 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import { db, schema } from "../db";
-import { runAgents, type AgentResult } from "../agents/orchestrator";
+import { runAgents, type AgentContext, type AgentResult } from "../agents/orchestrator";
 import { verifyInSandbox } from "../agents/sandbox";
 import {
   currentGeneration,
@@ -12,6 +12,7 @@ import {
 import { pushToGitHub, syncBuild } from "../pipeline";
 import { claimRun, renewLease, taskStore, type ClaimedRun } from "./queue";
 import { queryRows } from "./sql";
+import { WorkflowYield } from "./yield";
 
 async function finish(run: ClaimedRun, result: AgentResult) {
   const code = result.code;
@@ -50,8 +51,11 @@ async function fail(run: ClaimedRun, error: unknown) {
   ) update projects set last_error=${message},updated_at=now() where id in(select project_id from failed)`);
 }
 
-export async function workOne(shutdown?: AbortSignal): Promise<boolean> {
-  const run = await claimRun();
+export async function workOne(
+  shutdown?: AbortSignal,
+  options: { runId?: string; slice?: boolean; verify?: AgentContext["verify"] } = {},
+): Promise<boolean> {
+  const run = await claimRun(options.runId);
   if (!run) return false;
   const lease = new AbortController();
   const signal = shutdown ? AbortSignal.any([lease.signal, shutdown]) : lease.signal;
@@ -72,7 +76,7 @@ export async function workOne(shutdown?: AbortSignal): Promise<boolean> {
     const project = await getOwnedProject(run.user_id, run.project_id);
     if (project.currentGenerationId !== run.base_generation_id)
       throw new Error("نسخه پروژه پس از ورود به صف تغییر کرده است.");
-    const store = taskStore(run, signal);
+    const store = taskStore(run, signal, options.slice);
     const [committed] = await db().select().from(schema.generationJobs).where(eq(schema.generationJobs.id, run.id));
     let failureLog: string | undefined;
     if (run.input.kind === "fix" && !committed) {
@@ -116,7 +120,7 @@ export async function workOne(shutdown?: AbortSignal): Promise<boolean> {
         signal,
         existing: previous?.aiFiles ? { aiFiles: previous.aiFiles, libraries: previous.libraries ?? [] } : undefined,
         failureLog,
-        verify: verifyInSandbox,
+        verify: options.verify ?? verifyInSandbox,
       });
       signal.throwIfAborted();
       await renewLease(run);
@@ -142,8 +146,15 @@ export async function workOne(shutdown?: AbortSignal): Promise<boolean> {
       where id=${run.id} and owner_token=${run.owner_token}::uuid and status='running' and lease_expires_at>now() returning id`);
     if (!completed.length) throw new Error("Workflow lease lost before completion");
   } catch (error) {
-    if (!signal.aborted) await fail(run, error);
-    console.error("Workflow execution stopped", run.id, error instanceof Error ? error.message : String(error));
+    if (error instanceof WorkflowYield && !signal.aborted) {
+      // A normal phase boundary does not consume a crash recovery attempt.
+      await db().execute(sql`update workflow_runs set status='queued',owner_token=null,lease_expires_at=null,
+        attempts=greatest(attempts-1,0),updated_at=now()
+        where id=${run.id} and owner_token=${run.owner_token}::uuid and status='running' and lease_expires_at>now()`);
+    } else {
+      if (!signal.aborted) await fail(run, error);
+      console.error("Workflow execution stopped", run.id, error instanceof Error ? error.message : String(error));
+    }
   } finally {
     clearInterval(timer);
     await renewing;

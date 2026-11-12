@@ -10,6 +10,7 @@ import { reserveUsage, settleUsage } from "../src/lib/workflows/budgets";
 import { workOne } from "../src/lib/workflows/worker";
 import { appSpecSchema } from "../src/lib/spec";
 import { approveSpec } from "../src/lib/pipeline";
+import { WorkflowYield } from "../src/lib/workflows/yield";
 
 const h = vi.hoisted(() => ({ database: null as unknown, agents: vi.fn() }));
 vi.mock("../src/lib/db", async () => ({
@@ -123,6 +124,43 @@ describe("migrations and durable execution", () => {
     expect(fresh?.spec?.appName).toBe("آزمایش");
     expect(fresh?.status).toBe("spec_ready");
     expect(await workOne()).toBe(false);
+  });
+  it("targets a run without taking another queued project's job", async () => {
+    const id = await enqueueWorkflow(user!, project!, input);
+    expect(await claimRun(randomUUID())).toBeNull();
+    expect((await claimRun(id))?.id).toBe(id);
+  });
+  it("replays checkpoints across Vercel invocations and drains the parallel implementation phase", async () => {
+    const id = await enqueueWorkflow(user!, project!, input);
+    const run = (await claimRun(id))!;
+    const signal = new AbortController().signal;
+    const first = taskStore(run, signal, true);
+    const action = vi.fn().mockResolvedValue({ data: "architecture" });
+    await first.step("architecture", "architect", {}, action);
+    await expect(first.step("design", "designer", {}, action)).rejects.toBeInstanceOf(WorkflowYield);
+    expect(action).toHaveBeenCalledOnce();
+    const second = taskStore(run, signal, true);
+    await second.step("architecture", "architect", {}, action);
+    await second.step("design", "designer", {}, action);
+    expect(action).toHaveBeenCalledTimes(2);
+    const third = taskStore(run, signal, true);
+    await Promise.all([third.step("frontend", "frontend", {}, action), third.step("backend", "backend", {}, action)]);
+    await expect(third.step("verify-0", "verifier", {}, action)).rejects.toBeInstanceOf(WorkflowYield);
+    expect((await database.select().from(schema.agentTasks)).every((task) => task.status === "succeeded")).toBe(true);
+  });
+  it("yields without failing the workflow or spending recovery attempts", async () => {
+    const id = await enqueueWorkflow(user!, project!, input);
+    h.agents.mockImplementation(async ({ store }) => {
+      await store.step("requirements", "architect", {}, async () => spec);
+      await store.step("later", "designer", {}, async () => ({}));
+      return { spec };
+    });
+    await workOne(undefined, { runId: id, slice: true });
+    let [run] = await database.select().from(schema.workflowRuns);
+    expect(run).toMatchObject({ status: "queued", attempts: 0, ownerToken: null, error: null });
+    await workOne(undefined, { runId: id, slice: true });
+    [run] = await database.select().from(schema.workflowRuns);
+    expect(run?.status).toBe("succeeded");
   });
   it("keeps existing project data when a specialist fails", async () => {
     h.agents.mockRejectedValue(new Error("Model unavailable"));

@@ -1,7 +1,7 @@
 import { chromium } from "playwright-core";
 
-// This process runs in a DIFFERENT container from generated code. Page code cannot
-// write its report, change its tests or access the Docker socket/platform secrets.
+// Docker: separate container. Vercel Sandbox: separate Linux user with private
+// files. Generated code cannot write this runner or its stdout report.
 const journeys = JSON.parse(process.env.JOURNEYS ?? "[]");
 // .app is HSTS-preloaded in Chromium. A reserved .test hostname keeps the isolated
 // HTTP preview from being silently upgraded to HTTPS.
