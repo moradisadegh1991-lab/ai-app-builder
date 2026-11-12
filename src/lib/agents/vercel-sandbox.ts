@@ -40,7 +40,6 @@ export const verifyInVercelSandbox: AgentContext["verify"] = async (
       signal,
     });
     if (permissions.exitCode) throw new Error("Cannot prepare sandbox app directory");
-    await app.mkDir(cwd, { signal });
     for (const file of files) {
       if (!file.path || path.posix.isAbsolute(file.path) || file.path.split("/").includes(".."))
         throw new Error("Unsafe sandbox path");
