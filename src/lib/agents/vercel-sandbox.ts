@@ -31,6 +31,15 @@ export const verifyInVercelSandbox: AgentContext["verify"] = async (
     const vm = sandbox;
     const app = vm.asUser("app");
     const cwd = `${app.homeDir}/project`;
+    // The SDK file API runs as ubuntu. Grant that trusted user access to the
+    // app's home; app stays outside the ubuntu group and cannot edit runners.
+    const permissions = await vm.runCommand({
+      cmd: "install",
+      args: ["-d", "-o", "app", "-g", "ubuntu", "-m", "0770", app.homeDir, cwd],
+      sudo: true,
+      signal,
+    });
+    if (permissions.exitCode) throw new Error("Cannot prepare sandbox app directory");
     await app.mkDir(cwd, { signal });
     for (const file of files) {
       if (!file.path || path.posix.isAbsolute(file.path) || file.path.split("/").includes(".."))
