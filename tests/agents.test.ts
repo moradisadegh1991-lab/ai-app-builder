@@ -128,6 +128,13 @@ describe("specialist orchestration", () => {
     const input = JSON.parse(model.mock.calls.find(([o]) => o.role === "frontend")![0].prompt);
     expect(input.architecture.api[0].path).toBe("/api/tasks");
     expect(input.design.tokens.typography).toBe("Vazirmatn");
+    const frontRules = model.mock.calls.find(([o]) => o.role === "frontend")![0].system;
+    const backRules = model.mock.calls.find(([o]) => o.role === "backend")![0].system;
+    expect(frontRules).toContain('apiFetch("/api/<route>")');
+    expect(frontRules).not.toContain("Output db/schema.sql");
+    expect(frontRules).not.toContain("Output server/app.ts");
+    expect(backRules).toContain("Output server/app.ts");
+    expect(backRules).not.toContain("You MUST output src/App.tsx");
     expect(result.code?.files.some((f) => f.path === "server/app.ts")).toBe(true);
     expect(ctx.verify).toHaveBeenCalledOnce();
     expect(ctx.store.evaluation).toHaveBeenCalledWith(0, expect.anything(), true);

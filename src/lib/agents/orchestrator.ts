@@ -157,7 +157,7 @@ export async function runAgents(ctx: AgentContext): Promise<AgentResult> {
           existingFiles: aiFiles.filter((f) => !f.path.startsWith("server/") && !f.path.startsWith("db/")),
         }),
         28000,
-        `${codingRules}\n${ROLE_PROMPTS.frontend}`,
+        `${codeSystemPrompt(project.template, spec.needsBackend, "frontend")}\n${ROLE_PROMPTS.frontend}`,
       ),
       spec.needsBackend
         ? call(
@@ -169,7 +169,7 @@ export async function runAgents(ctx: AgentContext): Promise<AgentResult> {
               existingFiles: aiFiles.filter((f) => f.path.startsWith("server/") || f.path.startsWith("db/")),
             }),
             16000,
-            `${codingRules}\n${ROLE_PROMPTS.backend}`,
+            `${codeSystemPrompt(project.template, spec.needsBackend, "backend")}\n${ROLE_PROMPTS.backend}`,
           )
         : Promise.resolve(null),
     ]);
