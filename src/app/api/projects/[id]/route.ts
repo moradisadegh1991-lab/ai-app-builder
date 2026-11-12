@@ -5,12 +5,16 @@ import { handleRoute } from "@/lib/http";
 import { getOwnedProject, projectView } from "@/lib/projects";
 import type { ProjectRouteContext } from "@/lib/route-helpers";
 import { requireApiUser } from "@/lib/session";
+import { dispatchWorkflow } from "@/lib/workflows/dispatch";
 
 export async function GET(_request: Request, ctx: ProjectRouteContext) {
   return handleRoute(async () => {
     const user = await requireApiUser();
     const project = await getOwnedProject(user.id, (await ctx.params).id);
-    return NextResponse.json({ project: await projectView(project) });
+    const view = await projectView(project);
+    if (view.workflow?.status === "queued" && Date.now() - Date.parse(view.workflow.createdAt) > 30_000)
+      await dispatchWorkflow(view.workflow.id);
+    return NextResponse.json({ project: view });
   });
 }
 

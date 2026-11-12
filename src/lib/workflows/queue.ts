@@ -5,6 +5,7 @@ import { HttpError } from "../http";
 import { enforce } from "../rate-limit";
 import { queryRows } from "./sql";
 import type { AgentTaskInput } from "../agents/contracts";
+import { WorkflowYield } from "./yield";
 
 export interface ClaimedRun {
   id: string;
@@ -50,13 +51,14 @@ export async function enqueueWorkflow(user: schema.User, project: schema.Project
 }
 
 /** SKIP LOCKED supports several workers; owner tokens fence out a worker whose lease expired. */
-export async function claimRun(): Promise<ClaimedRun | null> {
+export async function claimRun(runId?: string): Promise<ClaimedRun | null> {
   const token = randomUUID();
   const runs = await queryRows<ClaimedRun>(sql`
     update workflow_runs set status='running',owner_token=${token}::uuid,
       lease_expires_at=now()+make_interval(secs=>${LEASE_SECONDS}), attempts=attempts+1,updated_at=now()
     where id=(select id from workflow_runs
-      where status='queued' or (status='running' and lease_expires_at<now())
+      where (status='queued' or (status='running' and lease_expires_at<now()))
+      and (${runId ?? null}::uuid is null or id=${runId ?? null}::uuid)
       order by created_at for update skip locked limit 1) returning *`);
   return runs[0] ?? null;
 }
@@ -78,7 +80,8 @@ export interface TaskStore {
   step<T>(key: string, role: string, input: unknown, action: () => Promise<T>): Promise<T>;
   evaluation(round: number, report: unknown, passed: boolean): Promise<void>;
 }
-export function taskStore(run: ClaimedRun, signal: AbortSignal): TaskStore {
+export function taskStore(run: ClaimedRun, signal: AbortSignal, slice = false): TaskStore {
+  let phase: string | undefined;
   return {
     async step<T>(key: string, role: string, input: unknown, action: () => Promise<T>) {
       signal.throwIfAborted();
@@ -89,6 +92,11 @@ export function taskStore(run: ClaimedRun, signal: AbortSignal): TaskStore {
         output: T;
       }>(sql`select status,input_hash,output from agent_tasks where run_id=${run.id} and key=${key}`);
       if (existing[0]?.status === "succeeded" && existing[0].input_hash === hash) return existing[0].output;
+      // Keep frontend/backend parallel, but move each subsequent phase to a new
+      // invocation. Completed checkpoints replay without another provider call.
+      const group = key === "frontend" || key === "backend" ? "implementation" : key;
+      if (slice && phase && phase !== group) throw new WorkflowYield();
+      phase = group;
       const rows = await queryRows(sql`insert into agent_tasks (run_id,key,role,input_hash)
         select ${run.id}::uuid,${key},${role},${hash} where ${ownership(run)}
         on conflict (run_id,key) do update set status='running',input_hash=excluded.input_hash,output=null,error=null,updated_at=now() returning id`);

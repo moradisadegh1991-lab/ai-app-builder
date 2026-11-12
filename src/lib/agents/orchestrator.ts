@@ -7,6 +7,7 @@ import { appSpecSchema, type AppSpec } from "../spec";
 import { renderProject } from "../templates";
 import type { GeneratedFile } from "../templates/types";
 import type { TaskStore } from "../workflows/queue";
+import { WorkflowYield } from "../workflows/yield";
 import {
   architectureSchema,
   designSchema,
@@ -217,6 +218,7 @@ export async function runAgents(ctx: AgentContext): Promise<AgentResult> {
         );
       }
     } catch (error) {
+      if (error instanceof WorkflowYield) throw error;
       verification = {
         status: "failed",
         checks: [{ name: "render", status: "failed", detail: String(error) }],

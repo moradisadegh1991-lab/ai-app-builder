@@ -4,6 +4,7 @@ import { getOwnedProject, projectView } from "./projects";
 import { requireApiUser } from "./session";
 import type { schema } from "./db";
 import { assertProjectIdle } from "./workflows/queue";
+import { dispatchWorkflow } from "./workflows/dispatch";
 
 export interface ProjectRouteContext {
   params: Promise<{ id: string }>;
@@ -20,7 +21,8 @@ export function projectRoute(
     const { id } = await ctx.params;
     const project = await getOwnedProject(user.id, id);
     if (options.mutation) await assertProjectIdle(project.id);
-    await action(user, project);
+    const result = await action(user, project);
+    if (options.status === 202 && typeof result === "string") await dispatchWorkflow(result);
     const fresh = await getOwnedProject(user.id, id);
     return NextResponse.json({ project: await projectView(fresh) }, { status: options.status ?? 200 });
   });
