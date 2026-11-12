@@ -7,6 +7,7 @@ import { api, type ProviderInfo, type ProvidersResponse } from "./api";
 import { StatusBadge } from "./StatusBadge";
 import { Icon } from "./ui/Icon";
 import { ActivityPanel } from "./workspace/ActivityPanel";
+import { AgentTeamPanel } from "./workspace/AgentTeamPanel";
 import { BuildSection } from "./workspace/BuildSection";
 import { CodeSection } from "./workspace/CodeSection";
 import { CloudDeploySection, LocalDeploySection, VpsDeploySection } from "./workspace/DeploySection";
@@ -39,10 +40,18 @@ function isAiProviderId(value: string): value is ProviderInfo["id"] {
   return value === "openai" || value === "anthropic" || value === "gemini";
 }
 
-export function ProjectWorkspace({ initialProject, githubConnected }: { initialProject: ProjectView; githubConnected: boolean }) {
+export function ProjectWorkspace({
+  initialProject,
+  githubConnected,
+}: {
+  initialProject: ProjectView;
+  githubConnected: boolean;
+}) {
   const [project, setProject] = useState(initialProject);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
-  const [provider, setProvider] = useState<ProviderInfo["id"]>(isAiProviderId(initialProject.aiProvider) ? initialProject.aiProvider : "openai");
+  const [provider, setProvider] = useState<ProviderInfo["id"]>(
+    isAiProviderId(initialProject.aiProvider) ? initialProject.aiProvider : "openai",
+  );
   const [busy, setBusy] = useState<Busy>(null);
   const [error, setError] = useState<string | null>(initialProject.lastError);
   const [section, setSection] = useState<SectionId>(() => currentSection(initialProject));
@@ -67,27 +76,35 @@ export function ProjectWorkspace({ initialProject, githubConnected }: { initialP
     [gate],
   );
 
-  const run = useCallback(async (kind: Exclude<Busy, null>, url: string, method: string, body?: unknown) => {
-    gate.beginOperation();
-    setBusy(kind);
-    setError(null);
-    try {
-      const data = await api<{ project: ProjectView }>(url, {
-        method,
-        body: body === undefined ? undefined : JSON.stringify(body),
-      });
-      setProject(data.project);
-      return true;
-    } catch (e) {
-      setError((e as Error).message);
-      return false;
-    } finally {
-      gate.endOperation();
-      setBusy(null);
-    }
-  }, [gate]);
+  const run = useCallback(
+    async (kind: Exclude<Busy, null>, url: string, method: string, body?: unknown) => {
+      gate.beginOperation();
+      setBusy(kind);
+      setError(null);
+      try {
+        const data = await api<{ project: ProjectView }>(url, {
+          method,
+          body: body === undefined ? undefined : JSON.stringify(body),
+        });
+        setProject(data.project);
+        return true;
+      } catch (e) {
+        setError((e as Error).message);
+        return false;
+      } finally {
+        gate.endOperation();
+        setBusy(null);
+      }
+    },
+    [gate],
+  );
 
   const base = `/api/projects/${project.id}`;
+  const teamActive = Boolean(project.workflow && ["queued", "running"].includes(project.workflow.status));
+  const disabled = busy !== null || teamActive;
+  useEffect(() => {
+    if (project.workflow?.status === "failed") setError(project.workflow.error);
+  }, [project.workflow?.status, project.workflow?.error]);
 
   // ---------------------------------------------------------------- navigation
   const go = useCallback((id: SectionId) => {
@@ -118,7 +135,11 @@ export function ProjectWorkspace({ initialProject, githubConnected }: { initialP
   // ---------------------------------------------------------------- automatic build repair
   // After a failed build the page repairs it by itself, up to project.autoFix.max rounds in a row.
   // Nothing starts before the saved preference has been read (see useAutoFixPreference).
-  const { preference: autoFixPreference, loaded: autoFixLoaded, setPreference: setAutoFixPreference } = useAutoFixPreference();
+  const {
+    preference: autoFixPreference,
+    loaded: autoFixLoaded,
+    setPreference: setAutoFixPreference,
+  } = useAutoFixPreference();
   const autoFixedBuild = useRef<string | null>(null);
 
   useEffect(() => {
@@ -128,7 +149,13 @@ export function ProjectWorkspace({ initialProject, githubConnected }: { initialP
       preference: autoFixPreference,
       busy: busy !== null,
       projectStatus: project.status,
-      build: build ? { id: build.id, conclusion: build.conclusion, createdAt: build.createdAt } : null,
+      build: build
+        ? {
+            id: build.id,
+            conclusion: build.conclusion,
+            createdAt: build.createdAt,
+          }
+        : null,
       used: project.autoFix.used,
       max: project.autoFix.max,
       alreadyTriggeredFor: autoFixedBuild.current ?? readTriggeredBuild(session),
@@ -147,12 +174,11 @@ export function ProjectWorkspace({ initialProject, githubConnected }: { initialP
 
   // ---------------------------------------------------------------- derived view
   const facts = workspaceFacts(project);
-  const sections = useMemo(() => workspaceSections(project, busy !== null), [project, busy]);
+  const sections = useMemo(() => workspaceSections(project, disabled), [project, disabled]);
   const next = nextAction(project, githubConnected);
   // The live preview disappears when the site is no longer deployed.
   const activeSection: SectionId = section === "preview" && !facts.previewUrl ? "overview" : section;
   const activeProvider = providers.find((item) => item.id === provider);
-
 
   return (
     <div className="flex flex-col gap-5">
@@ -180,7 +206,7 @@ export function ProjectWorkspace({ initialProject, githubConnected }: { initialP
 
         <div className="flex w-full flex-col gap-1 xl:w-80">
           <label htmlFor="workspace-ai-provider" className="text-xs font-semibold text-muted">
-            مدل هوش مصنوعی برای عملیات بعدی
+            ارائه‌دهندهٔ پیش‌فرض تیم
           </label>
           <select
             id="workspace-ai-provider"
@@ -197,7 +223,9 @@ export function ProjectWorkspace({ initialProject, githubConnected }: { initialP
             ))}
           </select>
           {activeProvider && !activeProvider.available && (
-            <span className="text-xs text-warning-fg">این مدل در دسترس نیست؛ در صفحهٔ اتصال‌ها کلید آن را وارد کنید.</span>
+            <span className="text-xs text-warning-fg">
+              این مدل در دسترس نیست؛ در صفحهٔ اتصال‌ها کلید آن را وارد کنید.
+            </span>
           )}
         </div>
       </div>
@@ -217,9 +245,15 @@ export function ProjectWorkspace({ initialProject, githubConnected }: { initialP
             activeSection={activeSection}
             onNavigate={go}
             canEdit={facts.hasCode}
-            editDisabled={busy !== null}
-            onEdit={(instruction) => runThen("build", "edit", `${base}/edit`, "POST", { instruction, provider })}
+            editDisabled={disabled}
+            onEdit={(instruction) =>
+              runThen("build", "edit", `${base}/edit`, "POST", {
+                instruction,
+                provider,
+              })
+            }
           />
+          <AgentTeamPanel workflow={project.workflow} base={base} />
         </div>
 
         <main id="workspace-content" className="order-1 flex min-w-0 flex-col gap-5 lg:order-none">
@@ -241,19 +275,26 @@ export function ProjectWorkspace({ initialProject, githubConnected }: { initialP
                   {error}
                 </p>
               </div>
-              <button type="button" className="btn-ghost btn-sm !min-h-7 !px-1.5 !text-danger-fg" onClick={() => setError(null)} aria-label="بستن پیام خطا">
+              <button
+                type="button"
+                className="btn-ghost btn-sm !min-h-7 !px-1.5 !text-danger-fg"
+                onClick={() => setError(null)}
+                aria-label="بستن پیام خطا"
+              >
                 <Icon name="x" size={14} />
               </button>
             </div>
           )}
 
-          {activeSection === "overview" && <OverviewSection project={project} sections={sections} next={next} onNavigate={go} />}
+          {activeSection === "overview" && (
+            <OverviewSection project={project} sections={sections} next={next} onNavigate={go} />
+          )}
 
           {activeSection === "requirements" && (
             <RequirementsSection
               spec={project.spec}
               approved={facts.specApproved}
-              disabled={busy !== null}
+              disabled={disabled}
               onGenerate={(feedback) => run("spec", `${base}/spec`, "POST", { feedback, provider })}
               onApprove={(spec) => runThen("code", "approve", `${base}/spec`, "PUT", spec ? { spec } : {})}
             />
@@ -261,9 +302,17 @@ export function ProjectWorkspace({ initialProject, githubConnected }: { initialP
 
           {activeSection === "code" &&
             (facts.specApproved ? (
-              <CodeSection project={project} disabled={busy !== null} onGenerate={() => run("code", `${base}/generate`, "POST", { provider })} />
+              <CodeSection
+                project={project}
+                disabled={disabled}
+                onGenerate={() => run("code", `${base}/generate`, "POST", { provider })}
+              />
             ) : (
-              <LockedSection message="ابتدا نیازمندی‌ها را تأیید کنید؛ کد بر اساس آن‌ها ساخته می‌شود." onGo={() => go("requirements")} action="رفتن به نیازمندی‌ها" />
+              <LockedSection
+                message="ابتدا نیازمندی‌ها را تأیید کنید؛ کد بر اساس آن‌ها ساخته می‌شود."
+                onGo={() => go("requirements")}
+                action="رفتن به نیازمندی‌ها"
+              />
             ))}
 
           {activeSection === "preview" && facts.previewUrl && <PreviewSection url={facts.previewUrl} />}
@@ -273,7 +322,7 @@ export function ProjectWorkspace({ initialProject, githubConnected }: { initialP
               <BuildSection
                 project={project}
                 githubConnected={githubConnected}
-                disabled={busy !== null}
+                disabled={disabled}
                 onPush={() => run("github", `${base}/github`, "POST")}
                 onRebuild={() => run("rebuild", `${base}/build`, "POST")}
                 onFix={() => run("fix", `${base}/fix`, "POST", { provider })}
@@ -286,7 +335,11 @@ export function ProjectWorkspace({ initialProject, githubConnected }: { initialP
                 }}
               />
             ) : (
-              <LockedSection message="ابتدا کد پروژه را تولید کنید." onGo={() => go("code")} action="رفتن به کد پروژه" />
+              <LockedSection
+                message="ابتدا کد پروژه را تولید کنید."
+                onGo={() => go("code")}
+                action="رفتن به کد پروژه"
+              />
             ))}
 
           {activeSection === "deploy" &&
@@ -294,16 +347,28 @@ export function ProjectWorkspace({ initialProject, githubConnected }: { initialP
               facts.hasCode ? (
                 <LocalDeploySection />
               ) : (
-                <LockedSection message="ابتدا کد پروژه را تولید کنید." onGo={() => go("code")} action="رفتن به کد پروژه" />
+                <LockedSection
+                  message="ابتدا کد پروژه را تولید کنید."
+                  onGo={() => go("code")}
+                  action="رفتن به کد پروژه"
+                />
               )
             ) : !project.repo ? (
-              <LockedSection message="برای استقرار، ابتدا کد را به GitHub بفرستید." onGo={() => go("build")} action="رفتن به GitHub و Build" />
+              <LockedSection
+                message="برای استقرار، ابتدا کد را به GitHub بفرستید."
+                onGo={() => go("build")}
+                action="رفتن به GitHub و Build"
+              />
             ) : project.hosting === "vercel" ? (
-              <CloudDeploySection project={project} disabled={busy !== null} onProvision={() => run("cloud", `${base}/cloud`, "POST")} />
+              <CloudDeploySection
+                project={project}
+                disabled={disabled}
+                onProvision={() => run("cloud", `${base}/cloud`, "POST")}
+              />
             ) : (
               <VpsDeploySection
                 project={project}
-                disabled={busy !== null}
+                disabled={disabled}
                 onChange={setProject}
                 onError={setError}
                 onFix={() => run("fix", `${base}/fix`, "POST", { provider })}
@@ -312,7 +377,6 @@ export function ProjectWorkspace({ initialProject, githubConnected }: { initialP
               />
             ))}
         </main>
-
       </div>
     </div>
   );

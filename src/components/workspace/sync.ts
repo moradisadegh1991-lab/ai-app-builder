@@ -6,7 +6,11 @@ import type { ProjectView } from "@/lib/projects";
 /** Each kind is an existing endpoint that returns the full project view. */
 export type SyncKind = "build" | "cloud" | "project";
 
-export const SYNC_PATH: Record<SyncKind, string> = { build: "/build", cloud: "/cloud", project: "" };
+export const SYNC_PATH: Record<SyncKind, string> = {
+  build: "/build",
+  cloud: "/cloud",
+  project: "",
+};
 
 /** Vercel: both "provisioning" (database + project being created) and "deploying" (Vercel build). */
 export function vercelDeploymentActive(project: ProjectView): boolean {
@@ -19,7 +23,11 @@ export function syncKinds(project: ProjectView): SyncKind[] {
   if (project.build !== null && project.build.status !== "completed") kinds.push("build");
   if (vercelDeploymentActive(project)) kinds.push("cloud");
   // VPS: the agent reports on its own; the project view is the only thing to re-read.
-  if (project.vps !== null && (project.vps.status === "pending" || project.vps.status === "deploying")) kinds.push("project");
+  if (
+    (project.workflow && ["queued", "running"].includes(project.workflow.status)) ||
+    (project.vps !== null && (project.vps.status === "pending" || project.vps.status === "deploying"))
+  )
+    kinds.push("project");
   return kinds;
 }
 

@@ -10,5 +10,7 @@ export async function GET(_request: Request, ctx: ProjectRouteContext) {
 
 /** Starts a new build of the current commit via workflow_dispatch. */
 export async function POST(_request: Request, ctx: ProjectRouteContext) {
-  return projectRoute(ctx, (user, project) => rebuild(user, project));
+  return projectRoute(ctx, (user, project) => rebuild(user, project), {
+    mutation: true,
+  });
 }

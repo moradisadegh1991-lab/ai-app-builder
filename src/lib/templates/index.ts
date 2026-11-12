@@ -2,7 +2,14 @@ import type { AppTemplate } from "../db/schema";
 import type { AppSpec } from "../spec";
 import { BACKEND_DEPENDENCIES, BACKEND_SCRIPTS, backendFiles } from "./backend";
 import { capacitorFiles, capacitorPermissions } from "./capacitor";
-import { MANIFEST_PATH, SHARED_GITIGNORE, androidPackageId, buildWorkflow, projectManifest, workflowPath } from "./common";
+import {
+  MANIFEST_PATH,
+  SHARED_GITIGNORE,
+  androidPackageId,
+  buildWorkflow,
+  projectManifest,
+  workflowPath,
+} from "./common";
 import { expoFiles } from "./expo";
 import { ALLOWED_LIBRARIES } from "./libraries";
 import { checkImports, type UnresolvedImport } from "./imports";
@@ -104,6 +111,8 @@ export interface RenderInput {
 
 export interface RenderResult {
   files: GeneratedFile[];
+  /** The accepted AI-owned subset; repair rounds must not retain rejected/template-owned paths. */
+  aiFiles: GeneratedFile[];
   warnings: string[];
   unresolvedImports: UnresolvedImport[];
 }
@@ -154,6 +163,7 @@ export function renderProject(input: RenderInput): RenderResult {
 
   return {
     files: [...templateFiles, ...sanitized.files].sort((a, b) => a.path.localeCompare(b.path)),
+    aiFiles: sanitized.files,
     warnings: [...warnings, ...sanitized.warnings],
     unresolvedImports: sanitized.unresolvedImports,
   };

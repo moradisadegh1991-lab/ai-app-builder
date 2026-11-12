@@ -1,6 +1,5 @@
 import type { z } from "zod";
 import { activePlan, usageSummary } from "../billing/subscription";
-import { db, schema } from "../db";
 import { env } from "../env";
 import { HttpError } from "../http";
 import { enforce } from "../rate-limit";
@@ -8,6 +7,8 @@ import { getIntegration } from "../integrations/store";
 import { extractJsonObject } from "./json";
 import { callProvider } from "./providers";
 import { AI_PROVIDERS, AI_PROVIDER_LABELS, type AiProviderId, type CompletionImage } from "./types";
+import { reserveUsage, settleUsage, tokenReservation, releaseUsage } from "../workflows/budgets";
+import type { AgentRole } from "../agents/contracts";
 
 export { AI_PROVIDERS, AI_PROVIDER_LABELS, type AiProviderId };
 
@@ -31,7 +32,11 @@ const economyModels: Record<AiProviderId, () => string> = {
 };
 
 // Vendor prefix of model IDs on OpenAI-compatible gateways, e.g. "google/gemini-3.7-flash".
-const gatewayVendors: Record<AiProviderId, string> = { openai: "openai", anthropic: "anthropic", gemini: "google" };
+const gatewayVendors: Record<AiProviderId, string> = {
+  openai: "openai",
+  anthropic: "anthropic",
+  gemini: "google",
+};
 
 const gatewayBaseUrl = () => (env.aiGatewayKey() ? env.aiGatewayBaseUrl() : undefined);
 
@@ -55,7 +60,11 @@ interface ResolvedKey {
 async function resolveKey(userId: string, provider: AiProviderId): Promise<ResolvedKey> {
   const own = await getIntegration(userId, provider);
   if (own) {
-    return { apiKey: own.secret, usedPlatformKey: false, model: own.metadata.model || defaultModels[provider]() };
+    return {
+      apiKey: own.secret,
+      usedPlatformKey: false,
+      model: own.metadata.model || defaultModels[provider](),
+    };
   }
   const gateway = gatewayBaseUrl();
   const platformKey = gateway ? env.aiGatewayKey() : platformKeys[provider]();
@@ -68,7 +77,12 @@ async function resolveKey(userId: string, provider: AiProviderId): Promise<Resol
   const { plan } = await activePlan(userId);
   const model = plan.modelTier === "economy" ? economyModels[provider]() : defaultModels[provider]();
   return gateway
-    ? { apiKey: platformKey, gatewayBaseUrl: gateway, usedPlatformKey: true, model: gatewayModel(provider, model) }
+    ? {
+        apiKey: platformKey,
+        gatewayBaseUrl: gateway,
+        usedPlatformKey: true,
+        model: gatewayModel(provider, model),
+      }
     : { apiKey: platformKey, usedPlatformKey: true, model };
 }
 
@@ -102,7 +116,11 @@ export async function providerAvailability(userId: string) {
   return Promise.all(
     AI_PROVIDERS.map(async (id) => {
       const own = await getIntegration(userId, id);
-      const source: "user" | "platform" | null = own ? "user" : gatewayBaseUrl() || platformKeys[id]() ? "platform" : null;
+      const source: "user" | "platform" | null = own
+        ? "user"
+        : gatewayBaseUrl() || platformKeys[id]()
+          ? "platform"
+          : null;
       const baseModel = plan.modelTier === "economy" ? economyModels[id]() : defaultModels[id]();
       const platformModel = gatewayBaseUrl() ? gatewayModel(id, baseModel) : baseModel;
       return {
@@ -127,6 +145,9 @@ export interface StructuredCallOptions<T> {
   images?: CompletionImage[];
   schema: z.ZodType<T>;
   maxOutputTokens: number;
+  runId?: string;
+  role?: AgentRole;
+  signal?: AbortSignal;
 }
 
 /**
@@ -138,27 +159,57 @@ export async function generateStructured<T>(options: StructuredCallOptions<T>): 
   await enforce("ai", options.userId, 60, 3600, "درخواست هوش مصنوعی");
   const key = await resolveKey(options.userId, options.provider);
   if (key.usedPlatformKey) await assertWithinPlan(options.userId);
-
-  const result = await callProvider(options.provider, {
-    apiKey: key.apiKey,
-    gatewayBaseUrl: key.gatewayBaseUrl,
-    model: key.model,
-    system: options.system,
-    prompt: options.prompt,
-    images: options.images,
-    maxOutputTokens: options.maxOutputTokens,
-  });
-
-  await db().insert(schema.usageRecords).values({
-    userId: options.userId,
-    projectId: options.projectId,
-    provider: options.provider,
-    model: result.model,
-    purpose: options.purpose,
-    inputTokens: result.inputTokens,
-    outputTokens: result.outputTokens,
-    usedPlatformKey: key.usedPlatformKey,
-  });
+  if (options.role) {
+    const { plan } = await activePlan(options.userId);
+    const suffix = key.usedPlatformKey && plan.modelTier === "economy" ? "ECONOMY_MODEL" : "MODEL";
+    const model = process.env[`AGENT_${options.role.toUpperCase()}_${suffix}`];
+    if (model) key.model = key.gatewayBaseUrl ? gatewayModel(options.provider, model) : model;
+  }
+  options.signal?.throwIfAborted();
+  const reserved = tokenReservation(options.system, options.prompt, options.maxOutputTokens, options.images);
+  const reservation = await reserveUsage(options.userId, options.runId, reserved, key.usedPlatformKey);
+  // On an interrupted call, retain the hold: the remote provider may have billed it.
+  let result;
+  try {
+    result = await callProvider(options.provider, {
+      apiKey: key.apiKey,
+      gatewayBaseUrl: key.gatewayBaseUrl,
+      model: key.model,
+      system: options.system,
+      prompt: options.prompt,
+      images: options.images,
+      maxOutputTokens: options.maxOutputTokens,
+      signal: options.signal,
+    });
+  } catch (error) {
+    const status =
+      error instanceof Error && "status" in error
+        ? Number(error.status)
+        : Number(String(error).match(/AI provider error (\d{3}):/)?.[1]);
+    // Rejections before inference consume no generated tokens. Unknown failures keep their hold.
+    if ([400, 401, 403, 404, 422, 429].includes(status)) await releaseUsage(reservation);
+    throw error;
+  }
+  const inputTokens = Number(result.inputTokens),
+    outputTokens = Number(result.outputTokens);
+  // Some compatible gateways omit usage. Keep the conservative hold instead of
+  // treating an unmetered response as free and allowing the quota to be bypassed.
+  if (
+    Number.isSafeInteger(inputTokens) &&
+    Number.isSafeInteger(outputTokens) &&
+    inputTokens >= 0 &&
+    outputTokens >= 0 &&
+    inputTokens + outputTokens > 0
+  ) {
+    await settleUsage(reservation, {
+      projectId: options.projectId,
+      provider: options.provider,
+      model: result.model,
+      purpose: options.purpose,
+      inputTokens,
+      outputTokens,
+    });
+  }
 
   const parsed = options.schema.safeParse(extractJsonObject(result.text));
   if (!parsed.success) {

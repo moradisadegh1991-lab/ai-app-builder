@@ -59,7 +59,9 @@ export function CodeSection({
             <Icon name="code" />
           </span>
           <p className="font-semibold text-fg">هنوز کدی تولید نشده است</p>
-          <p className="max-w-md text-sm leading-7">پس از تأیید نیازمندی‌ها، تولید کد را شروع کنید. ممکن است تا چند دقیقه طول بکشد.</p>
+          <p className="max-w-md text-sm leading-7">
+            تیم تخصصی، طراحی رابط کاربری و کد را می‌سازد؛ نتیجه پس از بررسی فنی و کیفیت این‌جا نمایش داده می‌شود.
+          </p>
           <button type="button" className="btn-primary mt-2" disabled={disabled} onClick={onGenerate}>
             <Icon name="sparkles" size={16} />
             شروع تولید کد
@@ -95,10 +97,17 @@ export function CodeSection({
       }
     >
       <div className="grid min-w-0 gap-4 lg:grid-cols-[17rem_minmax(0,1fr)]">
-        <nav aria-label="فایل‌های پروژه" className="panel-muted flex max-h-64 min-w-0 flex-col overflow-hidden lg:max-h-[34rem]">
+        <nav
+          aria-label="فایل‌های پروژه"
+          className="panel-muted flex max-h-64 min-w-0 flex-col overflow-hidden lg:max-h-[34rem]"
+        >
           <div className="border-b border-line p-2">
             <div className="relative">
-              <Icon name="search" size={15} className="pointer-events-none absolute start-2.5 top-1/2 -translate-y-1/2 text-faint" />
+              <Icon
+                name="search"
+                size={15}
+                className="pointer-events-none absolute start-2.5 top-1/2 -translate-y-1/2 text-faint"
+              />
               <input
                 type="search"
                 className="input !py-1.5 !ps-8 text-xs"
@@ -170,7 +179,9 @@ export function CodeSection({
               <code>
                 {lines.map((line, index) => (
                   <span key={index} className="flex">
-                    <span className="sticky left-0 w-12 shrink-0 select-none bg-code-bg pe-3 text-right text-code-fg/30">{index + 1}</span>
+                    <span className="sticky left-0 w-12 shrink-0 select-none bg-code-bg pe-3 text-right text-code-fg/30">
+                      {index + 1}
+                    </span>
                     <span className="pe-6 whitespace-pre">{line || " "}</span>
                   </span>
                 ))}

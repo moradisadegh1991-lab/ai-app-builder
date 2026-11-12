@@ -1,10 +1,9 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db, schema } from "../db";
 import { env } from "../env";
 import { HttpError } from "../http";
 import { PLANS, priceToman, type Plan } from "./plans";
-import { grantPlan } from "./subscription";
 
 export type Gateway = "zarinpal" | "stripe";
 
@@ -28,7 +27,15 @@ async function zarinpalCall(path: string, body: Record<string, unknown>) {
     body: JSON.stringify({ merchant_id: env.zarinpalMerchantId(), ...body }),
   });
   const data = await response.json().catch(() => ({}));
-  return data as { data?: { code?: number; authority?: string; ref_id?: number; message?: string }; errors?: unknown };
+  return data as {
+    data?: {
+      code?: number;
+      authority?: string;
+      ref_id?: number;
+      message?: string;
+    };
+    errors?: unknown;
+  };
 }
 
 async function startZarinpal(user: schema.User, plan: Plan): Promise<string> {
@@ -36,7 +43,13 @@ async function startZarinpal(user: schema.User, plan: Plan): Promise<string> {
   if (!amount) throw new HttpError(400, "پرداخت تومانی پیکربندی نشده است.");
   const [payment] = await db()
     .insert(schema.payments)
-    .values({ userId: user.id, plan: plan.id, provider: "zarinpal", amount, currency: "IRT" })
+    .values({
+      userId: user.id,
+      plan: plan.id,
+      provider: "zarinpal",
+      amount,
+      currency: "IRT",
+    })
     .returning();
   const result = await zarinpalCall("request.json", {
     amount,
@@ -48,7 +61,10 @@ async function startZarinpal(user: schema.User, plan: Plan): Promise<string> {
   const authority = result.data?.code === 100 ? result.data.authority : undefined;
   if (!authority) {
     await db().update(schema.payments).set({ status: "failed" }).where(eq(schema.payments.id, payment!.id));
-    throw new HttpError(502, `زرین‌پال درخواست پرداخت را نپذیرفت: ${JSON.stringify(result.errors ?? result.data ?? {})}`);
+    throw new HttpError(
+      502,
+      `زرین‌پال درخواست پرداخت را نپذیرفت: ${JSON.stringify(result.errors ?? result.data ?? {})}`,
+    );
   }
   await db().update(schema.payments).set({ reference: authority }).where(eq(schema.payments.id, payment!.id));
   return `${zarinpalBase()}/pg/StartPay/${authority}`;
@@ -64,16 +80,25 @@ export async function verifyZarinpal(authority: string, status: string) {
   if (!payment) return "failed" as const;
   if (payment.status !== "pending") return payment.status as "paid" | "failed";
   if (status !== "OK") {
-    await db().update(schema.payments).set({ status: "failed", updatedAt: new Date() }).where(eq(schema.payments.id, payment.id));
+    await db()
+      .update(schema.payments)
+      .set({ status: "failed", updatedAt: new Date() })
+      .where(eq(schema.payments.id, payment.id));
     return "failed" as const;
   }
-  const result = await zarinpalCall("verify.json", { amount: payment.amount, authority });
+  const result = await zarinpalCall("verify.json", {
+    amount: payment.amount,
+    authority,
+  });
   const code = result.data?.code;
   if (code === 100 || code === 101) {
     await completePayment(payment.id, String(result.data?.ref_id ?? ""));
     return "paid" as const;
   }
-  await db().update(schema.payments).set({ status: "failed", updatedAt: new Date() }).where(eq(schema.payments.id, payment.id));
+  await db()
+    .update(schema.payments)
+    .set({ status: "failed", updatedAt: new Date() })
+    .where(eq(schema.payments.id, payment.id));
   return "failed" as const;
 }
 
@@ -97,7 +122,13 @@ async function startStripe(user: schema.User, plan: Plan): Promise<string> {
   const amount = plan.priceUsd * 100;
   const [payment] = await db()
     .insert(schema.payments)
-    .values({ userId: user.id, plan: plan.id, provider: "stripe", amount, currency: "usd" })
+    .values({
+      userId: user.id,
+      plan: plan.id,
+      provider: "stripe",
+      amount,
+      currency: "usd",
+    })
     .returning();
   const session = await stripe("POST", "checkout/sessions", {
     mode: "payment",
@@ -150,12 +181,7 @@ export function verifyStripeSignature(payload: string, header: string | null, se
 
 /** Marks a payment paid exactly once and grants its plan. */
 async function completePayment(paymentId: string, receipt: string) {
-  const [payment] = await db()
-    .update(schema.payments)
-    .set({ status: "paid", receipt, paidAt: new Date(), updatedAt: new Date() })
-    .where(and(eq(schema.payments.id, paymentId), eq(schema.payments.status, "pending")))
-    .returning();
-  if (payment) await grantPlan(payment.userId, payment.plan);
+  await db().execute(sql`select complete_payment(${paymentId}::uuid,${receipt})`);
 }
 
 export async function startCheckout(user: schema.User, planId: "plus" | "pro" | "max", gateway: Gateway) {
