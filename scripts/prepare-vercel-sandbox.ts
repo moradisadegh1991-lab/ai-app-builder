@@ -21,7 +21,8 @@ PLAYWRIGHT_BROWSERS_PATH=/opt/runner/browsers npx playwright-core install chromi
 PLAYWRIGHT_BROWSERS_PATH=/opt/runner/browsers node --input-type=module -e "import {chromium} from 'playwright-core'; import {symlinkSync} from 'node:fs'; symlinkSync(chromium.executablePath(),'/opt/runner/chromium')"
 sudo chmod -R a+rX /opt/runner
 sudo useradd --create-home --shell /bin/bash app
-sudo chmod 750 /home/app
+sudo chown app:ubuntu /home/app
+sudo chmod 770 /home/app
 /opt/runner/chromium --version
 pg_lsclusters`,
     ],
