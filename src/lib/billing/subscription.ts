@@ -3,6 +3,7 @@ import { db, schema } from "../db";
 import type { PlanId } from "../db/schema";
 import { env } from "../env";
 import { DEVELOPER_PLAN, PERIOD_DAYS, PLANS, WINDOW_HOURS, type Plan } from "./plans";
+import { queryRows } from "../workflows/sql";
 
 export interface ActivePlan {
   plan: Plan;
@@ -12,17 +13,17 @@ export interface ActivePlan {
 async function isUnlimitedUser(userId: string) {
   const emails = env.unlimitedEmails();
   if (emails.length === 0) return false;
-  const [user] = await db().select({ email: schema.users.email }).from(schema.users).where(eq(schema.users.id, userId)).limit(1);
+  const [user] = await db()
+    .select({ email: schema.users.email })
+    .from(schema.users)
+    .where(eq(schema.users.id, userId))
+    .limit(1);
   return Boolean(user && emails.includes(user.email.toLowerCase()));
 }
 
 export async function activePlan(userId: string): Promise<ActivePlan> {
   if (await isUnlimitedUser(userId)) return { plan: DEVELOPER_PLAN, currentPeriodEnd: null };
-  const [sub] = await db()
-    .select()
-    .from(schema.subscriptions)
-    .where(eq(schema.subscriptions.userId, userId))
-    .limit(1);
+  const [sub] = await db().select().from(schema.subscriptions).where(eq(schema.subscriptions.userId, userId)).limit(1);
   if (!sub || sub.currentPeriodEnd < new Date()) return { plan: PLANS.free, currentPeriodEnd: null };
   return { plan: PLANS[sub.plan], currentPeriodEnd: sub.currentPeriodEnd };
 }
@@ -32,11 +33,7 @@ export async function activePlan(userId: string): Promise<ActivePlan> {
  * switching plans starts a fresh period from now.
  */
 export async function grantPlan(userId: string, plan: PlanId) {
-  const [sub] = await db()
-    .select()
-    .from(schema.subscriptions)
-    .where(eq(schema.subscriptions.userId, userId))
-    .limit(1);
+  const [sub] = await db().select().from(schema.subscriptions).where(eq(schema.subscriptions.userId, userId)).limit(1);
   const now = Date.now();
   const base = sub && sub.plan === plan && sub.currentPeriodEnd.getTime() > now ? sub.currentPeriodEnd.getTime() : now;
   const currentPeriodEnd = new Date(base + PERIOD_DAYS * 24 * 60 * 60_000);
@@ -52,7 +49,9 @@ export async function grantPlan(userId: string, plan: PlanId) {
 
 async function tokensSince(userId: string, since: Date) {
   const [row] = await db()
-    .select({ total: sql<number>`coalesce(sum(${schema.usageRecords.inputTokens} + ${schema.usageRecords.outputTokens}), 0)::int` })
+    .select({
+      total: sql<number>`coalesce(sum(${schema.usageRecords.inputTokens} + ${schema.usageRecords.outputTokens}), 0)::int`,
+    })
     .from(schema.usageRecords)
     .where(
       and(
@@ -61,7 +60,11 @@ async function tokensSince(userId: string, since: Date) {
         gte(schema.usageRecords.createdAt, since),
       ),
     );
-  return Number(row?.total ?? 0);
+  const [held] = await queryRows<{
+    total: number;
+  }>(sql`select coalesce(sum(tokens),0)::bigint as total from usage_reservations
+    where user_id=${userId} and used_platform_key and state='held' and created_at>=${since.toISOString()}::timestamptz`);
+  return Number(row?.total ?? 0) + Number(held?.total ?? 0);
 }
 
 async function oldestSince(userId: string, since: Date) {
@@ -75,7 +78,14 @@ async function oldestSince(userId: string, since: Date) {
         gte(schema.usageRecords.createdAt, since),
       ),
     );
-  return row?.first ? new Date(row.first) : null;
+  const [held] = await queryRows<{
+    first: Date | string | null;
+  }>(sql`select min(created_at) as first from usage_reservations
+    where user_id=${userId} and used_platform_key and state='held' and created_at>=${since.toISOString()}::timestamptz`);
+  const dates = [row?.first, held?.first]
+    .filter((d): d is Date | string => Boolean(d))
+    .map((d) => new Date(d).getTime());
+  return dates.length ? new Date(Math.min(...dates)) : null;
 }
 
 export interface UsageSummary {

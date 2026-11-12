@@ -6,7 +6,10 @@ function openAiUserContent(req: CompletionRequest) {
   if (!req.images?.length) return req.prompt;
   return [
     { type: "text", text: req.prompt },
-    ...req.images.map((image) => ({ type: "image_url", image_url: { url: `data:${image.mime};base64,${image.data}` } })),
+    ...req.images.map((image) => ({
+      type: "image_url",
+      image_url: { url: `data:${image.mime};base64,${image.data}` },
+    })),
   ];
 }
 
@@ -16,12 +19,19 @@ function openAiUserContent(req: CompletionRequest) {
 
 const REQUEST_TIMEOUT_MS = 280_000;
 
-async function postJson(url: string, headers: Record<string, string>, body: unknown): Promise<any> {
+async function postJson(
+  url: string,
+  headers: Record<string, string>,
+  body: unknown,
+  signal?: AbortSignal,
+): Promise<any> {
   const response = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json", ...headers },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    signal: signal
+      ? AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)])
+      : AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   const text = await response.text();
   if (!response.ok) {
@@ -43,6 +53,7 @@ async function callOpenAI(req: CompletionRequest): Promise<CompletionResult> {
       response_format: { type: "json_object" },
       max_completion_tokens: req.maxOutputTokens,
     },
+    req.signal,
   );
   return {
     text: data.choices?.[0]?.message?.content ?? "",
@@ -56,35 +67,47 @@ async function callOpenAI(req: CompletionRequest): Promise<CompletionResult> {
 const FALLBACK_MODELS = new Set(["claude-fable-5-1", "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5"]);
 
 async function callAnthropic(req: CompletionRequest): Promise<CompletionResult> {
-  const client = new Anthropic({ apiKey: req.apiKey, timeout: REQUEST_TIMEOUT_MS, maxRetries: 1 });
+  const client = new Anthropic({
+    apiKey: req.apiKey,
+    timeout: REQUEST_TIMEOUT_MS,
+    maxRetries: 1,
+  });
   const useFallbacks = FALLBACK_MODELS.has(req.model);
   // Streaming avoids HTTP timeouts on large code-generation outputs.
   const message = await client.beta.messages
-    .stream({
-      model: req.model,
-      max_tokens: req.maxOutputTokens,
-      system: req.system,
-      messages: [
-        {
-          role: "user",
-          content: req.images?.length
-            ? [
-                ...req.images.map((image) => ({
-                  type: "image" as const,
-                  source: {
-                    type: "base64" as const,
-                    media_type: image.mime as "image/png" | "image/jpeg" | "image/webp" | "image/gif",
-                    data: image.data,
-                  },
-                })),
-                { type: "text" as const, text: req.prompt },
-              ]
-            : req.prompt,
-        },
-      ],
-      output_config: { effort: "high" },
-      ...(useFallbacks ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
-    })
+    .stream(
+      {
+        model: req.model,
+        max_tokens: req.maxOutputTokens,
+        system: req.system,
+        messages: [
+          {
+            role: "user",
+            content: req.images?.length
+              ? [
+                  ...req.images.map((image) => ({
+                    type: "image" as const,
+                    source: {
+                      type: "base64" as const,
+                      media_type: image.mime as "image/png" | "image/jpeg" | "image/webp" | "image/gif",
+                      data: image.data,
+                    },
+                  })),
+                  { type: "text" as const, text: req.prompt },
+                ]
+              : req.prompt,
+          },
+        ],
+        output_config: { effort: "high" },
+        ...(useFallbacks
+          ? {
+              betas: ["server-side-fallback-2026-07-01"],
+              fallbacks: "default" as const,
+            }
+          : {}),
+      },
+      { signal: req.signal },
+    )
     .finalMessage();
 
   if (message.stop_reason === "refusal") {
@@ -117,12 +140,18 @@ async function callGemini(req: CompletionRequest): Promise<CompletionResult> {
           role: "user",
           parts: [
             { text: req.prompt },
-            ...(req.images ?? []).map((image) => ({ inlineData: { mimeType: image.mime, data: image.data } })),
+            ...(req.images ?? []).map((image) => ({
+              inlineData: { mimeType: image.mime, data: image.data },
+            })),
           ],
         },
       ],
-      generationConfig: { responseMimeType: "application/json", maxOutputTokens: req.maxOutputTokens },
+      generationConfig: {
+        responseMimeType: "application/json",
+        maxOutputTokens: req.maxOutputTokens,
+      },
     },
+    req.signal,
   );
   const candidate = data.candidates?.[0];
   if (candidate?.finishReason === "MAX_TOKENS") {
@@ -154,10 +183,10 @@ async function callGateway(req: CompletionRequest): Promise<CompletionResult> {
   const headers = { authorization: `Bearer ${req.apiKey}` };
   let data: any;
   try {
-    data = await postJson(url, headers, { ...body, response_format: { type: "json_object" } });
+    data = await postJson(url, headers, { ...body, response_format: { type: "json_object" } }, req.signal);
   } catch (error) {
     if (!(error instanceof Error) || !/ 400:/.test(error.message)) throw error;
-    data = await postJson(url, headers, body);
+    data = await postJson(url, headers, body, req.signal);
   }
   const choice = data.choices?.[0];
   if (choice?.finish_reason === "length") {

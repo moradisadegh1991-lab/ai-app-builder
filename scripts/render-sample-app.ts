@@ -28,12 +28,22 @@ const spec = appSpecSchema.parse({
 const samples = path.join(__dirname, "samples");
 const read = (name: string) => readFileSync(path.join(samples, name), "utf8");
 const entryPath = template === "expo" ? "App.tsx" : "src/App.tsx";
-const aiFiles = [{ path: entryPath, content: read(`${template}-App.tsx`) }];
+const sample = template === "web" && !backend ? "capacitor-App.tsx" : `${template}-App.tsx`;
+const aiFiles = [{ path: entryPath, content: read(sample) }];
 if (backend) {
-  aiFiles.push({ path: "server/app.ts", content: read("server-app.ts") }, { path: "db/schema.sql", content: read("schema.sql") });
+  aiFiles.push(
+    { path: "server/app.ts", content: read("server-app.ts") },
+    { path: "db/schema.sql", content: read("schema.sql") },
+  );
 }
 
-const { files, warnings } = renderProject({ template, slug: "sample-app", spec, aiFiles, requestedLibraries: [] });
+const { files, warnings } = renderProject({
+  template,
+  slug: "sample-app",
+  spec,
+  aiFiles,
+  requestedLibraries: [],
+});
 
 for (const file of files) {
   const target = path.join(outDir, file.path);

@@ -1,8 +1,10 @@
-import { and, count, desc, eq, gt, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { attachmentSummary } from "./attachments";
 import { db, schema } from "./db";
 import { HttpError } from "./http";
 import { getIntegration } from "./integrations/store";
+import { workflowView } from "./workflows/queue";
+import { queryRows } from "./workflows/sql";
 
 export async function getOwnedProject(userId: string, projectId: string): Promise<schema.Project> {
   if (!/^[0-9a-f-]{36}$/i.test(projectId)) throw new HttpError(404, "پروژه پیدا نشد.");
@@ -53,17 +55,15 @@ export async function fixRoundsSinceGreen(projectId: string): Promise<number> {
     .select({ at: sql<Date | null>`max(${schema.buildJobs.createdAt})` })
     .from(schema.buildJobs)
     .where(and(eq(schema.buildJobs.projectId, projectId), eq(schema.buildJobs.conclusion, "success")));
-  const [row] = await db()
-    .select({ value: count() })
-    .from(schema.generationJobs)
-    .where(
-      and(
-        eq(schema.generationJobs.projectId, projectId),
-        eq(schema.generationJobs.kind, "fix"),
-        green?.at ? gt(schema.generationJobs.createdAt, new Date(green.at)) : undefined,
-      ),
-    );
-  return row?.value ?? 0;
+  const [row] = await queryRows<{
+    value: number;
+  }>(sql`select count(*)::int as value from (
+    select g.created_at from generation_jobs g where g.project_id=${projectId} and g.kind='fix'
+      and not exists(select 1 from workflow_runs r where r.id=g.id)
+    union all
+    select r.created_at from workflow_runs r where r.project_id=${projectId} and r.input->>'kind'='fix' and r.status<>'cancelled'
+  ) attempts where ${green?.at ? sql`created_at>${new Date(green.at).toISOString()}::timestamptz` : sql`true`}`);
+  return Number(row?.value ?? 0);
 }
 
 export async function projectDeployment(projectId: string) {
@@ -76,11 +76,7 @@ export async function projectDeployment(projectId: string) {
 }
 
 export async function projectAgent(projectId: string) {
-  const [agent] = await db()
-    .select()
-    .from(schema.vpsAgents)
-    .where(eq(schema.vpsAgents.projectId, projectId))
-    .limit(1);
+  const [agent] = await db().select().from(schema.vpsAgents).where(eq(schema.vpsAgents.projectId, projectId)).limit(1);
   return agent ?? null;
 }
 
@@ -99,12 +95,13 @@ export function requireRepo(project: schema.Project) {
 
 /** Client-safe project view, used by pages and API responses. */
 export async function projectView(project: schema.Project) {
-  const [generation, build, deployment, agent, fixRounds] = await Promise.all([
+  const [generation, build, deployment, agent, fixRounds, workflow] = await Promise.all([
     currentGeneration(project),
     latestBuild(project.id),
     projectDeployment(project.id),
     projectAgent(project.id),
     fixRoundsSinceGreen(project.id),
+    workflowView(project.id),
   ]);
   return {
     id: project.id,
@@ -118,7 +115,8 @@ export async function projectView(project: schema.Project) {
     hosting: project.hosting,
     vpsProvider: project.vpsProvider,
     aiProvider: project.aiProvider,
-    status: project.status,
+    status: workflow && ["queued", "running"].includes(workflow.status) ? ("generating" as const) : project.status,
+    workflow,
     spec: project.spec,
     specApprovedAt: project.specApprovedAt?.toISOString() ?? null,
     lastError: project.lastError,
@@ -140,7 +138,10 @@ export async function projectView(project: schema.Project) {
           status: generation.status,
           notes: generation.notes,
           warnings: generation.warnings ?? [],
-          files: (generation.files ?? []).map((f) => ({ path: f.path, content: f.content })),
+          files: (generation.files ?? []).map((f) => ({
+            path: f.path,
+            content: f.content,
+          })),
           createdAt: generation.createdAt.toISOString(),
         }
       : null,
@@ -159,7 +160,12 @@ export async function projectView(project: schema.Project) {
         }
       : null,
     deployment: deployment
-      ? { status: deployment.status, url: deployment.url, error: deployment.error, hasDatabase: Boolean(deployment.neonProjectId) }
+      ? {
+          status: deployment.status,
+          url: deployment.url,
+          error: deployment.error,
+          hasDatabase: Boolean(deployment.neonProjectId),
+        }
       : null,
     vps: agent
       ? {

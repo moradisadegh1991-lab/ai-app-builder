@@ -37,15 +37,29 @@ export async function GET() {
     const edit = await db().execute(
       sql`select 1 from pg_enum e join pg_type t on t.oid = e.enumtypid where t.typname = 'job_kind' and e.enumlabel = 'edit'`,
     );
-    const count = (result: unknown) => (Array.isArray(result) ? result.length : ((result as { rows?: unknown[] }).rows?.length ?? 0));
+    const count = (result: unknown) =>
+      Array.isArray(result) ? result.length : ((result as { rows?: unknown[] }).rows?.length ?? 0);
     // 0004 (job_kind 'edit') is only needed by "edit with chat", but it is part of the schema all the same.
     checks.schema = count(columns) >= 2 && count(edit) >= 1;
+    const workflowSchema = await db().execute(sql`select 1 from information_schema.columns
+      where table_schema='public' and ((table_name='deployments' and column_name in ('provisioning_token','lease_expires_at'))
+        or (table_name='workflow_runs' and column_name='owner_token') or (table_name='agent_tasks' and column_name='input_hash')
+        or (table_name='usage_reservations' and column_name='state') or (table_name='evaluations' and column_name='report'))`);
+    const functions = await db().execute(sql`select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+      where n.nspname='public' and p.proname in ('reserve_ai_usage','complete_payment','approve_project_requirements')`);
+    checks.schema = checks.schema && count(workflowSchema) === 6 && count(functions) === 3;
     // Rate limiting fails open when this table is missing, so it is reported but not required for ok.
     const limits = await db().execute(sql`select 1 from information_schema.tables where table_name = 'rate_limits'`);
     checks.rateLimits = count(limits) >= 1;
   } catch {
     // keep whatever was verified before the failure
   }
-  const ok = checks.database && checks.schema && checks.appUrl && checks.encryptionKey && checks.sessionSecret && checks.githubOAuth;
+  const ok =
+    checks.database &&
+    checks.schema &&
+    checks.appUrl &&
+    checks.encryptionKey &&
+    checks.sessionSecret &&
+    checks.githubOAuth;
   return NextResponse.json({ ok, checks }, { status: ok ? 200 : 503 });
 }

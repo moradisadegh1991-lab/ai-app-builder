@@ -30,6 +30,7 @@ export default function App() {
       <h1 className="mb-4 text-2xl font-bold text-primary">کارهای من</h1>
       <form onSubmit={addTask} className="mb-4 flex gap-2">
         <input
+          aria-label="کار جدید"
           className="flex-1 rounded-xl border border-slate-300 px-3 py-3"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
@@ -42,6 +43,7 @@ export default function App() {
           <li key={task.id} className="flex items-center gap-3 rounded-xl bg-white p-3 shadow-sm">
             <input
               type="checkbox"
+              aria-label={task.title}
               className="size-5"
               checked={task.done}
               onChange={() => update(tasks.map((t) => (t.id === task.id ? { ...t, done: !t.done } : t)))}

@@ -14,6 +14,8 @@ import {
 import type { Attachment } from "../attachments";
 import type { AppSpec } from "../spec";
 import type { GeneratedFile } from "../templates/types";
+import type { AgentTaskInput } from "../agents/contracts";
+import { sql } from "drizzle-orm";
 
 export const integrationProvider = pgEnum("integration_provider", [
   "github",
@@ -190,7 +192,6 @@ export const deployments = pgTable(
     vercelDeploymentId: text("vercel_deployment_id"),
     url: text("url"),
     // provisioning | deploying | ready | failed
-        // provisioning | deploying | ready | failed
     status: text("status").notNull().default("provisioning"),
     error: text("error"),
 
@@ -214,7 +215,9 @@ export const vpsAgents = pgTable(
       .references(() => projects.id, { onDelete: "cascade" }),
     // Hash of the one-time token used by the installer to register.
     registrationTokenHash: text("registration_token_hash"),
-    registrationExpiresAt: timestamp("registration_expires_at", { withTimezone: true }),
+    registrationExpiresAt: timestamp("registration_expires_at", {
+      withTimezone: true,
+    }),
     // Hash of the long-lived secret the agent uses for status reports.
     secretHash: text("secret_hash"),
     // pending | online | deploying | error
@@ -240,7 +243,9 @@ export const subscriptions = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     plan: planId("plan").notNull(),
-    currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }).notNull(),
+    currentPeriodEnd: timestamp("current_period_end", {
+      withTimezone: true,
+    }).notNull(),
     ...timestamps,
   },
   (t) => [uniqueIndex("subscriptions_user_idx").on(t.userId)],
@@ -278,7 +283,9 @@ export const usageRecords = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+    projectId: uuid("project_id").references(() => projects.id, {
+      onDelete: "set null",
+    }),
     provider: text("provider").notNull(),
     model: text("model").notNull(),
     purpose: text("purpose").notNull(),
@@ -297,6 +304,87 @@ export const rateLimits = pgTable("rate_limits", {
   count: integer("count").notNull().default(0),
 });
 
+export const workflowRuns = pgTable(
+  "workflow_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    input: jsonb("input").$type<AgentTaskInput>().notNull(),
+    status: text("status").notNull().default("queued"),
+    previousStatus: projectStatus("previous_status").notNull(),
+    baseGenerationId: uuid("base_generation_id"),
+    ownerToken: uuid("owner_token"),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    attempts: integer("attempts").notNull().default(0),
+    maxTokens: integer("max_tokens").notNull().default(250000),
+    error: text("error"),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex("workflow_runs_active_project_idx")
+      .on(t.projectId)
+      .where(sql`${t.status} in ('queued', 'running')`),
+    index("workflow_runs_queue_idx").on(t.status, t.createdAt),
+    index("workflow_runs_project_idx").on(t.projectId, t.createdAt),
+  ],
+);
+export const agentTasks = pgTable(
+  "agent_tasks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    runId: uuid("run_id")
+      .notNull()
+      .references(() => workflowRuns.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    role: text("role").notNull(),
+    status: text("status").notNull().default("running"),
+    inputHash: text("input_hash").notNull(),
+    output: jsonb("output").$type<unknown>(),
+    provider: text("provider"),
+    model: text("model"),
+    error: text("error"),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("agent_tasks_run_key_idx").on(t.runId, t.key)],
+);
+export const evaluations = pgTable(
+  "evaluations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    runId: uuid("run_id")
+      .notNull()
+      .references(() => workflowRuns.id, { onDelete: "cascade" }),
+    round: integer("round").notNull(),
+    status: text("status").notNull(),
+    report: jsonb("report").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("evaluations_run_round_idx").on(t.runId, t.round)],
+);
+export const usageReservations = pgTable(
+  "usage_reservations",
+  {
+    id: uuid("id").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    runId: uuid("run_id").references(() => workflowRuns.id, {
+      onDelete: "set null",
+    }),
+    tokens: integer("tokens").notNull(),
+    state: text("state").notNull().default("held"),
+    usedPlatformKey: boolean("used_platform_key").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("usage_reservations_user_idx").on(t.userId, t.createdAt)],
+);
+
 export type User = typeof users.$inferSelect;
 export type Project = typeof projects.$inferSelect;
 export type GenerationJob = typeof generationJobs.$inferSelect;
@@ -308,3 +396,4 @@ export type ProjectKind = (typeof projectKind.enumValues)[number];
 export type HostingTarget = (typeof hostingTarget.enumValues)[number];
 export type PlanId = (typeof planId.enumValues)[number];
 export type VpsAgent = typeof vpsAgents.$inferSelect;
+export type WorkflowRun = typeof workflowRuns.$inferSelect;

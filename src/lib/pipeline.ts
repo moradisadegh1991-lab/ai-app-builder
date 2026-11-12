@@ -1,7 +1,5 @@
-import { and, eq, lt, or } from "drizzle-orm";
-import { generateStructured, isAiProvider, type AiProviderId } from "./ai";
-import { imagesOf } from "./attachments";
-import { SPEC_SYSTEM, codeOutputSchema, codePrompt, codeSystemPrompt, editPrompt, fixPrompt, specPrompt } from "./ai/prompts";
+import { and, eq } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { decryptSecret, encryptSecret } from "./crypto";
 import { db, schema } from "./db";
 import { env } from "./env";
@@ -11,239 +9,31 @@ import { getOrCreateNeonProject, runSchema } from "./integrations/neon";
 import { getIntegration } from "./integrations/store";
 import * as vercel from "./integrations/vercel";
 import {
-  MAX_AUTO_FIX_ROUNDS,
   currentGeneration,
-  fixRoundsSinceGreen,
   latestBuild,
-  projectAgent,
   projectDeployment,
   requireGitHubToken,
   requireRepo,
   updateProject,
 } from "./projects";
 import { appSpecSchema, type AppSpec } from "./spec";
-import { renderProject, slugify, workflowFile } from "./templates";
-
-const GENERATION_LOCK_MS = 6 * 60_000;
-
-function providerOf(project: schema.Project, override?: string): AiProviderId {
-  const provider = override ?? project.aiProvider;
-  if (!isAiProvider(provider)) throw new HttpError(400, "ارائه‌دهنده هوش مصنوعی نامعتبر است.");
-  return provider;
-}
-
-function assertNotBusy(project: schema.Project) {
-  if (project.status === "generating" && Date.now() - project.updatedAt.getTime() < GENERATION_LOCK_MS) {
-    throw new HttpError(409, "یک عملیات تولید برای این پروژه در حال اجراست. چند لحظه صبر کنید.");
-  }
-}
-
-async function startJob(projectId: string, kind: "spec" | "code" | "fix" | "edit", provider: string) {
-  const [job] = await db()
-    .insert(schema.generationJobs)
-    .values({ projectId, kind, provider, model: "pending" })
-    .returning();
-  return job!;
-}
-
-async function failJob(jobId: string, projectId: string, error: unknown, restoreStatus: schema.Project["status"]) {
-  const message = error instanceof Error ? error.message : String(error);
-  await db()
-    .update(schema.generationJobs)
-    .set({ status: "failed", error: message, finishedAt: new Date() })
-    .where(eq(schema.generationJobs.id, jobId));
-  await updateProject(projectId, { status: restoreStatus, lastError: message });
-}
-
-// ------------------------------------------------------------------ spec
-
-export async function generateSpec(user: schema.User, project: schema.Project, feedback?: string, providerOverride?: string) {
-  assertNotBusy(project);
-  const provider = providerOf(project, providerOverride);
-  const previousStatus = project.status;
-  const job = await startJob(project.id, "spec", provider);
-  await updateProject(project.id, { status: "generating", lastError: null });
-
-  try {
-    const { data, model } = await generateStructured({
-      userId: user.id,
-      projectId: project.id,
-      provider,
-      purpose: "spec",
-      system: SPEC_SYSTEM,
-      prompt: specPrompt(project.idea, specContext(project), feedback, project.spec ?? undefined, project.attachments),
-      images: imagesOf(project.attachments),
-      schema: appSpecSchema,
-      maxOutputTokens: 8000,
-    });
-    await db()
-      .update(schema.generationJobs)
-      .set({ status: "succeeded", model, finishedAt: new Date() })
-      .where(eq(schema.generationJobs.id, job.id));
-    // The user's own choice (phone-only vs cloud) wins over the model's guess.
-    const forced = specContext(project).backend;
-    if (forced !== null) data.needsBackend = forced;
-    return updateProject(project.id, {
-      spec: data,
-      name: data.appName,
-      status: "spec_ready",
-      specApprovedAt: null,
-    });
-  } catch (error) {
-    await failJob(job.id, project.id, error, previousStatus === "generating" ? "draft" : previousStatus);
-    throw error;
-  }
-}
-
-/** Apps follow the user's phone-only / cloud choice; websites let the AI decide. */
-function specContext(project: schema.Project) {
-  return {
-    kind: project.kind,
-    backend: project.kind === "app" ? project.needsCloud : null,
-  } as const;
-}
+import { slugify, workflowFile } from "./templates";
 
 export async function approveSpec(project: schema.Project, edited?: AppSpec) {
   const spec = edited ? appSpecSchema.parse(edited) : project.spec;
   if (!spec) throw new HttpError(400, "ابتدا نیازمندی‌ها را تولید کنید.");
-  const forced = specContext(project).backend;
+  const forced = project.kind === "app" ? project.needsCloud : null;
   if (forced !== null) spec.needsBackend = forced;
-  return updateProject(project.id, {
-    spec,
-    name: spec.appName,
-    specApprovedAt: new Date(),
-    status: project.status === "spec_ready" || project.status === "draft" ? "spec_approved" : project.status,
-  });
-}
-
-// ------------------------------------------------------------------ code
-
-async function saveGeneration(
-  project: schema.Project,
-  jobId: string,
-  model: string,
-  spec: AppSpec,
-  aiFiles: { path: string; content: string }[],
-  libraries: string[],
-  notes: string,
-) {
-  const rendered = renderProject({
-    template: project.template,
-    slug: project.slug,
-    spec,
-    aiFiles,
-    requestedLibraries: libraries,
-  });
-  await db()
-    .update(schema.generationJobs)
-    .set({
-      status: "succeeded",
-      model,
-      files: rendered.files,
-      aiFiles,
-      libraries,
-      warnings: rendered.warnings,
-      notes,
-      finishedAt: new Date(),
-    })
-    .where(eq(schema.generationJobs.id, jobId));
-  return updateProject(project.id, { currentGenerationId: jobId, status: "generated", lastError: null });
-}
-
-interface RepairInput {
-  user: schema.User;
-  project: schema.Project;
-  provider: AiProviderId;
-  spec: AppSpec;
-  /** The rendered repository (template files are read-only context for the model). */
-  files: { path: string; content: string }[];
-  aiFiles: { path: string; content: string }[];
-  libraries: string[];
-  log: string;
-  /** "edit" turns `log` into the user's requested change instead of a failure report. */
-  mode?: "fix" | "edit";
-}
-
-/** One model round that edits only the files the log points at, merged into the AI-owned files. */
-async function repairWithModel(input: RepairInput) {
-  const editable = new Set(input.aiFiles.map((f) => f.path));
-  const mode = input.mode ?? "fix";
-  const { data, model } = await generateStructured({
-    userId: input.user.id,
-    projectId: input.project.id,
-    provider: input.provider,
-    purpose: mode,
-    system: codeSystemPrompt(input.project.template, input.spec.needsBackend),
-    prompt: (mode === "edit" ? editPrompt : fixPrompt)(input.spec, input.files, input.log, editable),
-    schema: codeOutputSchema,
-    maxOutputTokens: 64000,
-  });
-  const merged = new Map(input.aiFiles.map((f) => [f.path, f]));
-  for (const file of data.files) merged.set(file.path, file);
-  return {
-    aiFiles: [...merged.values()],
-    libraries: data.libraries.length ? data.libraries : input.libraries,
-    notes: data.notes,
-    model,
-  };
-}
-
-function importsLog(items: { file: string; module: string; name: string }[]) {
-  return [
-    "Vite would fail with [MISSING_EXPORT] for these imports (checked before pushing):",
-    ...items.map((i) => `- ${i.file}: "${i.name}" is not exported by "${i.module}"`),
-    "Use only names the library really exports.",
-  ].join("\n");
-}
-
-export async function generateCode(user: schema.User, project: schema.Project, providerOverride?: string) {
-  assertNotBusy(project);
-  if (!project.spec || !project.specApprovedAt) {
-    throw new HttpError(400, "ابتدا نیازمندی‌ها را تأیید کنید.");
-  }
-  const spec = project.spec;
-  const provider = providerOf(project, providerOverride);
-  const previousStatus = project.status;
-  const job = await startJob(project.id, "code", provider);
-  await updateProject(project.id, { status: "generating", lastError: null });
-
   try {
-    const { data, model } = await generateStructured({
-      userId: user.id,
-      projectId: project.id,
-      provider,
-      purpose: "code",
-      system: codeSystemPrompt(project.template, spec.needsBackend),
-      prompt: codePrompt(spec),
-      schema: codeOutputSchema,
-      maxOutputTokens: 64000,
-    });
-    let result = { aiFiles: data.files, libraries: data.libraries, notes: data.notes, model };
-    // Names a library does not export would only fail after a 5-15 minute CI run; one repair round is cheaper.
-    const preview = renderProject({
-      template: project.template,
-      slug: project.slug,
-      spec,
-      aiFiles: result.aiFiles,
-      requestedLibraries: result.libraries,
-    });
-    if (preview.unresolvedImports.length) {
-      result = await repairWithModel({
-        user,
-        project,
-        provider,
-        spec,
-        files: preview.files,
-        aiFiles: result.aiFiles,
-        libraries: result.libraries,
-        log: importsLog(preview.unresolvedImports),
-      });
-    }
-    return await saveGeneration(project, job.id, result.model, spec, result.aiFiles, result.libraries, result.notes);
+    await db().execute(sql`select approve_project_requirements(${project.id}::uuid,${JSON.stringify(spec)}::jsonb)`);
   } catch (error) {
-    await failJob(job.id, project.id, error, previousStatus === "generating" ? "spec_approved" : previousStatus);
+    const cause = error instanceof Error ? (error as Error & { cause?: Error }).cause : undefined;
+    if (String(error).includes("workflow_active") || String(cause).includes("workflow_active"))
+      throw new HttpError(409, "تیم هوش مصنوعی در حال کار روی این پروژه است.");
     throw error;
   }
+  const [updated] = await db().select().from(schema.projects).where(eq(schema.projects.id, project.id));
+  return updated!;
 }
 
 // ---------------------------------------------------------------- github
@@ -274,7 +64,11 @@ export async function pushToGitHub(user: schema.User, project: schema.Project, m
     message ?? `feat: ${generation.kind === "fix" ? "AI build fix" : "AI generated app"} (${generation.provider})`,
   );
   await db().insert(schema.buildJobs).values({ projectId: project.id, commitSha, trigger: "push" });
-  return updateProject(project.id, { status: "pushed", lastCommitSha: commitSha, lastError: null });
+  return updateProject(project.id, {
+    status: "pushed",
+    lastCommitSha: commitSha,
+    lastError: null,
+  });
 }
 
 // ----------------------------------------------------------------- build
@@ -290,7 +84,14 @@ export async function syncBuild(user: schema.User, project: schema.Project) {
 
   const run = build.runId
     ? await github.getWorkflowRun(token, owner, repo, build.runId)
-    : await github.findWorkflowRun(token, owner, repo, workflowFile(project.template), build.commitSha, build.createdAt);
+    : await github.findWorkflowRun(
+        token,
+        owner,
+        repo,
+        workflowFile(project.template),
+        build.commitSha,
+        build.createdAt,
+      );
   if (!run) return build;
 
   const update: Partial<schema.BuildJob> = {
@@ -328,9 +129,11 @@ export async function rebuild(user: schema.User, project: schema.Project) {
   if (!project.lastCommitSha) throw new HttpError(400, "هنوز کدی در GitHub ثبت نشده است.");
   const token = await requireGitHubToken(user.id);
   await github.dispatchWorkflow(token, owner, repo, workflowFile(project.template), "main");
-  await db()
-    .insert(schema.buildJobs)
-    .values({ projectId: project.id, commitSha: project.lastCommitSha, trigger: "dispatch" });
+  await db().insert(schema.buildJobs).values({
+    projectId: project.id,
+    commitSha: project.lastCommitSha,
+    trigger: "dispatch",
+  });
 }
 
 export async function downloadApkUrl(user: schema.User, project: schema.Project) {
@@ -343,97 +146,6 @@ export async function downloadApkUrl(user: schema.User, project: schema.Project)
   throw new HttpError(404, "فایل APK برای این Build پیدا نشد.");
 }
 
-// ------------------------------------------------------------------- fix
-
-/** Sends the failed build log to the AI, re-renders the project and pushes the fix. */
-export async function autoFix(
-  user: schema.User,
-  project: schema.Project,
-  providerOverride?: string,
-  options: { auto?: boolean } = {},
-) {
-  assertNotBusy(project);
-  // The page triggers repairs by itself after a failed build; cap them so a stubborn error cannot burn tokens forever.
-  if (options.auto && (await fixRoundsSinceGreen(project.id)) >= MAX_AUTO_FIX_ROUNDS) {
-    throw new HttpError(429, "سقف اصلاح خودکار پر شد؛ گزارش Build را بررسی کنید یا دکمهٔ اصلاح را خودتان بزنید.");
-  }
-  // The failure can come from the GitHub Actions build or from the VPS deploy.
-  const build = await syncBuild(user, project);
-  const agent = await projectAgent(project.id);
-  let failureLog: string;
-  let label: string;
-  if (build?.conclusion === "failure") {
-    failureLog = build.failureLog ?? "(log unavailable)";
-    label = `failed build #${build.runNumber ?? ""}`.trim();
-  } else if (agent?.status === "error" && agent.lastLog) {
-    failureLog = agent.lastLog;
-    label = "failed VPS deploy";
-  } else {
-    throw new HttpError(400, "خطای فعالی برای اصلاح وجود ندارد.");
-  }
-  const generation = await currentGeneration(project);
-  if (!generation?.files || !generation.aiFiles || !project.spec) throw new HttpError(400, "کد قبلی پیدا نشد.");
-
-  const spec = project.spec;
-  const provider = providerOf(project, providerOverride);
-  const job = await startJob(project.id, "fix", provider);
-  await updateProject(project.id, { status: "generating", lastError: null });
-
-  try {
-    const repaired = await repairWithModel({
-      user,
-      project,
-      provider,
-      spec,
-      files: generation.files,
-      aiFiles: generation.aiFiles,
-      libraries: generation.libraries ?? [],
-      log: failureLog,
-    });
-    const updated = await saveGeneration(project, job.id, repaired.model, spec, repaired.aiFiles, repaired.libraries, repaired.notes);
-    return await pushToGitHub(user, updated, `fix: AI repair of ${label}`);
-  } catch (error) {
-    await failJob(job.id, project.id, error, "pushed");
-    throw error;
-  }
-}
-
-/**
- * Applies a plain-language change request to the existing code, then commits it when the project
- * is already on GitHub (which starts a new build).
- */
-export async function editProject(user: schema.User, project: schema.Project, instruction: string, providerOverride?: string) {
-  assertNotBusy(project);
-  const generation = await currentGeneration(project);
-  if (!generation?.files || !generation.aiFiles || !project.spec) throw new HttpError(400, "ابتدا کد پروژه را تولید کنید.");
-
-  const spec = project.spec;
-  const provider = providerOf(project, providerOverride);
-  const previousStatus = project.status;
-  const job = await startJob(project.id, "edit", provider);
-  await updateProject(project.id, { status: "generating", lastError: null });
-
-  try {
-    const edited = await repairWithModel({
-      user,
-      project,
-      provider,
-      spec,
-      files: generation.files,
-      aiFiles: generation.aiFiles,
-      libraries: generation.libraries ?? [],
-      log: instruction,
-      mode: "edit",
-    });
-    const updated = await saveGeneration(project, job.id, edited.model, spec, edited.aiFiles, edited.libraries, edited.notes);
-    if (!project.githubRepo) return updated;
-    const summary = instruction.replace(/\s+/g, " ").trim().slice(0, 60);
-    return await pushToGitHub(user, updated, `edit: ${summary}`);
-  } catch (error) {
-    await failJob(job.id, project.id, error, previousStatus === "generating" ? "generated" : previousStatus);
-    throw error;
-  }
-}
 /**
  * Atomically claims the cloud deployment for one project.
  *
@@ -461,17 +173,11 @@ async function claimCloudDeployment(projectId: string) {
   const existing = await projectDeployment(projectId);
 
   if (!existing) {
-    throw new HttpError(
-      409,
-      "وضعیت زیرساخت پروژه قابل تشخیص نیست؛ دوباره تلاش کنید.",
-    );
+    throw new HttpError(409, "وضعیت زیرساخت پروژه قابل تشخیص نیست؛ دوباره تلاش کنید.");
   }
 
   if (existing.status !== "failed") {
-    throw new HttpError(
-      409,
-      "عملیات زیرساخت این پروژه قبلاً شروع شده یا تکمیل شده است.",
-    );
+    throw new HttpError(409, "عملیات زیرساخت این پروژه قبلاً شروع شده یا تکمیل شده است.");
   }
 
   // Compare-and-set: only one concurrent request can change failed -> provisioning.
@@ -482,19 +188,11 @@ async function claimCloudDeployment(projectId: string) {
       error: null,
       updatedAt: new Date(),
     })
-    .where(
-      and(
-        eq(schema.deployments.id, existing.id),
-        eq(schema.deployments.status, "failed"),
-      ),
-    )
+    .where(and(eq(schema.deployments.id, existing.id), eq(schema.deployments.status, "failed")))
     .returning();
 
   if (!claimed) {
-    throw new HttpError(
-      409,
-      "درخواست دیگری در حال شروع مجدد زیرساخت این پروژه است.",
-    );
+    throw new HttpError(409, "درخواست دیگری در حال شروع مجدد زیرساخت این پروژه است.");
   }
 
   return claimed;
@@ -514,75 +212,68 @@ export async function provisionCloud(user: schema.User, project: schema.Project)
   if (!vercelAuth) throw new HttpError(400, "ابتدا توکن Vercel را در صفحه تنظیمات وارد کنید.");
   const teamId = vercelAuth.metadata.teamId || undefined;
 
-    const deployment = await claimCloudDeployment(project.id);
+  const deployment = await claimCloudDeployment(project.id);
   try {
     let databaseUrl: string | null = deployment!.encryptedDatabaseUrl
-  ? decryptSecret(deployment!.encryptedDatabaseUrl)
-  : null;
+      ? decryptSecret(deployment!.encryptedDatabaseUrl)
+      : null;
 
-let neonProjectId = deployment!.neonProjectId;
+    let neonProjectId = deployment!.neonProjectId;
 
-if (project.spec?.needsBackend) {
-  const neonAuth = await getIntegration(user.id, "neon");
+    if (project.spec?.needsBackend) {
+      const neonAuth = await getIntegration(user.id, "neon");
 
-  const neonKey = neonAuth?.secret ?? env.neonApiKey();
+      const neonKey = neonAuth?.secret ?? env.neonApiKey();
 
-  if (!neonKey) {
-    throw new HttpError(
-      400,
-      "کلید API نئون تنظیم نشده است (در صفحه تنظیمات وارد کنید).",
-    );
-  }
+      if (!neonKey) {
+        throw new HttpError(400, "کلید API نئون تنظیم نشده است (در صفحه تنظیمات وارد کنید).");
+      }
 
-  /*
-   * A deterministic name is essential:
-   * if Neon creates the project but the local DB write fails,
-   * the next attempt can find the same Neon project.
-   *
-   * UUID prevents collisions between different Idea2App projects.
-   */
-  if (!databaseUrl || !neonProjectId) {
-    const neonProjectName = `idea2app-${project.id}`;
+      /*
+       * A deterministic name is essential:
+       * if Neon creates the project but the local DB write fails,
+       * the next attempt can find the same Neon project.
+       *
+       * UUID prevents collisions between different Idea2App projects.
+       */
+      if (!databaseUrl || !neonProjectId) {
+        const neonProjectName = `idea2app-${project.id}`;
 
-    const neonProject = await getOrCreateNeonProject(
-      neonKey,
-      neonProjectName,
-      neonAuth
-        ? neonAuth.metadata.orgId || undefined
-        : env.neonOrgId(),
-    );
+        const neonProject = await getOrCreateNeonProject(
+          neonKey,
+          neonProjectName,
+          neonAuth ? neonAuth.metadata.orgId || undefined : env.neonOrgId(),
+        );
 
-    databaseUrl = neonProject.connectionUri;
-    neonProjectId = neonProject.projectId;
+        databaseUrl = neonProject.connectionUri;
+        neonProjectId = neonProject.projectId;
 
-    /*
-     * Persist the Neon resource immediately.
-     * This must happen before schema execution and Vercel deployment.
-     */
-    await db()
-      .update(schema.deployments)
-      .set({
-        neonProjectId,
-        encryptedDatabaseUrl: encryptSecret(databaseUrl),
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.deployments.id, deployment!.id));
-  }
+        /*
+         * Persist the Neon resource immediately.
+         * This must happen before schema execution and Vercel deployment.
+         */
+        await db()
+          .update(schema.deployments)
+          .set({
+            neonProjectId,
+            encryptedDatabaseUrl: encryptSecret(databaseUrl),
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.deployments.id, deployment!.id));
+      }
 
-  /*
-   * schema.sql is required to be idempotent by BACKEND_RULES
-   * in src/lib/ai/prompts.ts.
-   *
-   * Running it again makes provisioning recoverable after
-   * a previous partial failure.
-   */
-  const schemaSql = generation?.files?.find(
-    (file) => file.path === "db/schema.sql",
-  )?.content;
+      /*
+       * schema.sql is required to be idempotent by BACKEND_RULES
+       * in src/lib/ai/prompts.ts.
+       *
+       * Running it again makes provisioning recoverable after
+       * a previous partial failure.
+       */
+      const schemaSql = generation?.files?.find((file) => file.path === "db/schema.sql")?.content;
 
-  if (schemaSql && databaseUrl) {
-    await runSchema(databaseUrl, schemaSql);
-  }
+      if (schemaSql && databaseUrl) {
+        await runSchema(databaseUrl, schemaSql);
+      }
     }
 
     const hasWeb = project.template !== "expo";
@@ -621,7 +312,11 @@ if (project.spec?.needsBackend) {
   } catch (error) {
     await db()
       .update(schema.deployments)
-      .set({ status: "failed", error: error instanceof Error ? error.message : String(error), updatedAt: new Date() })
+      .set({
+        status: "failed",
+        error: error instanceof Error ? error.message : String(error),
+        updatedAt: new Date(),
+      })
       .where(eq(schema.deployments.id, deployment!.id));
     throw error;
   }
@@ -634,11 +329,19 @@ export async function syncDeployment(user: schema.User, project: schema.Project)
   const vercelAuth = await getIntegration(user.id, "vercel");
   if (!vercelAuth) return deployment;
 
-  const state = await vercel.getDeployment(vercelAuth.secret, vercelAuth.metadata.teamId || undefined, deployment.vercelDeploymentId);
+  const state = await vercel.getDeployment(
+    vercelAuth.secret,
+    vercelAuth.metadata.teamId || undefined,
+    deployment.vercelDeploymentId,
+  );
   if (state.readyState === "ERROR" || state.readyState === "CANCELED") {
     const [updated] = await db()
       .update(schema.deployments)
-      .set({ status: "failed", error: state.errorMessage ?? "Vercel deployment failed", updatedAt: new Date() })
+      .set({
+        status: "failed",
+        error: state.errorMessage ?? "Vercel deployment failed",
+        updatedAt: new Date(),
+      })
       .where(eq(schema.deployments.id, deployment.id))
       .returning();
     return updated!;

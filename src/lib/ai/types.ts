@@ -14,6 +14,7 @@ export interface CompletionImage {
 }
 
 export interface CompletionRequest {
+  signal?: AbortSignal;
   apiKey: string;
   /** Set to route the call through an OpenAI-compatible gateway instead of the provider's own API. */
   gatewayBaseUrl?: string;
