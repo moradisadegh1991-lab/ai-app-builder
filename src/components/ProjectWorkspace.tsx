@@ -183,7 +183,7 @@ export function ProjectWorkspace({
   return (
     <div className="flex flex-col gap-5">
       {/* Project bar */}
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+      <div className="workspace-project-bar flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div className="min-w-0">
           <nav aria-label="مسیر صفحه" className="mb-1.5 flex items-center gap-1.5 text-xs text-muted">
             <Link href="/dashboard" className="touch-target inline-flex items-center hover:text-fg">
@@ -253,7 +253,6 @@ export function ProjectWorkspace({
               })
             }
           />
-          <AgentTeamPanel workflow={project.workflow} base={base} />
         </div>
 
         <main id="workspace-content" className="order-1 flex min-w-0 flex-col gap-5 lg:order-none">
@@ -285,6 +284,8 @@ export function ProjectWorkspace({
               </button>
             </div>
           )}
+
+          <AgentTeamPanel workflow={project.workflow} base={base} />
 
           {activeSection === "overview" && (
             <OverviewSection project={project} sections={sections} next={next} onNavigate={go} />

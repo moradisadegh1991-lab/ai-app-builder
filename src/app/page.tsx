@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { IdeaStarter } from "@/components/IdeaStarter";
+import { ProductPreview } from "@/components/ProductPreview";
 import { EmailLogin } from "@/components/EmailLogin";
 import { PublicHeader } from "@/components/PublicHeader";
 import { Brand } from "@/components/ui/Brand";
@@ -22,197 +24,277 @@ const ERRORS: Record<string, string> = {
   rate_limited: "تعداد تلاش‌ها زیاد بود؛ چند دقیقه صبر کنید و دوباره امتحان کنید.",
 };
 
-const STEPS: { title: string; text: string; icon: IconName }[] = [
-  { title: "ایده را بنویس", text: "به زبان ساده توضیح بده چه می‌خواهی؛ اسکرین‌شات یا فایل هم پیوست کن.", icon: "pencil" },
-  { title: "نیازمندی‌ها را تأیید کن", text: "هوش مصنوعی صفحات، قابلیت‌ها و مدل داده را می‌نویسد و تو بررسی می‌کنی.", icon: "list" },
-  { title: "کد کامل تولید می‌شود", text: "وب‌سایت React یا اپ Android با Capacitor یا Expo، با فونت و تاریخ فارسی.", icon: "code" },
-  { title: "Build در GitHub خودت", text: "مخزن خصوصی ساخته می‌شود و GitHub Actions فایل APK یا Build سایت را می‌سازد.", icon: "git-branch" },
-  { title: "انتشار", text: "روی VPS خودت با ایجنت خودکار، VPS رایگان، یا Vercel + Neon.", icon: "rocket" },
+const SPECIALISTS: { name: string; description: string; icon: IconName; number: string }[] = [
+  {
+    name: "معمار محصول",
+    description: "ایده را به نقشهٔ راه، صفحات و نیازمندی‌های روشن تبدیل می‌کند.",
+    icon: "layers",
+    number: "۰۱",
+  },
+  {
+    name: "طراح تجربه",
+    description: "برای هر صفحه، ظاهر، جریان کار و حالت‌های مختلف را طراحی می‌کند.",
+    icon: "pencil",
+    number: "۰۲",
+  },
+  {
+    name: "متخصص فرانت‌اند",
+    description: "رابطی واکنش‌گرا می‌سازد که روی موبایل و دسکتاپ کار کند.",
+    icon: "monitor",
+    number: "۰۳",
+  },
+  {
+    name: "متخصص بک‌اند",
+    description: "API، منطق سرور و ارتباط با دیتابیس را پیاده می‌کند.",
+    icon: "database",
+    number: "۰۴",
+  },
+  {
+    name: "ارزیاب کیفیت",
+    description: "کد و شواهد تست را با نیازمندی‌های تأییدشده تطبیق می‌دهد.",
+    icon: "shield",
+    number: "۰۵",
+  },
+  {
+    name: "متخصص خطایابی",
+    description: "گزارش خطا را بررسی می‌کند و اصلاحات را برای تست دوباره می‌فرستد.",
+    icon: "hammer",
+    number: "۰۶",
+  },
 ];
 
-const FEATURES: { title: string; text: string; icon: IconName }[] = [
-  { title: "OpenAI، Claude و Gemini", text: "مدل را برای هر مرحله انتخاب کن؛ با کلید خودت یا اعتبار پلتفرم.", icon: "sparkles" },
-  { title: "اصلاح خودکار خطا", text: "اگر Build شکست بخورد، گزارش خطا به مدل داده می‌شود و کد اصلاح‌شده دوباره ساخته می‌شود.", icon: "hammer" },
-  { title: "ویرایش با گفتگو", text: "تغییر را بنویس؛ فقط فایل‌های لازم عوض می‌شوند و نسخهٔ جدید منتشر می‌شود.", icon: "pencil" },
-  { title: "کد مال توست", text: "همه‌چیز در مخزن خصوصی GitHub خودت ذخیره می‌شود؛ قفل پلتفرم نیستی.", icon: "shield" },
-  { title: "آموزش تصویری", text: "برای هر مرحله، از ساخت VPS رایگان تا نصب APK، راهنمای قدم‌به‌قدم داری.", icon: "book" },
-  { title: "مناسب کاربر فارسی‌زبان", text: "راست‌به‌چپ، فونت وزیرمتن، تاریخ شمسی و قیمت تومانی در خروجی.", icon: "globe" },
-];
-
-/** A schematic of the workspace (labels only, no numbers) to show what the product looks like. */
-function WorkspaceSketch() {
-  const rows: { label: string; icon: IconName; state: "done" | "current" | "todo" }[] = [
-    { label: "نیازمندی‌ها", icon: "list", state: "done" },
-    { label: "کد پروژه", icon: "code", state: "done" },
-    { label: "GitHub و Build", icon: "git-branch", state: "current" },
-    { label: "استقرار", icon: "rocket", state: "todo" },
-  ];
-  return (
-    <div className="panel overflow-hidden shadow-pop" aria-hidden="true">
-      <div className="flex items-center gap-2 border-b border-line px-4 py-2.5">
-        <span className="size-2.5 rounded-full bg-line-strong" />
-        <span className="size-2.5 rounded-full bg-line-strong" />
-        <span className="size-2.5 rounded-full bg-line-strong" />
-        <span className="ms-3 text-xs font-semibold text-muted">فضای کاری پروژه</span>
-      </div>
-      <div className="grid grid-cols-[9.5rem_1fr]">
-        <div className="flex flex-col gap-1 border-e border-line bg-surface-2 p-2.5">
-          {rows.map((row) => (
-            <div
-              key={row.label}
-              className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-[11px] font-medium ${
-                row.state === "current" ? "bg-surface text-fg shadow-xs ring-1 ring-line" : "text-muted"
-              }`}
-            >
-              <span
-                className={`grid size-4 place-items-center rounded-full ${
-                  row.state === "done" ? "bg-success text-white" : row.state === "current" ? "bg-primary text-primary-fg" : "border border-line-strong"
-                }`}
-              >
-                {row.state === "done" && <Icon name="check" size={9} strokeWidth={3} />}
-              </span>
-              {row.label}
-            </div>
-          ))}
-        </div>
-        <div className="flex flex-col gap-3 p-4">
-          <div className="h-2.5 w-32 rounded bg-surface-3" />
-          <div className="rounded-lg bg-code-bg p-3">
-            {[72, 56, 88, 40, 64].map((width, index) => (
-              <div key={index} className="mb-1.5 flex gap-2 last:mb-0">
-                <span className="h-1.5 w-3 rounded bg-white/15" />
-                <span className="h-1.5 rounded bg-white/25" style={{ width: `${width}%` }} />
-              </div>
-            ))}
-          </div>
-          <div className="flex items-center gap-2 rounded-lg border border-success-line bg-success-soft px-3 py-2 text-[11px] font-medium text-success-fg">
-            <Icon name="check-circle" size={14} />
-            Build موفق — APK آماده دانلود
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export default async function LandingPage({ searchParams }: { searchParams: Promise<{ error?: string; detail?: string }> }) {
+export default async function LandingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string; detail?: string }>;
+}) {
   const user = await getCurrentUser().catch(() => null);
   if (user) redirect("/dashboard");
   const { error, detail } = await searchParams;
-
   return (
-    <>
+    <div className="landing-page">
       <PublicHeader />
-
-      <main>
-        <section className="page-container grid items-center gap-10 py-12 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:py-16">
-          <div className="flex flex-col gap-6">
-            <span className="badge badge-brand self-start">
-              <Icon name="sparkles" size={13} />
-              OpenAI · Claude · Gemini
+      <main id="main-content">
+        <section className="landing-hero page-container">
+          <div className="hero-announcement">
+            <span className="status-dot" />
+            <span>یک تیم هوش مصنوعی، برای ایدهٔ بعدی تو</span>
+            <Icon name="sparkles" size={14} />
+          </div>
+          <h1>
+            فقط یک ایده فاصله داری
+            <br />
+            تا <span className="hero-accent">ساختنِ چیزی تازه.</span>
+          </h1>
+          <p className="hero-description">
+            وب‌سایت یا اپلیکیشنی که در ذهن داری، با تیمی از ایجنت‌های متخصص بساز.
+            <br className="hidden sm:block" /> از اولین جمله تا طراحی، کدنویسی و انتشار؛ همه در یک فضای کاری.
+          </p>
+          <IdeaStarter focusLogin={Boolean(error && ERRORS[error])} />
+          <div className="hero-assurances">
+            <span>
+              <Icon name="check" size={14} />
+              شروع با طرح رایگان
             </span>
-            <h1 className="text-3xl leading-[1.45] font-extrabold tracking-tight text-fg sm:text-4xl lg:text-[2.75rem]">
-              ایده‌ات را بنویس،
+            <span>
+              <Icon name="git-branch" size={14} />
+              مالکیت کامل کد
+            </span>
+            <span>
+              <Icon name="globe" size={14} />
+              ساخته‌شده برای فارسی
+            </span>
+          </div>
+        </section>
+
+        <section className="page-container showcase-section" aria-label="نمونهٔ فضای کاری">
+          <ProductPreview />
+        </section>
+
+        <section className="tool-strip page-container" aria-label="فناوری‌های پشتیبانی‌شده">
+          <p>با ابزارهایی که می‌شناسی، بساز.</p>
+          <div>
+            <span>OpenAI</span>
+            <span>Claude</span>
+            <span>Gemini</span>
+            <i />
+            <span>
+              <Icon name="git-branch" size={17} />
+              GitHub
+            </span>
+            <span>Vercel</span>
+            <span>Neon</span>
+          </div>
+        </section>
+
+        <section id="how" className="how-section page-container">
+          <div className="landing-section-heading">
+            <div>
+              <span className="eyebrow">از فکر تا محصول</span>
+              <h2>
+                مسیر ساخت،
+                <br />
+                روشن‌تر از همیشه.
+              </h2>
+            </div>
+            <p>
+              تو تصمیم‌های مهم را می‌گیری.
               <br />
-              <span className="text-primary">وب‌سایت یا اپ Android تحویل بگیر</span>
-            </h1>
-            <p className="max-w-xl text-base leading-8 text-fg-2">
-              Idea2App AI نیازمندی‌ها را تحلیل می‌کند، کد را می‌نویسد، در GitHub خودت ذخیره می‌کند، APK می‌سازد و سایت یا سرور را روی VPS خودت یا یک
-              سرویس رایگان منتشر می‌کند.
+              تیم تخصصی، جزئیات ساخت را پیش می‌برد.
             </p>
-            <div className="flex flex-wrap items-center gap-3">
-              <a href="#login" className="btn-primary btn-lg">
-                شروع رایگان
-                <Icon name="arrow-left" size={16} />
-              </a>
-              <Link href="/pricing" className="btn-secondary btn-lg">
-                مقایسهٔ طرح‌ها
-              </Link>
-            </div>
-            <ul className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted">
-              {["طرح رایگان برای شروع", "کد در GitHub خودت", "بدون نیاز به برنامه‌نویسی"].map((item) => (
-                <li key={item} className="flex items-center gap-1.5">
-                  <Icon name="check" size={15} className="text-success" />
-                  {item}
-                </li>
-              ))}
-            </ul>
           </div>
-
-          <div id="login" className="flex scroll-mt-24 flex-col gap-3 lg:ps-6">
-            {error && ERRORS[error] && (
-              <div role="alert" className="alert alert-danger">
-                <Icon name="alert-circle" className="mt-1" />
-                <span>
-                  {ERRORS[error]}
-                  {(error === "provider_denied" || error === "oauth_failed") && detail && /^[a-z0-9_]{1,60}$/.test(detail) && (
-                    <>
-                      {" "}
-                      (<span dir="ltr">{detail}</span>)
-                    </>
-                  )}
-                </span>
-              </div>
-            )}
-            <EmailLogin providers={enabledSocialProviders()} turnstileSiteKey={turnstileEnabled() ? env.turnstileSiteKey() : undefined} />
-          </div>
-        </section>
-
-        <section className="border-y border-line bg-surface">
-          <div className="page-container grid items-center gap-10 py-14 lg:grid-cols-2">
-            <WorkspaceSketch />
-            <div id="how" className="scroll-mt-24">
-              <div className="eyebrow">روند کار</div>
-              <h2 className="mt-2 text-2xl font-bold text-fg">از ایده تا نسخهٔ قابل اجرا، در یک فضای کاری</h2>
-              <ol className="mt-6 flex flex-col gap-4">
-                {STEPS.map((step, index) => (
-                  <li key={step.title} className="flex gap-3">
-                    <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary-soft text-primary-soft-fg">
-                      <Icon name={step.icon} size={17} />
-                    </span>
-                    <div>
-                      <div className="font-semibold text-fg">
-                        <span className="text-faint">{(index + 1).toLocaleString("fa-IR")}. </span>
-                        {step.title}
-                      </div>
-                      <p className="mt-0.5 text-sm leading-7 text-muted">{step.text}</p>
-                    </div>
-                  </li>
-                ))}
-              </ol>
-            </div>
-          </div>
-        </section>
-
-        <section className="page-container py-14">
-          <h2 className="text-2xl font-bold text-fg">امکانات</h2>
-          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {FEATURES.map((feature) => (
-              <div key={feature.title} className="card">
-                <span className="grid size-9 place-items-center rounded-lg bg-surface-3 text-fg-2">
-                  <Icon name={feature.icon} size={18} />
-                </span>
-                <h3 className="mt-3 font-semibold text-fg">{feature.title}</h3>
-                <p className="mt-1 text-sm leading-7 text-muted">{feature.text}</p>
-              </div>
+          <div className="how-grid">
+            {[
+              {
+                number: "۰۱",
+                icon: "pencil" as const,
+                title: "ایده‌ات را تعریف کن",
+                text: "به زبان خودت بنویس چه می‌خواهی بسازی. تصویر و فایل مرجع هم می‌توانی اضافه کنی.",
+              },
+              {
+                number: "۰۲",
+                icon: "sparkles" as const,
+                title: "با تیمت شکلش بده",
+                text: "نیازمندی‌ها را بررسی و تأیید کن؛ سپس طراحی، کدنویسی و ارزیابی را دنبال کن.",
+              },
+              {
+                number: "۰۳",
+                icon: "rocket" as const,
+                title: "نسخه‌ات را منتشر کن",
+                text: "کد را در GitHub خودت نگه دار، خروجی Android بگیر یا وب‌سایتت را منتشر کن.",
+              },
+            ].map((step) => (
+              <article key={step.number} className="how-step">
+                <div>
+                  <span>{step.number}</span>
+                  <Icon name={step.icon} size={23} />
+                </div>
+                <h3>{step.title}</h3>
+                <p>{step.text}</p>
+              </article>
             ))}
           </div>
         </section>
-      </main>
 
-      <footer className="border-t border-line">
-        <div className="page-container flex flex-col items-center justify-between gap-3 py-6 text-sm text-muted sm:flex-row">
-          <Brand />
-          <div className="flex items-center gap-4">
-            <Link href="/pricing" className="hover:text-fg">
-              طرح‌ها
+        <section id="team" className="team-section">
+          <div className="page-container">
+            <div className="landing-section-heading">
+              <div>
+                <span className="eyebrow">تخصص‌های متفاوت، یک هدف مشترک</span>
+                <h2>
+                  پشت هر ایدهٔ خوب،
+                  <br />
+                  یک تیم خوب ایستاده.
+                </h2>
+              </div>
+              <p>
+                هر ایجنت مسئولیت مشخص خودش را دارد.
+                <br />
+                گزارش و نتیجهٔ کارشان را در پروژه می‌بینی.
+              </p>
+            </div>
+            <div className="specialist-grid">
+              {SPECIALISTS.map((agent) => (
+                <article key={agent.name} className="specialist-card">
+                  <div className="specialist-card-top">
+                    <span className="specialist-icon">
+                      <Icon name={agent.icon} size={22} />
+                    </span>
+                    <span className="specialist-number">{agent.number}</span>
+                  </div>
+                  <h3>{agent.name}</h3>
+                  <p>{agent.description}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="ownership-section page-container">
+          <div className="ownership-mark" aria-hidden="true">
+            <Icon name="git-branch" size={38} />
+            <span className="ownership-orbit orbit-one" />
+            <span className="ownership-orbit orbit-two" />
+          </div>
+          <div>
+            <span className="eyebrow">از اولین خط تا آخرین نسخه</span>
+            <h2>
+              ایده مال توست.
+              <br />
+              کد هم همین‌طور.
+            </h2>
+            <p>
+              کد پروژه در مخزن GitHub خودت ذخیره می‌شود. آن را ببین، ویرایش کن، دانلود کن و روی زیرساخت دلخواهت ادامه
+              بده.
+            </p>
+            <Link href="/guides" className="text-link">
+              راهنمای ساخت و انتشار
+              <Icon name="arrow-left" size={16} />
             </Link>
-            <a href="#login" className="hover:text-fg">
-              ورود
-            </a>
+          </div>
+        </section>
+
+        <section id="login" className="login-section page-container">
+          <div className="login-copy">
+            <span className="eyebrow">ایدهٔ بعدی، از همین‌جا</span>
+            <h2>
+              برای ساختن
+              <br />
+              آماده‌ای؟
+            </h2>
+            <p>
+              وارد شو و اولین پروژه‌ات را شروع کن.
+              <br />
+              ایده‌ای که نوشتی در همین مرورگر همراهت می‌ماند.
+            </p>
+            <div className="login-promise">
+              <Icon name="shield" size={20} />
+              <span>
+                انتخاب مدل با توست.<small>با اعتبار پلتفرم یا کلید شخصی خودت کار کن.</small>
+              </span>
+            </div>
+          </div>
+          <div className="login-form-wrap">
+            {error && ERRORS[error] && (
+              <div role="alert" className="alert alert-danger mb-4">
+                <Icon name="alert-circle" className="mt-1" />
+                <span>
+                  {ERRORS[error]}
+                  {(error === "provider_denied" || error === "oauth_failed") &&
+                    detail &&
+                    /^[a-z0-9_]{1,60}$/.test(detail) && (
+                      <>
+                        {" "}
+                        (<span dir="ltr">{detail}</span>)
+                      </>
+                    )}
+                </span>
+              </div>
+            )}
+            <EmailLogin
+              providers={enabledSocialProviders()}
+              turnstileSiteKey={turnstileEnabled() ? env.turnstileSiteKey() : undefined}
+            />
+          </div>
+        </section>
+      </main>
+      <footer className="landing-footer">
+        <div className="page-container">
+          <div className="footer-main">
+            <Brand />
+            <p>جایی برای ایده‌هایی که قرار است ساخته شوند.</p>
+            <nav aria-label="پاورقی">
+              <Link href="/pricing">طرح‌ها و قیمت‌ها</Link>
+              <Link href="/guides">راهنما</Link>
+              <a href="#login">شروع ساخت</a>
+            </nav>
+          </div>
+          <div className="footer-bottom">
+            <span>با فکر تو، با کمک هوش مصنوعی.</span>
+            <span dir="ltr">Idea2App AI — Make your next idea happen.</span>
           </div>
         </div>
       </footer>
-    </>
+    </div>
   );
 }

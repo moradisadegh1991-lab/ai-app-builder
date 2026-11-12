@@ -117,7 +117,7 @@ export default async function PricingPage({
         <PublicHeader />
       )}
 
-      <main className="page-container flex flex-col gap-10 pb-16 pt-8">
+      <main id="main-content" className="page-container flex flex-col gap-10 pb-16 pt-8">
 
         {/* Hero */}
         <section className="relative overflow-hidden rounded-3xl border border-primary-line bg-surface px-6 py-12 shadow-sm sm:px-10 lg:px-14">

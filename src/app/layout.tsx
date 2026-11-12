@@ -11,14 +11,15 @@ const vazirmatn = Vazirmatn({
 });
 
 export const metadata: Metadata = {
-  title: "Idea2App AI — ایده به اپلیکیشن اندروید",
-  description: "ایده‌ات را بنویس؛ هوش مصنوعی اپ اندروید می‌سازد، در GitHub ذخیره می‌کند و فایل APK تحویل می‌دهد.",
+  title: "Idea2App AI — از ایده تا محصول، با تیم هوش مصنوعی",
+  description:
+    "ایده‌ات را با تیمی از ایجنت‌های متخصص به وب‌سایت یا اپ Android تبدیل کن؛ از طراحی و کدنویسی تا ارزیابی و انتشار.",
 };
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f5f6fa" },
-    { media: "(prefers-color-scheme: dark)", color: "#0a0c12" },
+    { media: "(prefers-color-scheme: light)", color: "#f6f8f5" },
+    { media: "(prefers-color-scheme: dark)", color: "#0b1612" },
   ],
 };
 
