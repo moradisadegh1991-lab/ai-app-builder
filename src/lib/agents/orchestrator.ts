@@ -13,6 +13,7 @@ import {
   designSchema,
   reviewSchema,
   mergeOwnedFiles,
+  ownsAgentPath,
   roleProvider,
   type AgentRole,
   type AgentTaskInput,
@@ -133,6 +134,16 @@ export async function runAgents(ctx: AgentContext): Promise<AgentResult> {
   let aiFiles = ctx.existing?.aiFiles ?? [];
   let libraries = ctx.existing?.libraries ?? [];
   let model = "";
+  const ignoredChanges = new Set<string>();
+  let readOnlyPaths: string[] = [];
+  function applyChanges(files: GeneratedFile[], role: "frontend" | "backend" | "debugger") {
+    const accepted = files.filter((file) => {
+      if (ownsAgentPath(role, file.path) && !readOnlyPaths.includes(file.path)) return true;
+      ignoredChanges.add(`${role}: تغییر غیرمجاز ${file.path} اعمال نشد.`);
+      return false;
+    });
+    aiFiles = mergeOwnedFiles(aiFiles, accepted, role);
+  }
   if (input.kind === "fix") {
     const result = await call(
       "initial-fix",
@@ -142,7 +153,7 @@ export async function runAgents(ctx: AgentContext): Promise<AgentResult> {
       24000,
       `${codingRules}\n${ROLE_PROMPTS.debugger}`,
     );
-    aiFiles = mergeOwnedFiles(aiFiles, result.data.files, "debugger");
+    applyChanges(result.data.files, "debugger");
     libraries = result.data.libraries;
     model = result.model;
   } else {
@@ -177,7 +188,7 @@ export async function runAgents(ctx: AgentContext): Promise<AgentResult> {
       const result = results[i]!;
       if (result.status === "rejected") throw result.reason;
       if (result.value) {
-        aiFiles = mergeOwnedFiles(aiFiles, result.value.data.files, i === 0 ? "frontend" : "backend");
+        applyChanges(result.value.data.files, i === 0 ? "frontend" : "backend");
         libraries = [...new Set([...libraries, ...result.value.data.libraries])];
         model = result.value.model;
       }
@@ -196,6 +207,8 @@ export async function runAgents(ctx: AgentContext): Promise<AgentResult> {
         requestedLibraries: libraries,
       });
       aiFiles = rendered.aiFiles;
+      const editable = new Set(aiFiles.map((file) => file.path));
+      readOnlyPaths = rendered.files.filter((file) => !editable.has(file.path)).map((file) => file.path);
       if (
         rendered.unresolvedImports.length ||
         rendered.warnings.some((w) => /نادیده گرفته شد|رد شد|مجاز نیست|بزرگ|خارج از فهرست/.test(w))
@@ -230,6 +243,7 @@ export async function runAgents(ctx: AgentContext): Promise<AgentResult> {
       await store.evaluation(
         round,
         {
+          ignoredChanges: [...ignoredChanges],
           verification: {
             ...verification,
             screenshots: verification.screenshots.map((s) => ({
@@ -248,6 +262,8 @@ export async function runAgents(ctx: AgentContext): Promise<AgentResult> {
       JSON.stringify({
         ...shared,
         files: rendered?.files ?? aiFiles,
+        readOnlyPaths,
+        ignoredChanges: [...ignoredChanges],
         evidence: {
           ...verification,
           screenshots: verification.screenshots.map((s) => s.name),
@@ -261,6 +277,7 @@ export async function runAgents(ctx: AgentContext): Promise<AgentResult> {
     await store.evaluation(
       round,
       {
+        ignoredChanges: [...ignoredChanges],
         verification: {
           ...verification,
           screenshots: verification.screenshots.map((s) => ({ name: s.name })),
@@ -275,7 +292,7 @@ export async function runAgents(ctx: AgentContext): Promise<AgentResult> {
           aiFiles,
           libraries,
           files: rendered.files,
-          warnings: [...rendered.warnings, ...reviewed.data.issues.map((i) => i.evidence)],
+          warnings: [...rendered.warnings, ...ignoredChanges, ...reviewed.data.issues.map((i) => i.evidence)],
           notes: reviewed.data.summary,
           model,
         },
@@ -291,13 +308,14 @@ export async function runAgents(ctx: AgentContext): Promise<AgentResult> {
       JSON.stringify({
         ...shared,
         files: rendered?.files ?? aiFiles,
+        readOnlyPaths,
         verification: { ...verification, screenshots: [] },
         review: reviewed.data,
       }),
       24000,
       `${codingRules}\n${ROLE_PROMPTS.debugger}`,
     );
-    aiFiles = mergeOwnedFiles(aiFiles, patch.data.files, "debugger");
+    applyChanges(patch.data.files, "debugger");
     libraries = patch.data.libraries;
     model = patch.model;
   }

@@ -118,6 +118,11 @@ export interface AgentTaskInput {
   instruction?: string;
   auto?: boolean;
 }
+export function ownsAgentPath(role: "frontend" | "backend" | "debugger", path: string) {
+  const backend = path.startsWith("server/") || path === "db/schema.sql";
+  const frontend = path.startsWith("src/") || path.startsWith("public/") || path === "App.tsx";
+  return role === "backend" ? backend : role === "frontend" ? frontend : backend || frontend;
+}
 export function mergeOwnedFiles(
   base: GeneratedFile[],
   next: GeneratedFile[],
@@ -125,9 +130,7 @@ export function mergeOwnedFiles(
 ) {
   const files = new Map(base.map((f) => [f.path, f]));
   for (const file of next) {
-    const backend = file.path.startsWith("server/") || file.path === "db/schema.sql";
-    const frontend = file.path.startsWith("src/") || file.path.startsWith("public/") || file.path === "App.tsx";
-    if ((role === "backend" && !backend) || (role === "frontend" && !frontend) || (!backend && !frontend)) {
+    if (!ownsAgentPath(role, file.path)) {
       throw new Error(`ایجنت ${role} اجازه تغییر ${file.path} را ندارد.`);
     }
     files.set(file.path, { path: file.path, content: file.content });
