@@ -199,6 +199,61 @@ describe("specialist orchestration", () => {
     expect(() => mergeOwnedFiles([], frontend.files, "backend")).toThrow("اجازه تغییر");
     expect(() => mergeOwnedFiles([], [{ path: "package.json", content: "{}" }], "debugger")).toThrow("اجازه تغییر");
   });
+  it("discards foreign files from a specialist without applying them or losing its valid work", async () => {
+    const original = model.getMockImplementation()!;
+    model.mockImplementation(async (options) =>
+      options.role === "frontend"
+        ? {
+            data: {
+              ...frontend,
+              files: [
+                ...frontend.files,
+                { path: "server/app.ts", content: "foreign backend" },
+                { path: "package.json", content: "unsafe package" },
+              ],
+            },
+            model: "frontend",
+          }
+        : original(options),
+    );
+    const result = await runAgents(context());
+    expect(result.code?.files.find((f) => f.path === "server/app.ts")?.content).toBe(backend.files[0]!.content);
+    expect(result.code?.files.find((f) => f.path === "package.json")?.content).not.toContain("unsafe package");
+    expect(result.code?.warnings.join("\n")).toContain("frontend: تغییر غیرمجاز server/app.ts اعمال نشد.");
+  });
+  it("applies a debugger's valid patch while fencing package and template edits", async () => {
+    const ctx = context();
+    vi.mocked(ctx.verify)
+      .mockResolvedValueOnce({ ...passed, status: "failed" })
+      .mockResolvedValue(passed);
+    const original = model.getMockImplementation()!;
+    model.mockImplementation(async (options) =>
+      options.role === "debugger"
+        ? {
+            data: {
+              ...frontend,
+              files: [
+                ...frontend.files,
+                { path: "package.json", content: "unsafe package" },
+                { path: "src/main.tsx", content: "unsafe entry" },
+              ],
+            },
+            model: "debugger",
+          }
+        : original(options),
+    );
+    const result = await runAgents(ctx);
+    expect(ctx.verify).toHaveBeenCalledTimes(2);
+    expect(result.code?.files.find((f) => f.path === "src/main.tsx")?.content).not.toContain("unsafe entry");
+    expect(result.code?.files.find((f) => f.path === "package.json")?.content).not.toContain("unsafe package");
+    expect(ctx.store.evaluation).toHaveBeenLastCalledWith(
+      1,
+      expect.objectContaining({
+        ignoredChanges: expect.arrayContaining(["debugger: تغییر غیرمجاز package.json اعمال نشد."]),
+      }),
+      true,
+    );
+  });
   it("uses role-specific provider configuration without accepting unknown providers", () => {
     vi.stubEnv("AGENT_DESIGNER_PROVIDER", "gemini");
     expect(roleProvider("designer", "openai")).toBe("gemini");
