@@ -1,5 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { AiProviderId, CompletionRequest, CompletionResult } from "./types";
+import { CompletionTruncatedError } from "./errors";
+
+function completed(result: CompletionResult, truncated: boolean): CompletionResult {
+  if (truncated) throw new CompletionTruncatedError(result);
+  return result;
+}
 
 // User message for OpenAI-style APIs: plain text, or text plus images as data URLs.
 function openAiUserContent(req: CompletionRequest) {
@@ -55,12 +61,15 @@ async function callOpenAI(req: CompletionRequest): Promise<CompletionResult> {
     },
     req.signal,
   );
-  return {
-    text: data.choices?.[0]?.message?.content ?? "",
-    model: data.model ?? req.model,
-    inputTokens: data.usage?.prompt_tokens ?? 0,
-    outputTokens: data.usage?.completion_tokens ?? 0,
-  };
+  return completed(
+    {
+      text: data.choices?.[0]?.message?.content ?? "",
+      model: data.model ?? req.model,
+      inputTokens: data.usage?.prompt_tokens ?? 0,
+      outputTokens: data.usage?.completion_tokens ?? 0,
+    },
+    data.choices?.[0]?.finish_reason === "length",
+  );
 }
 
 // Models that accept the server-side refusal fallback (`fallbacks: "default"`).
@@ -113,19 +122,19 @@ async function callAnthropic(req: CompletionRequest): Promise<CompletionResult> 
   if (message.stop_reason === "refusal") {
     throw new Error("Claude این درخواست را رد کرد؛ ایده را بازنویسی کنید یا مدل دیگری انتخاب کنید.");
   }
-  if (message.stop_reason === "max_tokens") {
-    throw new Error("پاسخ Claude به سقف توکن رسید و ناقص است؛ ایده را ساده‌تر کنید یا دوباره تلاش کنید.");
-  }
   const text = message.content
     .filter((block): block is Anthropic.Beta.BetaTextBlock => block.type === "text")
     .map((block) => block.text)
     .join("");
-  return {
-    text,
-    model: message.model,
-    inputTokens: message.usage.input_tokens,
-    outputTokens: message.usage.output_tokens,
-  };
+  return completed(
+    {
+      text,
+      model: message.model,
+      inputTokens: message.usage.input_tokens,
+      outputTokens: message.usage.output_tokens,
+    },
+    message.stop_reason === "max_tokens",
+  );
 }
 
 async function callGemini(req: CompletionRequest): Promise<CompletionResult> {
@@ -154,16 +163,16 @@ async function callGemini(req: CompletionRequest): Promise<CompletionResult> {
     req.signal,
   );
   const candidate = data.candidates?.[0];
-  if (candidate?.finishReason === "MAX_TOKENS") {
-    throw new Error("پاسخ Gemini به سقف توکن رسید و ناقص است؛ دوباره تلاش کنید.");
-  }
   const text = (candidate?.content?.parts ?? []).map((part: { text?: string }) => part.text ?? "").join("");
-  return {
-    text,
-    model: req.model,
-    inputTokens: data.usageMetadata?.promptTokenCount ?? 0,
-    outputTokens: data.usageMetadata?.candidatesTokenCount ?? 0,
-  };
+  return completed(
+    {
+      text,
+      model: req.model,
+      inputTokens: data.usageMetadata?.promptTokenCount ?? 0,
+      outputTokens: (data.usageMetadata?.candidatesTokenCount ?? 0) + (data.usageMetadata?.thoughtsTokenCount ?? 0),
+    },
+    candidate?.finishReason === "MAX_TOKENS",
+  );
 }
 
 // OpenAI-compatible gateways (Liara AI, OpenRouter, ...) expose Claude, Gemini and OpenAI models
@@ -189,15 +198,15 @@ async function callGateway(req: CompletionRequest): Promise<CompletionResult> {
     data = await postJson(url, headers, body, req.signal);
   }
   const choice = data.choices?.[0];
-  if (choice?.finish_reason === "length") {
-    throw new Error("پاسخ مدل به سقف توکن رسید و ناقص است؛ ایده را ساده‌تر کنید یا دوباره تلاش کنید.");
-  }
-  return {
-    text: choice?.message?.content ?? "",
-    model: data.model ?? req.model,
-    inputTokens: data.usage?.prompt_tokens ?? 0,
-    outputTokens: data.usage?.completion_tokens ?? 0,
-  };
+  return completed(
+    {
+      text: choice?.message?.content ?? "",
+      model: data.model ?? req.model,
+      inputTokens: data.usage?.prompt_tokens ?? 0,
+      outputTokens: data.usage?.completion_tokens ?? 0,
+    },
+    choice?.finish_reason === "length",
+  );
 }
 
 export async function callProvider(provider: AiProviderId, req: CompletionRequest): Promise<CompletionResult> {

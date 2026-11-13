@@ -6,6 +6,7 @@ import { enforce } from "../rate-limit";
 import { getIntegration } from "../integrations/store";
 import { extractJsonObject } from "./json";
 import { callProvider } from "./providers";
+import { CompletionTruncatedError } from "./errors";
 import { AI_PROVIDERS, AI_PROVIDER_LABELS, type AiProviderId, type CompletionImage } from "./types";
 import { reserveUsage, settleUsage, tokenReservation, releaseUsage } from "../workflows/budgets";
 import type { AgentRole } from "../agents/contracts";
@@ -165,59 +166,76 @@ export async function generateStructured<T>(options: StructuredCallOptions<T>): 
     const model = process.env[`AGENT_${options.role.toUpperCase()}_${suffix}`];
     if (model) key.model = key.gatewayBaseUrl ? gatewayModel(options.provider, model) : model;
   }
-  options.signal?.throwIfAborted();
-  const reserved = tokenReservation(options.system, options.prompt, options.maxOutputTokens, options.images);
-  const reservation = await reserveUsage(options.userId, options.runId, reserved, key.usedPlatformKey);
-  // On an interrupted call, retain the hold: the remote provider may have billed it.
-  let result;
-  try {
-    result = await callProvider(options.provider, {
-      apiKey: key.apiKey,
-      gatewayBaseUrl: key.gatewayBaseUrl,
-      model: key.model,
-      system: options.system,
-      prompt: options.prompt,
-      images: options.images,
-      maxOutputTokens: options.maxOutputTokens,
-      signal: options.signal,
-    });
-  } catch (error) {
-    const status =
-      error instanceof Error && "status" in error
-        ? Number(error.status)
-        : Number(String(error).match(/AI provider error (\d{3}):/)?.[1]);
-    // Rejections before inference consume no generated tokens. Unknown failures keep their hold.
-    if ([400, 401, 403, 404, 422, 429].includes(status)) await releaseUsage(reservation);
-    throw error;
-  }
-  const inputTokens = Number(result.inputTokens),
-    outputTokens = Number(result.outputTokens);
-  // Some compatible gateways omit usage. Keep the conservative hold instead of
-  // treating an unmetered response as free and allowing the quota to be bypassed.
-  if (
-    Number.isSafeInteger(inputTokens) &&
-    Number.isSafeInteger(outputTokens) &&
-    inputTokens >= 0 &&
-    outputTokens >= 0 &&
-    inputTokens + outputTokens > 0
-  ) {
-    await settleUsage(reservation, {
-      projectId: options.projectId,
-      provider: options.provider,
-      model: result.model,
-      purpose: options.purpose,
-      inputTokens,
-      outputTokens,
-    });
-  }
+  let maxOutputTokens = options.maxOutputTokens;
+  // One bounded retry, separately reserved and metered, leaves room for models
+  // whose reasoning consumes part of the completion limit (e.g. Gemini Pro).
+  for (let attempt = 0; ; attempt++) {
+    options.signal?.throwIfAborted();
+    const reserved = tokenReservation(options.system, options.prompt, maxOutputTokens, options.images);
+    const reservation = await reserveUsage(options.userId, options.runId, reserved, key.usedPlatformKey);
+    // On an interrupted call, retain the hold: the remote provider may have billed it.
+    let result;
+    let truncated: CompletionTruncatedError | undefined;
+    try {
+      result = await callProvider(options.provider, {
+        apiKey: key.apiKey,
+        gatewayBaseUrl: key.gatewayBaseUrl,
+        model: key.model,
+        system: options.system,
+        prompt: options.prompt,
+        images: options.images,
+        maxOutputTokens,
+        signal: options.signal,
+      });
+    } catch (error) {
+      if (error instanceof CompletionTruncatedError) {
+        result = error.completion;
+        truncated = error;
+      } else {
+        const status =
+          error instanceof Error && "status" in error
+            ? Number(error.status)
+            : Number(String(error).match(/AI provider error (\d{3}):/)?.[1]);
+        // Rejections before inference consume no generated tokens. Unknown failures keep their hold.
+        if ([400, 401, 403, 404, 422, 429].includes(status)) await releaseUsage(reservation);
+        throw error;
+      }
+    }
+    const inputTokens = Number(result.inputTokens),
+      outputTokens = Number(result.outputTokens);
+    // Some compatible gateways omit usage. Keep the conservative hold instead of
+    // treating an unmetered response as free and allowing the quota to be bypassed.
+    if (
+      Number.isSafeInteger(inputTokens) &&
+      Number.isSafeInteger(outputTokens) &&
+      inputTokens >= 0 &&
+      outputTokens >= 0 &&
+      inputTokens + outputTokens > 0
+    ) {
+      await settleUsage(reservation, {
+        projectId: options.projectId,
+        provider: options.provider,
+        model: result.model,
+        purpose: options.purpose,
+        inputTokens,
+        outputTokens,
+      });
+    }
 
-  const parsed = options.schema.safeParse(extractJsonObject(result.text));
-  if (!parsed.success) {
-    const issues = parsed.error.issues
-      .slice(0, 5)
-      .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
-      .join("; ");
-    throw new HttpError(502, `خروجی مدل با ساختار مورد انتظار مطابقت نداشت (${issues}). دوباره تلاش کنید.`);
+    if (truncated) {
+      const nextLimit = Math.min(maxOutputTokens * 2, 32768);
+      if (attempt >= 1 || nextLimit <= maxOutputTokens) throw truncated;
+      maxOutputTokens = nextLimit;
+      continue;
+    }
+    const parsed = options.schema.safeParse(extractJsonObject(result.text));
+    if (!parsed.success) {
+      const issues = parsed.error.issues
+        .slice(0, 5)
+        .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+        .join("; ");
+      throw new HttpError(502, `خروجی مدل با ساختار مورد انتظار مطابقت نداشت (${issues}). دوباره تلاش کنید.`);
+    }
+    return { data: parsed.data, model: result.model };
   }
-  return { data: parsed.data, model: result.model };
 }
