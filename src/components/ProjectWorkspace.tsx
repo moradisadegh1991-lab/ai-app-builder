@@ -289,7 +289,7 @@ export function ProjectWorkspace({
 
           <AgentTeamPanel workflow={project.workflow} base={base} />
 
-          {estimate && <CostEstimate key={`${estimate.kind}-${provider}`} kind={estimate.kind} textLength={project.idea.length} screens={project.spec?.screens.length ?? 1} provider={activeProvider?.label ?? provider} model={activeProvider?.model} disabled={disabled} onCancel={() => setEstimate(null)} onConfirm={() => {
+          {estimate && <CostEstimate key={`${estimate.kind}-${provider}`} kind={estimate.kind} textLength={project.idea.length} screens={project.spec?.screens.length ?? 1} provider={activeProvider?.label ?? provider} model={activeProvider?.model} price={activeProvider?.price} disabled={disabled} onCancel={() => setEstimate(null)} onConfirm={() => {
             const selected = estimate;
             setEstimate(null);
             void run(selected.kind, `${base}/${selected.kind === "spec" ? "spec" : "generate"}`, "POST", selected.kind === "spec" ? { feedback: selected.feedback, provider } : { provider });
