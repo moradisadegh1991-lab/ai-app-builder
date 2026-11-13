@@ -211,6 +211,37 @@ describe("specialist orchestration", () => {
     await expect(runAgents(ctx)).rejects.toThrow("Docker image missing");
     expect(model.mock.calls.some(([o]) => o.role === "debugger")).toBe(false);
   });
+  it("permits one final visual repair only after real technical checks pass", async () => {
+    const ctx = context();
+    const original = model.getMockImplementation()!;
+    let reviews = 0;
+    model.mockImplementation(async (options) => options.role === "reviewer" && reviews++ < 3
+      ? { data: { summary: "Theme missing", issues: [{ severity: "blocking", category: "ux", file: "src/App.tsx", evidence: "Screenshot lacks approved colors", fix: "Apply theme" }] }, model: "reviewer" }
+      : original(options));
+    await expect(runAgents(ctx)).resolves.toHaveProperty("code");
+    const patches = model.mock.calls.filter(([o]) => o.role === "debugger");
+    expect(patches).toHaveLength(3);
+    expect(patches[2]![0].system).toContain("src/app-theme.css");
+    expect(patches[2]![0].system).toContain("src/index.css and src/main.tsx are template-owned");
+    expect(patches[0]![0].system).not.toContain("final visual-only repair");
+    expect(ctx.verify).toHaveBeenCalledTimes(4);
+  });
+  it("does not extend repairs for a code defect even if the build passes", async () => {
+    const original = model.getMockImplementation()!;
+    model.mockImplementation(async (options) => options.role === "reviewer"
+      ? { data: { summary: "Incorrect logic", issues: [{ severity: "blocking", category: "code", file: "src/App.tsx", evidence: "Wrong result", fix: "Fix logic" }] }, model: "reviewer" }
+      : original(options));
+    await expect(runAgents(context())).rejects.toThrow("دو دور اصلاح");
+    expect(model.mock.calls.filter(([o]) => o.role === "debugger")).toHaveLength(2);
+  });
+  it("stops if the one additional visual correction still fails review", async () => {
+    const original = model.getMockImplementation()!;
+    model.mockImplementation(async (options) => options.role === "reviewer"
+      ? { data: { summary: "Theme missing", issues: [{ severity: "blocking", category: "ux", file: "src/App.tsx", evidence: "Incorrect colors", fix: "Apply theme" }] }, model: "reviewer" }
+      : original(options));
+    await expect(runAgents(context())).rejects.toThrow("پس از اصلاح نهایی ظاهر");
+    expect(model.mock.calls.filter(([o]) => o.role === "debugger")).toHaveLength(3);
+  });
   it("resumes completed specialist tasks from durable checkpoints", async () => {
     const ctx = context();
     await runAgents(ctx);

@@ -50,6 +50,9 @@ export interface AgentResult {
   };
 }
 export const MAX_REPAIR_ROUNDS = 2;
+const MAX_VISUAL_REPAIR_ROUNDS = 1;
+const VISUAL_REPAIR_RULES = `This is the final visual-only repair after all technical and browser checks passed. Fix the supplied blocking UX findings without rewriting working logic.
+src/index.css and src/main.tsx are template-owned and cannot be edited. Put application styles and custom Tailwind v4 @theme tokens in a NEW AI-owned CSS file such as src/app-theme.css, and import it from the AI-owned src/App.tsx. A Tailwind theme stylesheet must import "tailwindcss" to generate its custom utilities. Preserve the existing template font and safe-area behavior. Never output package.json or other readOnlyPaths. Return only changed/new files and any additional library requests. The result will undergo fresh technical, browser and visual review; do not claim success without that evidence.`;
 
 export async function runAgents(ctx: AgentContext): Promise<AgentResult> {
   const { project, input, store } = ctx;
@@ -194,7 +197,7 @@ export async function runAgents(ctx: AgentContext): Promise<AgentResult> {
       }
     }
   }
-  for (let round = 0; round <= MAX_REPAIR_ROUNDS; round++) {
+  for (let round = 0; round <= MAX_REPAIR_ROUNDS + MAX_VISUAL_REPAIR_ROUNDS; round++) {
     ctx.signal.throwIfAborted();
     let rendered: ReturnType<typeof renderProject> | undefined;
     let verification: Verification;
@@ -297,8 +300,19 @@ export async function runAgents(ctx: AgentContext): Promise<AgentResult> {
           model,
         },
       };
-    if (round === MAX_REPAIR_ROUNDS)
-      throw new Error("پس از دو دور اصلاح، بررسی کیفیت هنوز موفق نیست؛ گزارش تیم را بررسی کنید.");
+    const blocking = reviewed.data.issues.filter((issue) => issue.severity === "blocking");
+    // A compiled app can still miss its visual contract. Permit exactly one
+    // focused styling correction, without extending the compiler/debugging loop.
+    const visualRepair =
+      round === MAX_REPAIR_ROUNDS &&
+      project.template !== "expo" &&
+      verification.status === "passed" &&
+      blocking.length > 0 &&
+      blocking.every((issue) => issue.category === "ux");
+    if (round >= MAX_REPAIR_ROUNDS && !visualRepair)
+      throw new Error(round === MAX_REPAIR_ROUNDS
+        ? "پس از دو دور اصلاح، بررسی کیفیت هنوز موفق نیست؛ گزارش تیم را بررسی کنید."
+        : "پس از اصلاح نهایی ظاهر، بررسی کیفیت هنوز موفق نیست؛ گزارش تیم را بررسی کنید.");
     if (reviewed.data.issues.some((i) => i.severity === "blocking" && i.category === "infrastructure"))
       throw new Error(reviewed.data.summary);
     const patch = await call(
@@ -313,7 +327,7 @@ export async function runAgents(ctx: AgentContext): Promise<AgentResult> {
         review: reviewed.data,
       }),
       24000,
-      `${codingRules}\n${ROLE_PROMPTS.debugger}`,
+      `${codingRules}\n${ROLE_PROMPTS.debugger}${visualRepair ? `\n${VISUAL_REPAIR_RULES}` : ""}`,
     );
     applyChanges(patch.data.files, "debugger");
     libraries = [...new Set([...libraries, ...patch.data.libraries])];
