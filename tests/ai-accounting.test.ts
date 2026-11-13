@@ -1,6 +1,7 @@
 import { beforeEach, afterEach, describe, it, expect, vi } from "vitest";
 import { z } from "zod";
 import { generateStructured } from "../src/lib/ai";
+import { CompletionTruncatedError } from "../src/lib/ai/errors";
 const h = vi.hoisted(() => ({
   call: vi.fn(),
   reserve: vi.fn(),
@@ -49,6 +50,46 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllEnvs());
 describe("AI accounting around provider failures", () => {
+  const truncated = () => new CompletionTruncatedError({
+    text: '{"ok":', model: "test", inputTokens: 100, outputTokens: 100,
+  });
+  it("meters a truncated response, retries once with more room and validates only the complete result", async () => {
+    h.call.mockRejectedValueOnce(truncated());
+    await expect(generateStructured(options)).resolves.toMatchObject({ data: { ok: true } });
+    expect(h.call.mock.calls.map(([, request]) => request.maxOutputTokens)).toEqual([100, 200]);
+    expect(h.reserve).toHaveBeenCalledTimes(2);
+    expect(h.settle).toHaveBeenCalledTimes(2);
+    expect(h.settle.mock.calls[0]![1]).toMatchObject({ inputTokens: 100, outputTokens: 100 });
+  });
+  it("stops after the bounded retry and never accepts partial output", async () => {
+    h.call.mockRejectedValue(truncated());
+    await expect(generateStructured(options)).rejects.toBeInstanceOf(CompletionTruncatedError);
+    expect(h.call).toHaveBeenCalledTimes(2);
+    expect(h.settle).toHaveBeenCalledTimes(2);
+  });
+  it("requires another budget admission before retrying", async () => {
+    h.call.mockRejectedValueOnce(truncated());
+    h.reserve.mockResolvedValueOnce("first").mockRejectedValueOnce(new Error("budget exhausted"));
+    await expect(generateStructured(options)).rejects.toThrow("budget exhausted");
+    expect(h.call).toHaveBeenCalledOnce();
+    expect(h.settle).toHaveBeenCalledOnce();
+  });
+  it("retains an unmetered truncation hold while reserving the retry separately", async () => {
+    h.call.mockRejectedValueOnce(new CompletionTruncatedError({ text: "", model: "test", inputTokens: 0, outputTokens: 0 }));
+    await generateStructured(options);
+    expect(h.reserve).toHaveBeenCalledTimes(2);
+    expect(h.settle).toHaveBeenCalledOnce();
+    expect(h.release).not.toHaveBeenCalled();
+  });
+  it("does not retry after cancellation or above the output ceiling", async () => {
+    const controller = new AbortController();
+    h.call.mockImplementationOnce(async () => { controller.abort(); throw truncated(); });
+    await expect(generateStructured({ ...options, signal: controller.signal })).rejects.toThrow();
+    expect(h.call).toHaveBeenCalledOnce();
+    h.call.mockClear().mockRejectedValue(truncated());
+    await expect(generateStructured({ ...options, maxOutputTokens: 32768 })).rejects.toBeInstanceOf(CompletionTruncatedError);
+    expect(h.call).toHaveBeenCalledOnce();
+  });
   it("reserves before inference and settles measured usage", async () => {
     await expect(generateStructured(options)).resolves.toMatchObject({
       data: { ok: true },

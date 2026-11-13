@@ -269,7 +269,7 @@ export async function runAgents(ctx: AgentContext): Promise<AgentResult> {
           screenshots: verification.screenshots.map((s) => s.name),
         },
       }),
-      4000,
+      12000,
       undefined,
       verification.screenshots.map(({ mime, data }) => ({ mime, data })),
     );

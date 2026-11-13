@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { callProvider } from "../src/lib/ai/providers";
+import { CompletionTruncatedError } from "../src/lib/ai/errors";
 
 const request = {
   apiKey: "gateway-key",
@@ -59,6 +60,21 @@ describe("OpenAI-compatible gateway", () => {
 
   it("reports a truncated answer instead of returning partial JSON", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(ok('{"a":', "length")));
-    await expect(callProvider("openai", request)).rejects.toThrow(/سقف توکن/);
+    await expect(callProvider("openai", request)).rejects.toMatchObject({
+      name: "CompletionTruncatedError", completion: { inputTokens: 12, outputTokens: 34 },
+    });
+  });
+  it("detects truncation on direct OpenAI requests as well", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(ok('{"a":1}', "length")));
+    await expect(callProvider("openai", { ...request, gatewayBaseUrl: undefined })).rejects.toBeInstanceOf(CompletionTruncatedError);
+  });
+  it("accounts for Gemini reasoning even when it exhausts the output before emitting JSON", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      candidates: [{ finishReason: "MAX_TOKENS", content: { parts: [] } }],
+      usageMetadata: { promptTokenCount: 50, candidatesTokenCount: 0, thoughtsTokenCount: 4000 },
+    }))));
+    await expect(callProvider("gemini", { ...request, gatewayBaseUrl: undefined })).rejects.toMatchObject({
+      completion: { text: "", inputTokens: 50, outputTokens: 4000 },
+    });
   });
 });
