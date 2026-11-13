@@ -139,6 +139,39 @@ export function NewProjectForm() {
   const [vpsProvider, setVpsProvider] = useState<VpsProvider | null>(null);
 
   const [idea, setIdea] = useState("");
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [suggestedQuestions, setSuggestedQuestions] = useState<{ question: string; hint: string }[]>([]);
+  const [questionsBusy, setQuestionsBusy] = useState(false);
+  const [questionsError, setQuestionsError] = useState("");
+  const questions = [
+    { key: "audience", label: "کاربران اصلی چه کسانی هستند؟", placeholder: "مثلاً دانشجویان، مشتریان یا مدیران فروشگاه" },
+    { key: "problem", label: "مهم‌ترین مشکل یا هدف آن‌ها چیست؟", placeholder: "کاربر می‌خواهد چه کاری را ساده‌تر انجام دهد؟" },
+    { key: "features", label: "سه قابلیت ضروری نسخهٔ اول چیست؟", placeholder: "مثلاً جست‌وجو، ثبت سفارش و پیگیری" },
+    { key: "journey", label: "کاربر از ورود تا رسیدن به هدف چه مراحلی طی می‌کند؟", placeholder: "مثلاً ورود، انتخاب محصول و پرداخت" },
+    { key: "design", label: "ظاهر و تجربهٔ دلخواه شما چگونه است؟", placeholder: "رنگ‌ها، نمونه‌های الهام‌بخش و میزان انیمیشن" },
+    { key: "constraints", label: "چه محدودیت یا نیاز دیگری باید رعایت شود؟", placeholder: "زبان، دسترس‌پذیری، حریم خصوصی یا امکانات خاص" },
+  ].concat(suggestedQuestions.map((question, index) => ({ key: `ai-${index}`, label: question.question, placeholder: question.hint })));
+  const enrichedIdea = [idea.trim(), ...questions.flatMap((q) => answers[q.key]?.trim() ? [`${q.label}\n${answers[q.key].trim()}`] : [])].join("\n\n");
+
+  async function suggestQuestions() {
+    if (!kind || !aiProvider || idea.trim().length < 15) {
+      setQuestionsError("ابتدا نوع محصول، مدل و ایده‌ای با حداقل ۱۵ کاراکتر را مشخص کنید.");
+      return;
+    }
+    setQuestionsError("");
+    setQuestionsBusy(true);
+    try {
+      const result = await api<{ questions: { question: string; hint: string }[] }>("/api/ai/idea-questions", {
+        method: "POST",
+        body: JSON.stringify({ idea: idea.trim(), kind, provider: aiProvider, answers: questions.slice(0, 6).filter((q) => answers[q.key]?.trim()).map((q) => ({ question: q.label, answer: answers[q.key].trim() })) }),
+      });
+      setSuggestedQuestions(result.questions);
+    } catch (error) {
+      setQuestionsError(error instanceof Error ? error.message : "دریافت پرسش‌ها ناموفق بود.");
+    } finally {
+      setQuestionsBusy(false);
+    }
+  }
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [attachErrors, setAttachErrors] = useState<string[]>([]);
   const [attachWorking, setAttachWorking] = useState(false);
@@ -307,6 +340,11 @@ export function NewProjectForm() {
       return;
     }
 
+    if (enrichedIdea.length > 5000) {
+      setError("مجموع ایده و پاسخ‌ها باید حداکثر ۵۰۰۰ کاراکتر باشد؛ لطفاً متن را کوتاه‌تر کنید.");
+      return;
+    }
+
     setBusy(true);
     setError(null);
 
@@ -314,7 +352,7 @@ export function NewProjectForm() {
       const { id } = await api<{ id: string }>("/api/projects", {
         method: "POST",
         body: JSON.stringify({
-          idea,
+          idea: enrichedIdea,
           attachments,
           name: name || undefined,
           kind,
@@ -566,7 +604,25 @@ export function NewProjectForm() {
               }}
               required
               minLength={15}
+              maxLength={5000}
             />
+
+            <details className="idea-questions rounded-2xl border border-line bg-surface p-4">
+              <summary className="cursor-pointer font-bold text-fg">با چند سؤال ایده‌ات را کامل‌تر کن <span className="text-sm font-normal text-muted">(اختیاری)</span></summary>
+              <p className="mt-2 text-sm leading-6 text-muted">پاسخ‌ها همراه ایده به تیم ساخت داده می‌شوند. هر موردی را که هنوز نمی‌دانی خالی بگذار.</p>
+              {suggestedQuestions.length === 0 && <button type="button" className="btn-secondary mt-3" onClick={() => void suggestQuestions()} disabled={questionsBusy || busy}>{questionsBusy ? "در حال آماده‌سازی پرسش‌ها…" : "پرسش‌های اختصاصی ایده‌ام را پیشنهاد بده"}</button>}
+              {suggestedQuestions.length === 0 && <p className="mt-2 text-xs text-muted">این درخواست از مدل انتخابی و سهمیهٔ هوش مصنوعی شما استفاده می‌کند.</p>}
+              {questionsError && <p role="alert" className="mt-2 text-sm text-danger-fg">{questionsError}</p>}
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                {questions.map((question) => (
+                  <label key={question.key} className="flex flex-col gap-2 text-sm font-bold text-fg">
+                    {question.label}
+                    <textarea className="input min-h-24 resize-y font-normal" value={answers[question.key] ?? ""} maxLength={600} placeholder={question.placeholder} onChange={(event) => setAnswers((current) => ({ ...current, [question.key]: event.target.value }))} />
+                  </label>
+                ))}
+              </div>
+              <p className="mt-3 text-xs text-muted">مجموع متن: {enrichedIdea.length.toLocaleString("fa-IR")} از ۵۰۰۰ کاراکتر</p>
+            </details>
 
             <AttachmentPicker
               value={attachments}
