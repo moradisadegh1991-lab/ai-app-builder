@@ -10,6 +10,7 @@ import { ActivityPanel } from "./workspace/ActivityPanel";
 import { AgentTeamPanel } from "./workspace/AgentTeamPanel";
 import { BuildSection } from "./workspace/BuildSection";
 import { CodeSection } from "./workspace/CodeSection";
+import { CostEstimate } from "./workspace/CostEstimate";
 import { CloudDeploySection, LocalDeploySection, VpsDeploySection } from "./workspace/DeploySection";
 import { currentSection, nextAction, workspaceFacts, workspaceSections, type SectionId } from "./workspace/model";
 import { OverviewSection } from "./workspace/OverviewSection";
@@ -55,6 +56,7 @@ export function ProjectWorkspace({
   const [busy, setBusy] = useState<Busy>(null);
   const [error, setError] = useState<string | null>(initialProject.lastError);
   const [section, setSection] = useState<SectionId>(() => currentSection(initialProject));
+  const [estimate, setEstimate] = useState<{ kind: "spec" | "code"; feedback?: string } | null>(null);
 
   useEffect(() => {
     api<ProvidersResponse>("/api/ai/providers")
@@ -287,6 +289,12 @@ export function ProjectWorkspace({
 
           <AgentTeamPanel workflow={project.workflow} base={base} />
 
+          {estimate && <CostEstimate key={`${estimate.kind}-${provider}`} kind={estimate.kind} textLength={project.idea.length} screens={project.spec?.screens.length ?? 1} provider={activeProvider?.label ?? provider} model={activeProvider?.model} disabled={disabled} onCancel={() => setEstimate(null)} onConfirm={() => {
+            const selected = estimate;
+            setEstimate(null);
+            void run(selected.kind, `${base}/${selected.kind === "spec" ? "spec" : "generate"}`, "POST", selected.kind === "spec" ? { feedback: selected.feedback, provider } : { provider });
+          }} />}
+
           {activeSection === "overview" && (
             <OverviewSection project={project} sections={sections} next={next} onNavigate={go} />
           )}
@@ -296,7 +304,7 @@ export function ProjectWorkspace({
               spec={project.spec}
               approved={facts.specApproved}
               disabled={disabled}
-              onGenerate={(feedback) => run("spec", `${base}/spec`, "POST", { feedback, provider })}
+              onGenerate={(feedback) => setEstimate({ kind: "spec", feedback })}
               onApprove={(spec) => runThen("code", "approve", `${base}/spec`, "PUT", spec ? { spec } : {})}
             />
           )}
@@ -306,7 +314,7 @@ export function ProjectWorkspace({
               <CodeSection
                 project={project}
                 disabled={disabled}
-                onGenerate={() => run("code", `${base}/generate`, "POST", { provider })}
+                onGenerate={() => setEstimate({ kind: "code" })}
               />
             ) : (
               <LockedSection
