@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { AiProviderId, CompletionRequest, CompletionResult } from "./types";
 import { CompletionTruncatedError } from "./errors";
+import { HttpError } from "../http";
 
 function completed(result: CompletionResult, truncated: boolean): CompletionResult {
   if (truncated) throw new CompletionTruncatedError(result);
@@ -41,6 +42,9 @@ async function postJson(
   });
   const text = await response.text();
   if (!response.ok) {
+    if (response.status === 402) {
+      throw new HttpError(402, "اعتبار سرویس هوش مصنوعی برای مدل انتخاب‌شده کافی نیست. موجودی سرویس را بررسی کنید یا از بخش اتصالات یک کلید شخصی و مدل در دسترس انتخاب کنید؛ سپس دوباره تلاش کنید.");
+    }
     throw new Error(`AI provider error ${response.status}: ${text.slice(0, 500)}`);
   }
   return JSON.parse(text);
