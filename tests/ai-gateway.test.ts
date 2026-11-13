@@ -58,6 +58,15 @@ describe("OpenAI-compatible gateway", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("reports insufficient provider credit without exposing the raw gateway response or retrying", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{"error":{"message":"balance 221514.13760000002 tomans"}}', { status: 402 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const error = await callProvider("gemini", request).catch((value: unknown) => value);
+    expect(error).toMatchObject({ status: 402, message: expect.stringContaining("اعتبار سرویس هوش مصنوعی") });
+    expect(String(error)).not.toContain("221514");
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
   it("reports a truncated answer instead of returning partial JSON", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(ok('{"a":', "length")));
     await expect(callProvider("openai", request)).rejects.toMatchObject({
