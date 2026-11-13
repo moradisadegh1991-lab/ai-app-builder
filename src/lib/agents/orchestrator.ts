@@ -154,7 +154,7 @@ export async function runAgents(ctx: AgentContext): Promise<AgentResult> {
       `${codingRules}\n${ROLE_PROMPTS.debugger}`,
     );
     applyChanges(result.data.files, "debugger");
-    libraries = result.data.libraries;
+    libraries = [...new Set([...libraries, ...result.data.libraries])];
     model = result.model;
   } else {
     // Promise.allSettled drains both calls on failure before a worker can release/retry the run.
@@ -316,7 +316,7 @@ export async function runAgents(ctx: AgentContext): Promise<AgentResult> {
       `${codingRules}\n${ROLE_PROMPTS.debugger}`,
     );
     applyChanges(patch.data.files, "debugger");
-    libraries = patch.data.libraries;
+    libraries = [...new Set([...libraries, ...patch.data.libraries])];
     model = patch.model;
   }
   throw new Error("Unreachable workflow state");

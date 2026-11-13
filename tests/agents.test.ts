@@ -177,6 +177,30 @@ describe("specialist orchestration", () => {
     await expect(runAgents(ctx)).resolves.toHaveProperty("code");
     expect(ctx.verify).toHaveBeenCalledTimes(2);
   });
+  it("preserves installed libraries when a debugger returns only source changes", async () => {
+    const ctx = context();
+    vi.mocked(ctx.verify).mockResolvedValueOnce({ ...passed, status: "failed" }).mockResolvedValue(passed);
+    const original = model.getMockImplementation()!;
+    model.mockImplementation(async (options) => options.role === "frontend"
+      ? { data: { ...frontend, libraries: ["react-router-dom", "lucide-react", "zustand"] }, model: "frontend" }
+      : original(options));
+    const result = await runAgents(ctx);
+    expect(result.code?.libraries).toEqual(["react-router-dom", "lucide-react", "zustand"]);
+    for (const [files] of vi.mocked(ctx.verify).mock.calls) {
+      const pkg = JSON.parse(files.find((f) => f.path === "package.json")!.content);
+      expect(pkg.dependencies).toHaveProperty("react-router-dom");
+      expect(pkg.dependencies).toHaveProperty("lucide-react");
+      expect(pkg.dependencies).toHaveProperty("zustand");
+    }
+  });
+  it("retains an existing project's libraries during the initial fix", async () => {
+    const ctx = context();
+    ctx.input = { kind: "fix", provider: "openai" };
+    ctx.existing = { aiFiles: [...frontend.files, ...backend.files], libraries: ["react-router-dom"] };
+    await expect(runAgents(ctx)).resolves.toMatchObject({ code: { libraries: ["react-router-dom"] } });
+    const files = vi.mocked(ctx.verify).mock.calls[0]![0];
+    expect(JSON.parse(files.find((f) => f.path === "package.json")!.content).dependencies).toHaveProperty("react-router-dom");
+  });
   it("reports infrastructure outages without wasting debugger calls", async () => {
     const ctx = context();
     vi.mocked(ctx.verify).mockResolvedValue({
