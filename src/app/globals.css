@@ -2201,6 +2201,17 @@
   }
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  .hero-announcement { animation: studio-entrance 600ms ease-out both; }
+  .landing-hero h1 { animation: studio-entrance 700ms 80ms ease-out both; }
+  .idea-starter { animation: studio-entrance 700ms 160ms ease-out both; }
+  .idea-questions[open] > div { animation: studio-entrance 300ms ease-out both; }
+  @keyframes studio-entrance {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
