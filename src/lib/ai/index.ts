@@ -7,6 +7,7 @@ import { getIntegration } from "../integrations/store";
 import { extractJsonObject } from "./json";
 import { callProvider } from "./providers";
 import { CompletionTruncatedError } from "./errors";
+import { isLiaraGateway, liaraCatalogPrice, liaraModelPrice } from "./liara-pricing";
 import { AI_PROVIDERS, AI_PROVIDER_LABELS, type AiProviderId, type CompletionImage } from "./types";
 import { reserveUsage, settleUsage, tokenReservation, releaseUsage } from "../workflows/budgets";
 import type { AgentRole } from "../agents/contracts";
@@ -124,10 +125,16 @@ export async function providerAvailability(userId: string) {
           : null;
       const baseModel = plan.modelTier === "economy" ? economyModels[id]() : defaultModels[id]();
       const platformModel = gatewayBaseUrl() ? gatewayModel(id, baseModel) : baseModel;
+      const model = own ? own.metadata.model || defaultModels[id]() : platformModel;
+      const configured = liaraModelPrice(process.env.LIARA_MODEL_PRICING_JSON, gatewayBaseUrl(), source, model);
+      const price = configured
+        ? { inputPerMillion: configured.inputTomanPerMillion, outputPerMillion: configured.outputTomanPerMillion, currency: "IRT" as const, updatedAt: configured.updatedAt, source: "administrator" as const }
+        : isLiaraGateway(gatewayBaseUrl(), source) ? await liaraCatalogPrice(model) : null;
       return {
         id,
         label: AI_PROVIDER_LABELS[id],
-        model: own ? own.metadata.model || defaultModels[id]() : platformModel,
+        model,
+        price,
         available: source !== null,
         source,
       };
