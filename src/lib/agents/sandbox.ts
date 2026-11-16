@@ -238,7 +238,9 @@ export const verifyInSandbox: AgentContext["verify"] = async (files, template, n
       if (dbStart.code) throw new Error("Cannot start sandbox PostgreSQL (pre-pull postgres:17-alpine)");
       let ready = false;
       for (let attempt = 0; attempt < 30; attempt++) {
-        if ((await docker(["exec", postgres, "pg_isready", "-U", "postgres"])).code === 0) {
+        // The image starts a temporary Unix-socket-only server during initdb.
+        // Wait for the final TCP listener, not that short-lived server.
+        if ((await docker(["exec", postgres, "pg_isready", "-h", "127.0.0.1", "-U", "postgres"])).code === 0) {
           ready = true;
           break;
         }
@@ -258,7 +260,7 @@ export const verifyInSandbox: AgentContext["verify"] = async (files, template, n
         "-c",
         "CREATE DATABASE app OWNER sandbox_app;",
       ]);
-      if (setup.code) throw new Error("Cannot initialize sandbox database");
+      if (setup.code) throw new Error(`Cannot initialize sandbox database: ${setup.output.replaceAll(appPassword, "[redacted]").replaceAll(password, "[redacted]").slice(-2000)}`);
       databaseUrl = `postgres://sandbox_app:${appPassword}@db:5432/app`;
       const schemaName = `i2a-schema-${suffix}`;
       containers.push(schemaName);

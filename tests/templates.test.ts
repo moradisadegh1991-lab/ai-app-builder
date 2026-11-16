@@ -78,6 +78,16 @@ describe("sanitizeAiFiles", () => {
 });
 
 describe("renderProject", () => {
+  it("supports vetted Hono validation dependencies for generated backends", () => {
+    const { files, warnings } = renderProject({
+      template: "web", slug: "contact", spec: { ...spec, needsBackend: true },
+      aiFiles: [app, server], requestedLibraries: ["zod", "@hono/zod-validator"],
+    });
+    const pkg = JSON.parse(file(files, "package.json").content);
+    expect(pkg.dependencies.zod).toBe("^3.25.76");
+    expect(pkg.dependencies["@hono/zod-validator"]).toBe("^0.9.1");
+    expect(warnings).toEqual([]);
+  });
   it("renders a buildable Capacitor project with the APK workflow", () => {
     const { files, warnings } = renderProject({
       template: "capacitor",

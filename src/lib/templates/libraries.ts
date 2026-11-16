@@ -2,8 +2,14 @@ import type { AppTemplate } from "../db/schema";
 
 // Extra npm packages the AI may request. Restricting to a vetted list with
 // known-good version ranges keeps generated projects buildable.
+const VALIDATION_LIBRARIES = {
+  // Zod 3 retains both .errors and .issues used by common generated Hono handlers.
+  zod: "^3.25.76",
+  "@hono/zod-validator": "^0.9.1",
+};
 export const ALLOWED_LIBRARIES: Record<AppTemplate, Record<string, string>> = {
   capacitor: {
+    ...VALIDATION_LIBRARIES,
     "react-router-dom": "^7.18.0",
     "lucide-react": "^1.62.0",
     recharts: "^3.10.0",
@@ -16,6 +22,7 @@ export const ALLOWED_LIBRARIES: Record<AppTemplate, Record<string, string>> = {
     "@capacitor/share": "^8.0.3",
   },
   web: {
+    ...VALIDATION_LIBRARIES,
     "react-router-dom": "^7.18.0",
     "lucide-react": "^1.62.0",
     recharts: "^3.10.0",
@@ -23,6 +30,7 @@ export const ALLOWED_LIBRARIES: Record<AppTemplate, Record<string, string>> = {
     zustand: "^5.0.16",
   },
   expo: {
+    ...VALIDATION_LIBRARIES,
     "@react-native-async-storage/async-storage": "2.2.0",
     "react-native-safe-area-context": "~5.10.1",
     "date-fns": "^4.4.0",
