@@ -3,7 +3,8 @@ import type { AppTemplate } from "../db/schema";
 // Extra npm packages the AI may request. Restricting to a vetted list with
 // known-good version ranges keeps generated projects buildable.
 const VALIDATION_LIBRARIES = {
-  zod: "^4.3.3",
+  // Zod 3 retains both .errors and .issues used by common generated Hono handlers.
+  zod: "^3.25.76",
   "@hono/zod-validator": "^0.9.1",
 };
 export const ALLOWED_LIBRARIES: Record<AppTemplate, Record<string, string>> = {

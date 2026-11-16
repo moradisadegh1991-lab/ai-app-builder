@@ -84,7 +84,7 @@ describe("renderProject", () => {
       aiFiles: [app, server], requestedLibraries: ["zod", "@hono/zod-validator"],
     });
     const pkg = JSON.parse(file(files, "package.json").content);
-    expect(pkg.dependencies.zod).toBe("^4.3.3");
+    expect(pkg.dependencies.zod).toBe("^3.25.76");
     expect(pkg.dependencies["@hono/zod-validator"]).toBe("^0.9.1");
     expect(warnings).toEqual([]);
   });
