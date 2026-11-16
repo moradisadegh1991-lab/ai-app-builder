@@ -189,13 +189,7 @@ export function CloudDeploySection({ project, disabled, onProvision }: { project
                 {failed && (
                   <div role="alert" className="flex flex-col gap-3 rounded-xl border border-danger-line bg-danger-soft p-3 text-danger-fg">
                     <div className="font-semibold">استقرار با خطا مواجه شد.</div>
-                    {deployment.error ? (
-                      <pre dir="auto" className="max-h-64 overflow-auto rounded-lg bg-surface p-3 text-xs whitespace-pre-wrap break-words text-fg-2">
-                        {deployment.error}
-                      </pre>
-                    ) : (
-                      <p className="text-xs">جزئیات خطا از سرور دریافت نشده است.</p>
-                    )}
+                    <p className="text-xs">آماده‌سازی سایت کامل نشد؛ می‌توانید تنظیمات اتصال را بررسی و دوباره تلاش کنید.</p>
                     <p className="text-xs leading-6">{info.description} تنظیمات اتصال Vercel و Neon را در صفحهٔ «اتصال‌ها و کلیدها» بررسی کنید.</p>
                     <div>
                       <button type="button" className="btn-primary btn-sm" disabled={disabled} onClick={onProvision}>
@@ -339,15 +333,6 @@ export function VpsDeploySection({
               </div>
             )}
 
-            {vps.lastLog && (
-              <details className="group border-t border-line px-4 py-3">
-                <summary className="inline-flex items-center gap-1.5 text-xs font-medium text-muted hover:text-fg">
-                  <Icon name="terminal" size={14} />
-                  گزارش آخرین استقرار
-                </summary>
-                <pre className="code-block mt-2 max-h-64 text-[11px]">{vps.lastLog}</pre>
-              </details>
-            )}
 
             {canFix && (
               <div className="flex flex-wrap items-center gap-3 border-t border-danger-line bg-danger-soft px-4 py-3">

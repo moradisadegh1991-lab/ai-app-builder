@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ProjectView } from "@/lib/projects";
 import { api, type ProviderInfo, type ProvidersResponse } from "./api";
+import { friendlyError } from "./friendly-error";
 import { StatusBadge } from "./StatusBadge";
 import { Icon } from "./ui/Icon";
 import { ActivityPanel } from "./workspace/ActivityPanel";
@@ -273,7 +274,7 @@ export function ProjectWorkspace({
                 <div className="font-semibold">عملیات انجام نشد</div>
                 {/* Provider and API errors are often English JSON: let the text pick its own direction. */}
                 <p dir="auto" className="mt-1 max-h-40 overflow-auto text-xs leading-6 break-words whitespace-pre-wrap">
-                  {error}
+                  {friendlyError(error)}
                 </p>
               </div>
               <button

@@ -58,6 +58,14 @@ beforeEach(async () => {
 });
 
 describe("migrations and durable execution", () => {
+  it("shows a failed verification as needing attention even when the tool call completed", async () => {
+    await enqueueWorkflow(user!, project!, input);
+    const run = (await claimRun())!;
+    await taskStore(run, new AbortController().signal).step("verify-0", "verifier", {}, async () => ({ status: "failed", checks: [], screenshots: [] }));
+    const view = await workflowView(project!.id);
+    expect(view?.tasks.find((task) => task.role === "verifier")?.status).toBe("failed");
+    expect((await database.select().from(schema.agentTasks))[0]?.status).toBe("succeeded");
+  });
   it("supports a fresh install using the single-statement SQL file", async () => {
     const fresh = new PGlite();
     try {

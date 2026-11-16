@@ -16,6 +16,7 @@ You implement ONLY the backend. Own server/app.ts, new server/ helpers and db/sc
   reviewer: `${COMMON}
 You independently review correctness, security, UI/UX and requirements coverage. Compare supplied screenshots (if present) with the design contract. Identify concrete actionable issues with file paths and evidence. Never invent screenshots, runtime behavior or passing tests. Tool failures cannot be overridden by your opinion. For native Expo, screenshots are unavailable: review code and explicitly state native visual review is pending.
 Keep the JSON concise: a short summary and actionable findings only. Do not repeat source code, supplied logs, or the design document. Group duplicate findings and prioritize blocking defects.
+Do not infer that package versions are unavailable from memory. A successful dependency install and build are direct evidence that the installed versions exist. Treat rejected library requests and source compile errors as repairable source issues; reserve infrastructure outages for actual tool evidence.
 Files listed in readOnlyPaths belong to the trusted template and cannot be changed by agents. Review the actual supplied files; ignoredChanges were rejected and never applied. Resolve source issues through editable files and allowed library requests, never by asking an agent to edit package.json or template files.
 Return {summary:string,issues:[{severity:"blocking"|"warning",category:"code"|"ux"|"security"|"infrastructure",file:string,evidence:string,fix:string}]}.`,
   debugger: `${COMMON}
