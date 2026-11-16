@@ -13,6 +13,20 @@ const browser = await chromium.launch({
 });
 const checks = [];
 const screenshots = [];
+async function clickJourneyTarget(page, step) {
+  const targets = page.getByRole(step.role, { name: step.name, exact: true }).filter({ visible: true });
+  await targets.first().waitFor({ state: "visible" });
+  if (step.role === "link" && (await targets.count()) > 1) {
+    const destinations = await targets.evaluateAll((elements) => elements.map((element) => element.href));
+    // A navigation link and a hero link may intentionally share a destination.
+    // Keep Playwright's strict failure for genuinely different destinations.
+    if (destinations[0] && destinations.every((href) => href === destinations[0])) {
+      await targets.first().click();
+      return;
+    }
+  }
+  await targets.click();
+}
 try {
   for (const [name, width, height] of [
     ["desktop", 1440, 960],
@@ -52,10 +66,10 @@ try {
       try {
         await page.goto(baseUrl, { waitUntil: "networkidle" });
         for (const step of journey.steps) {
-          if (step.action === "click") await page.getByRole(step.role, { name: step.name, exact: true }).click();
-          else if (step.action === "fill") await page.getByLabel(step.label, { exact: true }).fill(step.value);
+          if (step.action === "click") await clickJourneyTarget(page, step);
+          else if (step.action === "fill") await page.getByLabel(step.label, { exact: true }).filter({ visible: true }).fill(step.value);
           else if (step.action === "expectText")
-            await page.getByText(step.text, { exact: false }).first().waitFor({ state: "visible" });
+            await page.getByText(step.text, { exact: false }).filter({ visible: true }).first().waitFor({ state: "visible" });
         }
         checks.push({
           name: `${name}: ${journey.name}`,

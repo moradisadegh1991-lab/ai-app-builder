@@ -37,8 +37,10 @@ export default function App() {
       <header className="bg-primary px-6 py-16 text-center text-white">
         <h1 className="text-4xl font-bold">دفتر یادبود</h1>
         <p className="mt-2 opacity-90">پیام خود را بنویسید.</p>
+        <nav aria-label="دسترسی سریع"><a href="#guestbook">نوشتن پیام</a></nav>
+        <a href="#guestbook">نوشتن پیام</a>
       </header>
-      <main className="mx-auto max-w-2xl space-y-6 p-6">
+      <main id="guestbook" className="mx-auto max-w-2xl space-y-6 p-6">
         <form onSubmit={submit} className="space-y-3 rounded-2xl bg-white p-4 shadow">
           <input
             aria-label="نام"
