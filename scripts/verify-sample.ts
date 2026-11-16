@@ -43,6 +43,7 @@ async function main() {
           {
             name: "ثبت و نمایش پیام",
             steps: [
+              { action: "click", role: "link", name: "نوشتن پیام" },
               { action: "fill", label: "نام", value: "آزمایش" },
               { action: "fill", label: "پیام", value: "پیام آزمایشی تیم" },
               { action: "click", role: "button", name: "ارسال" },
