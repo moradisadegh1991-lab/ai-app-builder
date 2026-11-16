@@ -193,6 +193,17 @@ describe("specialist orchestration", () => {
       expect(pkg.dependencies).toHaveProperty("zustand");
     }
   });
+  it("drops rejected libraries after repair so subsequent checks can run", async () => {
+    const ctx = context();
+    const original = model.getMockImplementation()!;
+    model.mockImplementation(async (options) => options.role === "frontend"
+      ? { data: { ...frontend, libraries: ["react-router-dom", "not-allowed"] }, model: "frontend" }
+      : original(options));
+    const result = await runAgents(ctx);
+    expect(result.code?.libraries).toEqual(["react-router-dom"]);
+    expect(ctx.verify).toHaveBeenCalledOnce();
+    expect(model.mock.calls.filter(([options]) => options.role === "debugger")).toHaveLength(1);
+  });
   it("retains an existing project's libraries during the initial fix", async () => {
     const ctx = context();
     ctx.input = { kind: "fix", provider: "openai" };
@@ -210,6 +221,18 @@ describe("specialist orchestration", () => {
     });
     await expect(runAgents(ctx)).rejects.toThrow("Docker image missing");
     expect(model.mock.calls.some(([o]) => o.role === "debugger")).toBe(false);
+  });
+  it("repairs an actual failed check even when the reviewer incorrectly calls it infrastructure", async () => {
+    const ctx = context();
+    vi.mocked(ctx.verify).mockResolvedValueOnce({ ...passed, status: "failed", checks: [{ name: "typecheck", status: "failed", detail: "TS error" }] }).mockResolvedValue(passed);
+    const original = model.getMockImplementation()!;
+    let reviews = 0;
+    model.mockImplementation(async (options) => options.role === "reviewer" && reviews++ === 0
+      ? { data: { summary: "Unsupported package", issues: [{ severity: "blocking", category: "infrastructure", file: "package.json", evidence: "Claims a version is missing", fix: "Investigate" }] }, model: "reviewer" }
+      : original(options));
+    await expect(runAgents(ctx)).resolves.toHaveProperty("code");
+    expect(model.mock.calls.filter(([options]) => options.role === "debugger")).toHaveLength(1);
+    expect(ctx.verify).toHaveBeenCalledTimes(2);
   });
   it("permits one final visual repair only after real technical checks pass", async () => {
     const ctx = context();

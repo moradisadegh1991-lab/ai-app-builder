@@ -126,44 +126,23 @@ export function AgentTeamPanel({ workflow, base }: { workflow: ProjectView["work
                   {task.model}
                 </span>
               )}
-              {task.error && (
-                <p className="mt-1 text-[11px] leading-5 text-danger-fg" dir="auto">
-                  {task.error}
-                </p>
-              )}
             </div>
           </li>
         ))}
       </ol>
-      {workflow.error && (
-        <p role="alert" className="mt-3 text-xs leading-6 text-danger-fg" dir="auto">
-          {workflow.error}
-        </p>
-      )}
       {report && (
         <details className="mt-3 text-xs">
           <summary className="cursor-pointer font-semibold">گزارش ارزیابی کیفیت</summary>
-          {report.review?.summary && <p className="mt-2 leading-6">{report.review.summary}</p>}
+          <p className="mt-2 leading-6">{workflow.evaluation?.status === "passed" ? "بررسی کیفیت با موفقیت انجام شد." : "بررسی کیفیت به پایان رسیده و نتیجه نیاز به پیگیری دارد."}</p>
           {report.verification?.checks.map((check, index) => (
             <div key={index} className="mt-2 rounded border border-line p-2">
               <span dir="auto">
                 {check.name}:{" "}
                 {check.status === "passed" ? "موفق" : check.status === "skipped" ? "انجام نشده" : "ناموفق"}
               </span>
-              {check.detail && (
-                <pre dir="auto" className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap text-[10px] text-muted">
-                  {check.detail}
-                </pre>
-              )}
             </div>
           ))}
-          {report.review?.issues.map((issue, index) => (
-            <p key={index} className="mt-2 leading-6">
-              {issue.evidence}
-              <br />
-              {issue.fix}
-            </p>
-          ))}
+          {Boolean(report.review?.issues.length) && <p className="mt-2 leading-6">نتایج بررسی برای پیگیری تیم ثبت شده‌اند.</p>}
         </details>
       )}
       {workflow.screenshots.length > 0 && (

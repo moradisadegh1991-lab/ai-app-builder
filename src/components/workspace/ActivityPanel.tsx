@@ -115,16 +115,9 @@ export function ActivityPanel({
                   {generation.model}
                 </span>
               </div>
-              {generation.notes && <p className="text-xs leading-6 text-fg-2">{generation.notes}</p>}
+              {generation.notes && <p className="text-xs leading-6 text-fg-2">نتیجهٔ ساخت و بررسی تیم ثبت شده است.</p>}
               {warnings.length > 0 && (
-                <details className="mt-2">
-                  <summary className="text-xs font-medium text-warning-fg">{warnings.length.toLocaleString("fa-IR")} هشدار</summary>
-                  <ul className="mt-1.5 flex list-disc flex-col gap-1 ps-4 text-[11px] leading-5 text-muted">
-                    {warnings.map((warning, index) => (
-                      <li key={index}>{warning}</li>
-                    ))}
-                  </ul>
-                </details>
+                <p className="mt-2 text-xs leading-5 text-muted">نکات بررسی کیفیت برای پیگیری تیم ثبت شده‌اند.</p>
               )}
             </div>
           )}

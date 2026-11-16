@@ -5,6 +5,7 @@ import { imagesOf } from "../attachments";
 import type { schema } from "../db";
 import { appSpecSchema, type AppSpec } from "../spec";
 import { renderProject } from "../templates";
+import { ALLOWED_LIBRARIES } from "../templates/libraries";
 import type { GeneratedFile } from "../templates/types";
 import type { TaskStore } from "../workflows/queue";
 import { WorkflowYield } from "../workflows/yield";
@@ -313,7 +314,9 @@ export async function runAgents(ctx: AgentContext): Promise<AgentResult> {
       throw new Error(round === MAX_REPAIR_ROUNDS
         ? "پس از دو دور اصلاح، بررسی کیفیت هنوز موفق نیست؛ گزارش تیم را بررسی کنید."
         : "پس از اصلاح نهایی ظاهر، بررسی کیفیت هنوز موفق نیست؛ گزارش تیم را بررسی کنید.");
-    if (reviewed.data.issues.some((i) => i.severity === "blocking" && i.category === "infrastructure"))
+    // A reviewer's speculation about infrastructure must not stop repair of a
+    // real failed check. Actual tool outages are already handled as blocked above.
+    if (verification.status === "passed" && reviewed.data.issues.some((i) => i.severity === "blocking" && i.category === "infrastructure"))
       throw new Error(reviewed.data.summary);
     const patch = await call(
       `repair-${round}`,
@@ -330,7 +333,9 @@ export async function runAgents(ctx: AgentContext): Promise<AgentResult> {
       `${codingRules}\n${ROLE_PROMPTS.debugger}${visualRepair ? `\n${VISUAL_REPAIR_RULES}` : ""}`,
     );
     applyChanges(patch.data.files, "debugger");
-    libraries = [...new Set([...libraries, ...patch.data.libraries])];
+    // A rejected dependency must not poison every later repair round. Keep the
+    // vetted dependencies and let real type/build checks verify patched imports.
+    libraries = [...new Set([...libraries, ...patch.data.libraries])].filter((name) => Object.hasOwn(ALLOWED_LIBRARIES[project.template], name));
     model = patch.model;
   }
   throw new Error("Unreachable workflow state");

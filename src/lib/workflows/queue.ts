@@ -140,9 +140,9 @@ export async function workflowView(projectId: string) {
     role: string;
     status: string;
     error: string | null;
-    output: { model?: string; screenshots?: { name: string }[] } | null;
+    output: { model?: string; verification?: string; screenshots?: { name: string }[] } | null;
   }>(sql`
-    select id,role,status,error,jsonb_build_object('model',output->'model','screenshots',
+    select id,role,status,error,jsonb_build_object('model',output->'model','verification',output->'status','screenshots',
       coalesce((select jsonb_agg(jsonb_build_object('name',s->>'name')) from jsonb_array_elements(output->'screenshots') s),'[]'::jsonb)) as output
       from agent_tasks where run_id=${run.id} order by created_at,key`);
   const evaluations = await queryRows<{ status: string; report: unknown }>(sql`
@@ -156,7 +156,7 @@ export async function workflowView(projectId: string) {
     tasks: tasks.map((t) => ({
       id: t.id,
       role: t.role,
-      status: t.status,
+      status: t.role === "verifier" && t.status === "succeeded" && ["failed", "blocked"].includes(t.output?.verification ?? "") ? "failed" : t.status,
       error: t.error,
       model: t.output?.model ?? null,
     })),
