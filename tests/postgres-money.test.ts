@@ -1,10 +1,12 @@
-import { beforeAll, afterAll, describe, expect, it } from "vitest";
+import { beforeAll, afterAll, describe, expect, it, vi } from "vitest";
 import { readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { sql } from "drizzle-orm";
 
+const mocked = vi.hoisted(() => ({ database: null as unknown }));
+vi.mock("../src/lib/db", () => ({ db: () => mocked.database }));
 // Only an explicitly supplied disposable CI database may be used here.
 const url = process.env.DISPOSABLE_TEST_DATABASE_URL;
 describe.skipIf(!url)("PostgreSQL money admission", () => {
@@ -15,6 +17,7 @@ describe.skipIf(!url)("PostgreSQL money admission", () => {
     const [guard] = await db`select current_database() as name`;
     if (guard?.name !== "ideaapp_disposable_test") throw new Error("Refusing non-disposable database");
     await db.unsafe(await readFile("drizzle/all-in-one.sql", "utf8"));
+    mocked.database = drizzle(db);
     await db`insert into users(id,email) values(${user},'money-test@example.invalid')`;
     await db`insert into projects(id,user_id,name,slug,idea,ai_provider) values(${project},${user},'test','test','test','openai')`;
   }, 30000);
@@ -41,6 +44,18 @@ describe.skipIf(!url)("PostgreSQL money admission", () => {
       return row?.allowed;
     };
     expect((await Promise.all([attempt(), attempt()])).sort()).toEqual([false, true]);
+  });
+
+  it("preserves one winning visual revision across concurrent database connections", async () => {
+    const { saveVisualProject, loadVisualProject } = await import("../src/lib/visual/store");
+    const document = { schemaVersion: 1, revision: 0, designTokens: { primary: "#112233", background: "#ffffff", direction: "rtl" }, pages: [{ id: randomUUID(), title: "خانه", route: "/", components: [] }] };
+    const initial = await saveVisualProject(user, project, document);
+    const a = structuredClone(initial), b = structuredClone(initial);
+    a.pages[0]!.title = "الف"; b.pages[0]!.title = "ب";
+    const results = await Promise.allSettled([saveVisualProject(user, project, a), saveVisualProject(user, project, b)]);
+    expect(results.filter(r => r.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter(r => r.status === "rejected")).toHaveLength(1);
+    expect((await loadVisualProject(user, project))?.revision).toBe(2);
   });
 
 });
