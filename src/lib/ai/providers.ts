@@ -83,7 +83,8 @@ async function callAnthropic(req: CompletionRequest): Promise<CompletionResult> 
   const client = new Anthropic({
     apiKey: req.apiKey,
     timeout: REQUEST_TIMEOUT_MS,
-    maxRetries: 1,
+    // Each paid attempt must be admitted and accounted for by generateStructured.
+    maxRetries: 0,
   });
   const useFallbacks = FALLBACK_MODELS.has(req.model);
   // Streaming avoids HTTP timeouts on large code-generation outputs.
