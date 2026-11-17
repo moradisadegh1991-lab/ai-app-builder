@@ -25,8 +25,8 @@ describe.skipIf(!url)("PostgreSQL money admission", () => {
   it("serializes separate connections competing for the platform limit", async () => {
     const attempt = async () => {
       const id = randomUUID();
-      const [row] = await db`select reserve_ai_money(${id}::uuid,${user}::uuid,${project}::uuid,null,100,100000,300000,60,${db.json(limits)}::jsonb) as allowed`;
-      return row?.allowed;
+      const rows = await drizzle(db).execute(sql`select reserve_ai_money(${id}::uuid,${user}::uuid,${project}::uuid,null,100,100000,300000,60,${JSON.stringify(limits)}::jsonb) as allowed`);
+      return rows[0]?.allowed;
     };
     expect((await Promise.all([attempt(), attempt()])).sort()).toEqual([false, true]);
   });
