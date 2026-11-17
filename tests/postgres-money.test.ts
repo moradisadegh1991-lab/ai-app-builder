@@ -35,4 +35,12 @@ describe.skipIf(!url)("PostgreSQL money admission", () => {
     const rows = await drizzle(db).execute(sql`select reserve_ai_money(${randomUUID()}::uuid,${user}::uuid,${project}::uuid,null,100,100000,300000,41,${JSON.stringify(limits)}::jsonb) as allowed`);
     expect(rows[0]?.allowed).toBe(false);
   });
+  it("serializes competing free build attempts across connections", async () => {
+    const attempt = async () => {
+      const [row] = await db`select admit_free_build(${randomUUID()}::uuid,${user}::uuid,${project}::uuid,'push',1) as allowed`;
+      return row?.allowed;
+    };
+    expect((await Promise.all([attempt(), attempt()])).sort()).toEqual([false, true]);
+  });
+
 });

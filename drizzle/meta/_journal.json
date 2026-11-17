@@ -71,6 +71,13 @@
       "when": 1795000000001,
       "tag": "0009_money_reservations",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795000000002,
+      "tag": "0010_build_admissions",
+      "breakpoints": true
     }
   ]
 }
