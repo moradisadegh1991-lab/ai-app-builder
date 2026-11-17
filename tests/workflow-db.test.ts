@@ -364,3 +364,31 @@ describe("project cost attribution", () => {
     expect(await projectCost(project!.id, user!.id)).toEqual({ estimatedToman: 12, pricedCalls: 1, unpricedCalls: 1, heldCalls: 0 });
   });
 });
+
+describe("visual project persistence", () => {
+  const visual = () => ({ schemaVersion: 1, revision: 0, designTokens: { primary: "#112233", background: "#ffffff", direction: "rtl" }, pages: [{ id: randomUUID(), title: "خانه", route: "/", components: [] }] });
+  it("saves, reloads, and rejects stale simultaneous edits without losing the winner", async () => {
+    const { saveVisualProject, loadVisualProject } = await import("../src/lib/visual/store");
+    const initial = await saveVisualProject(user!.id, project!.id, visual());
+    expect(initial.revision).toBe(1);
+    expect(await loadVisualProject(user!.id, project!.id)).toEqual(initial);
+    const left = structuredClone(initial), right = structuredClone(initial);
+    left.pages[0]!.title = "الف"; right.pages[0]!.title = "ب";
+    const results = await Promise.allSettled([saveVisualProject(user!.id, project!.id, left), saveVisualProject(user!.id, project!.id, right)]);
+    expect(results.filter(r => r.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter(r => r.status === "rejected")).toHaveLength(1);
+    const stored = await loadVisualProject(user!.id, project!.id);
+    expect(stored?.revision).toBe(2);
+    expect(["الف", "ب"]).toContain(stored?.pages[0]?.title);
+  });
+  it("rejects another user, malformed data and automatic conversion of a generated project", async () => {
+    const { saveVisualProject, loadVisualProject } = await import("../src/lib/visual/store");
+    const [other] = await database.insert(schema.users).values({ email: "visual-other@example.com" }).returning();
+    await expect(saveVisualProject(other!.id, project!.id, visual())).rejects.toMatchObject({ status: 409 });
+    expect(await loadVisualProject(other!.id, project!.id)).toBeNull();
+    await expect(saveVisualProject(user!.id, project!.id, { ...visual(), script: "alert(1)" })).rejects.toMatchObject({ status: 400 });
+    const [generation] = await database.insert(schema.generationJobs).values({ projectId: project!.id, kind: "code", provider: "test", model: "test" }).returning();
+    await database.update(schema.projects).set({ currentGenerationId: generation!.id }).where(sql`id=${project!.id}`);
+    await expect(saveVisualProject(user!.id, project!.id, visual())).rejects.toMatchObject({ status: 409 });
+  });
+});

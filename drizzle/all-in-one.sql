@@ -432,5 +432,14 @@ END;
 $$;
 
 INSERT INTO drizzle.__drizzle_migrations(hash,created_at) VALUES('63af572c72c91e946b951158218c1bf20bc832db194613ea9d54d875b4efa37c',1795000000002);
+-- Drafts are explicit opt-in; existing AI-generated projects are not converted.
+CREATE TABLE visual_projects (
+  project_id uuid PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+  revision integer NOT NULL CHECK (revision >= 1),
+  document jsonb NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+INSERT INTO drizzle.__drizzle_migrations(hash,created_at) VALUES('dc1b899d01dfa886adb7389801322f876e02cf5a21b2020b071a72042ab9b25c',1795000000003);
 END
 $setup$;
