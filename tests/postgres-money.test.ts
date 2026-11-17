@@ -32,7 +32,7 @@ describe.skipIf(!url)("PostgreSQL money admission", () => {
     expect(result[0]?.allowed).toBe(true);
   });
   it("does not admit additional spending above the retained reservation", async () => {
-    const [row] = await db`select reserve_ai_money(${randomUUID()}::uuid,${user}::uuid,${project}::uuid,null,100,100000,300000,41,${db.json(limits)}::jsonb) as allowed`;
-    expect(row?.allowed).toBe(false);
+    const rows = await drizzle(db).execute(sql`select reserve_ai_money(${randomUUID()}::uuid,${user}::uuid,${project}::uuid,null,100,100000,300000,41,${JSON.stringify(limits)}::jsonb) as allowed`);
+    expect(rows[0]?.allowed).toBe(false);
   });
 });
