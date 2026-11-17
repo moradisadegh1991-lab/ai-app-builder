@@ -4,6 +4,7 @@ import { VisualCanvas } from "./VisualCanvas";
 import { api } from "../api";
 import { createVisualTemplate, type VisualTemplateId } from "@/lib/visual/templates";
 import type { VisualProject } from "@/lib/visual/schema";
+import { editHistory, redoHistory, undoHistory, type History } from "@/lib/visual/history";
 
 /** Early data-only draft editor: no AI, code generation, or real backend features. */
 export function VisualStudio({ base }: { base: string }) {
@@ -32,10 +33,16 @@ export function VisualStudio({ base }: { base: string }) {
     const next = structuredClone(draft), target = next.pages.find(p => p.id === pageId)?.components.find(c => c.id === selected);
     if (!target) return;
     target.props.text = value.slice(0, 2000);
-    setPast(items => [...items.slice(-49), draft]); setFuture([]); setDraft(next); setDirty(true);
+    const result = editHistory({ past, present: draft, future }, next);
+    setPast(result.past); setDraft(result.present); setFuture(result.future); setDirty(true);
   };
-  const undo = () => { if (!draft || !past.length) return; setFuture(items => [draft, ...items].slice(0, 50)); setDraft(past[past.length - 1]!); setPast(items => items.slice(0, -1)); setDirty(true); };
-  const redo = () => { if (!draft || !future.length) return; setPast(items => [...items, draft].slice(-50)); setDraft(future[0]!); setFuture(items => items.slice(1)); setDirty(true); };
+  const applyHistory = (transition: (history: History<VisualProject>) => History<VisualProject>) => {
+    if (!draft || saving) return;
+    const result = transition({ past, present: draft, future });
+    setPast(result.past); setDraft(result.present); setFuture(result.future); setDirty(true);
+  };
+  const undo = () => applyHistory(undoHistory);
+  const redo = () => applyHistory(redoHistory);
   const save = async () => {
     if (!draft || saving) return;
     setSaving(true); setError("");
