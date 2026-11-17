@@ -179,6 +179,13 @@ export const buildJobs = pgTable(
   (t) => [index("build_jobs_project_idx").on(t.projectId)],
 );
 
+export const visualProjects = pgTable("visual_projects", {
+  projectId: uuid("project_id").primaryKey().references(() => projects.id, { onDelete: "cascade" }),
+  revision: integer("revision").notNull(),
+  document: jsonb("document").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const buildAdmissions = pgTable(
   "build_admissions",
   {
