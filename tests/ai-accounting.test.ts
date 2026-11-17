@@ -37,9 +37,12 @@ const options = {
   maxOutputTokens: 100,
 };
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   vi.stubEnv("OPENAI_API_KEY", "test-key");
-  vi.stubEnv("AI_GATEWAY_API_KEY", "");
+  vi.stubEnv("AI_GATEWAY_API_KEY", "test-key");
+  vi.stubEnv("AI_GATEWAY_BASE_URL", "https://ai.liara.ir/v1");
+  vi.stubEnv("OPENAI_ECONOMY_MODEL", "test");
+  vi.stubEnv("LIARA_MODEL_PRICING_JSON", JSON.stringify(Object.fromEntries(["openai/test", "openai/economy-model"].map(model => [model, { inputTomanPerMillion: 100000, outputTomanPerMillion: 500000, updatedAt: new Date().toISOString() }]))));
   h.reserve.mockResolvedValue("reservation");
   h.call.mockResolvedValue({
     text: '{"ok":true}',
@@ -143,13 +146,13 @@ describe("AI accounting around provider failures", () => {
     await generateStructured({ ...options, role: "frontend" });
     expect(h.settle).toHaveBeenCalledWith("reservation", expect.objectContaining({ estimatedCostToman: 20, gateway: "ai.liara.ir", role: "frontend", tariffSnapshot: expect.objectContaining({ source: "administrator" }) }));
     h.settle.mockClear();
-    await generateStructured({ ...options, images: [{ mime: "image/png", data: "abc" }] });
-    expect(h.settle).toHaveBeenCalledWith("reservation", expect.objectContaining({ estimatedCostToman: null, tariffSnapshot: null }));
+    await expect(generateStructured({ ...options, images: [{ mime: "image/png", data: "abc" }] })).rejects.toMatchObject({ status: 503 });
+    expect(h.settle).not.toHaveBeenCalled();
   });
   it("keeps free accounts on the economy role model", async () => {
     vi.stubEnv("AGENT_DESIGNER_MODEL", "expensive-model");
     vi.stubEnv("AGENT_DESIGNER_ECONOMY_MODEL", "economy-model");
     await generateStructured({ ...options, role: "designer" });
-    expect(h.call).toHaveBeenCalledWith("openai", expect.objectContaining({ model: "economy-model" }));
+    expect(h.call).toHaveBeenCalledWith("openai", expect.objectContaining({ model: "openai/economy-model" }));
   });
 });
