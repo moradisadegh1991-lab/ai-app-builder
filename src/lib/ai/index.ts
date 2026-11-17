@@ -180,7 +180,16 @@ export async function generateStructured<T>(options: StructuredCallOptions<T>): 
   for (let attempt = 0; ; attempt++) {
     options.signal?.throwIfAborted();
     const reserved = tokenReservation(options.system, options.prompt, maxOutputTokens, options.images);
-    const reservation = await reserveUsage(options.userId, options.runId, reserved, key.usedPlatformKey);
+    // Refuse platform-funded calls when model pricing or vision billing is unknown.
+    const quote = key.usedPlatformKey && !options.images?.length
+      ? liaraModelPrice(process.env.LIARA_MODEL_PRICING_JSON, key.gatewayBaseUrl, "platform", key.model) : null;
+    const maxRateQuote = quote ? { ...quote, inputTomanPerMillion: Math.max(quote.inputTomanPerMillion, quote.outputTomanPerMillion), outputTomanPerMillion: Math.max(quote.inputTomanPerMillion, quote.outputTomanPerMillion) } : null;
+    // Include a fixed allowance for protocol overhead; unknown image charges are not estimated.
+    const maxCost = key.usedPlatformKey ? estimateToman(maxRateQuote, reserved + 4096, 0) : null;
+    if (key.usedPlatformKey && (!maxCost || maxCost < 1))
+      throw new HttpError(503, "قیمت معتبر این مدل در دسترس نیست؛ بعداً تلاش کنید یا کلید شخصی وارد کنید.");
+    const reservation = await reserveUsage(options.userId, options.runId, reserved, key.usedPlatformKey,
+      maxCost ? { projectId: options.projectId, amount: maxCost } : undefined);
     // On an interrupted call, retain the hold: the remote provider may have billed it.
     let result;
     let truncated: CompletionTruncatedError | undefined;

@@ -384,6 +384,8 @@ export const usageReservations = pgTable(
       onDelete: "set null",
     }),
     tokens: integer("tokens").notNull(),
+    projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+    reservedToman: bigint("reserved_toman", { mode: "number" }),
     state: text("state").notNull().default("held"),
     usedPlatformKey: boolean("used_platform_key").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

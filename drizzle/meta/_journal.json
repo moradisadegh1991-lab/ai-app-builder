@@ -64,6 +64,13 @@
       "when": 1795000000000,
       "tag": "0008_usage_cost_estimates",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1795000000001,
+      "tag": "0009_money_reservations",
+      "breakpoints": true
     }
   ]
 }
