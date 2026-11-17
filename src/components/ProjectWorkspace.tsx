@@ -297,10 +297,10 @@ export function ProjectWorkspace({
             void run(selected.kind, `${base}/${selected.kind === "spec" ? "spec" : "generate"}`, "POST", selected.kind === "spec" ? { feedback: selected.feedback, provider } : { provider });
           }} />}
 
-          {activeSection === "overview" && <>
+          <div hidden={activeSection !== "overview"}>
             <OverviewSection project={project} sections={sections} next={next} onNavigate={go} />
-            {!project.generation && <VisualStudio base={base} />}
-          </>}
+            <VisualStudio base={base} canCreate={!project.generation} />
+          </div>
 
           {activeSection === "requirements" && (
             <RequirementsSection

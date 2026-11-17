@@ -7,7 +7,7 @@ import type { VisualProject } from "@/lib/visual/schema";
 import { editHistory, redoHistory, undoHistory, type History } from "@/lib/visual/history";
 
 /** Early data-only draft editor: no AI, code generation, or real backend features. */
-export function VisualStudio({ base }: { base: string }) {
+export function VisualStudio({ base, canCreate }: { base: string; canCreate: boolean }) {
   const [draft, setDraft] = useState<VisualProject | null>(null);
   const [past, setPast] = useState<VisualProject[]>([]), [future, setFuture] = useState<VisualProject[]>([]);
   const [pageId, setPageId] = useState(""), [selected, setSelected] = useState("");
@@ -15,6 +15,7 @@ export function VisualStudio({ base }: { base: string }) {
   const [dirty, setDirty] = useState(false), [device, setDevice] = useState<"mobile" | "tablet" | "desktop">("mobile");
   useEffect(() => {
     const controller = new AbortController();
+    setLoading(true); setDraft(null); setPageId(""); setSelected(""); setPast([]); setFuture([]); setDirty(false); setError("");
     api<{ document: VisualProject | null }>(`${base}/visual`, { signal: controller.signal }).then(({ document }) => {
       if (controller.signal.aborted) return;
       setDraft(document); setPageId(document?.pages[0]?.id ?? "");
@@ -22,6 +23,12 @@ export function VisualStudio({ base }: { base: string }) {
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [base]);
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
   const page = useMemo(() => draft?.pages.find((item) => item.id === pageId), [draft, pageId]);
   const node = page?.components.find((item) => item.id === selected);
   const create = (kind: VisualTemplateId) => {
@@ -67,7 +74,7 @@ export function VisualStudio({ base }: { base: string }) {
   return <section className="panel p-5 mt-4" aria-label="پیش‌نویس ویرایشگر بصری">
     <h2 className="font-bold">پیش‌نویس ویرایشگر بصری</h2>
     <p className="text-sm text-muted mt-2">ویرایش و پیش‌نمایش بدون AI است. داده‌ها نمونه‌اند؛ فرم‌ها و ساخت خروجی از این ویرایشگر هنوز فعال نیستند.</p>
-    {loading ? <p role="status">در حال بارگذاری…</p> : error && !draft ? <p role="alert">{error}</p> : !draft ? <div className="flex flex-wrap gap-2 mt-4">
+    {loading ? <p role="status">در حال بارگذاری…</p> : error && !draft ? <p role="alert">{error}</p> : !draft && !canCreate ? <p className="mt-3 text-sm text-muted">این پروژه دارای کد تولیدشده است؛ ویرایش فعلی آن در بخش کد ادامه دارد.</p> : !draft ? <div className="flex flex-wrap gap-2 mt-4">
       <button className="btn-secondary" onClick={() => create("daily")}>قالب گزارش روزانه</button><button className="btn-secondary" onClick={() => create("maintenance")}>قالب تعمیرات</button><button className="btn-secondary" onClick={() => create("appointment")}>قالب نوبت‌دهی</button>
     </div> : <>
       <div className="flex flex-wrap gap-2 mt-4">{draft.pages.map(p => <button type="button" key={p.id} className="btn-secondary" aria-pressed={pageId === p.id} onClick={() => { setPageId(p.id); setSelected(""); }}>{p.title}</button>)}</div>
