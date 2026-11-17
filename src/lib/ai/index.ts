@@ -8,7 +8,8 @@ import { extractJsonObject } from "./json";
 import { callProvider } from "./providers";
 import { CompletionTruncatedError } from "./errors";
 import { estimateToman } from "./cost-estimate";
-import { isLiaraGateway, liaraCatalogPrice, liaraModelPrice } from "./liara-pricing";
+import { isLiaraGateway, liaraCatalogPrice } from "./liara-pricing";
+import { configuredLiaraPrice } from "./admin-pricing";
 import { AI_PROVIDERS, AI_PROVIDER_LABELS, type AiProviderId, type CompletionImage } from "./types";
 import { reserveUsage, settleUsage, tokenReservation, releaseUsage } from "../workflows/budgets";
 import type { AgentRole } from "../agents/contracts";
@@ -127,7 +128,7 @@ export async function providerAvailability(userId: string) {
       const baseModel = plan.modelTier === "economy" ? economyModels[id]() : defaultModels[id]();
       const platformModel = gatewayBaseUrl() ? gatewayModel(id, baseModel) : baseModel;
       const model = own ? own.metadata.model || defaultModels[id]() : platformModel;
-      const configured = liaraModelPrice(process.env.LIARA_MODEL_PRICING_JSON, gatewayBaseUrl(), source, model);
+      const configured = await configuredLiaraPrice(gatewayBaseUrl(), source, model);
       const price = configured
         ? { inputPerMillion: configured.inputTomanPerMillion, outputPerMillion: configured.outputTomanPerMillion, currency: "IRT" as const, updatedAt: configured.updatedAt, source: "administrator" as const }
         : isLiaraGateway(gatewayBaseUrl(), source) ? await liaraCatalogPrice(model) : null;
@@ -182,7 +183,7 @@ export async function generateStructured<T>(options: StructuredCallOptions<T>): 
     const reserved = tokenReservation(options.system, options.prompt, maxOutputTokens, options.images);
     // Refuse platform-funded calls when model pricing or vision billing is unknown.
     const quote = key.usedPlatformKey && !options.images?.length
-      ? liaraModelPrice(process.env.LIARA_MODEL_PRICING_JSON, key.gatewayBaseUrl, "platform", key.model) : null;
+      ? await configuredLiaraPrice(key.gatewayBaseUrl, "platform", key.model) : null;
     const maxRateQuote = quote ? { ...quote, inputTomanPerMillion: Math.max(quote.inputTomanPerMillion, quote.outputTomanPerMillion), outputTomanPerMillion: Math.max(quote.inputTomanPerMillion, quote.outputTomanPerMillion) } : null;
     // Include a fixed allowance for protocol overhead; unknown image charges are not estimated.
     const maxCost = key.usedPlatformKey ? estimateToman(maxRateQuote, reserved + 4096, 0) : null;
@@ -232,7 +233,7 @@ export async function generateStructured<T>(options: StructuredCallOptions<T>): 
       // Only exact, current administrator-confirmed Liara text tariffs are used.
       // Vision and other providers remain unknown instead of reporting a false zero.
       const tariff = !options.images?.length && result.model === key.model
-        ? liaraModelPrice(process.env.LIARA_MODEL_PRICING_JSON, key.gatewayBaseUrl, key.usedPlatformKey ? "platform" : "user", key.model)
+        ? quote
         : null;
       const estimatedCostToman = estimateToman(tariff, inputTokens, outputTokens);
       await settleUsage(reservation, {

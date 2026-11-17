@@ -425,3 +425,11 @@ export type HostingTarget = (typeof hostingTarget.enumValues)[number];
 export type PlanId = (typeof planId.enumValues)[number];
 export type VpsAgent = typeof vpsAgents.$inferSelect;
 export type WorkflowRun = typeof workflowRuns.$inferSelect;
+
+// Monetary tariffs are explicitly confirmed by an administrator, per gateway and model.
+export const aiTariffs = pgTable("ai_tariffs", {
+  key: text("key").primaryKey(),
+  price: jsonb("price").$type<{ inputTomanPerMillion: number; outputTomanPerMillion: number; updatedAt: string }>().notNull(),
+  updatedBy: uuid("updated_by").notNull().references(() => users.id),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});

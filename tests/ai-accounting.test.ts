@@ -8,6 +8,10 @@ const h = vi.hoisted(() => ({
   settle: vi.fn(),
   release: vi.fn(),
 }));
+vi.mock("../src/lib/ai/admin-pricing", async () => {
+  const { liaraModelPrice } = await import("../src/lib/ai/liara-pricing");
+  return { configuredLiaraPrice: async (gateway: string | undefined, source: string | null, model: string) => liaraModelPrice(process.env.LIARA_MODEL_PRICING_JSON, gateway, source, model) };
+});
 vi.mock("../src/lib/ai/providers", () => ({ callProvider: h.call }));
 vi.mock("../src/lib/integrations/store", () => ({
   getIntegration: async () => null,
