@@ -12,6 +12,7 @@ import { AgentTeamPanel } from "./workspace/AgentTeamPanel";
 import { BuildSection } from "./workspace/BuildSection";
 import { CodeSection } from "./workspace/CodeSection";
 import { CostEstimate } from "./workspace/CostEstimate";
+import { VisualStudio } from "./workspace/VisualStudio";
 import { CloudDeploySection, LocalDeploySection, VpsDeploySection } from "./workspace/DeploySection";
 import { currentSection, nextAction, workspaceFacts, workspaceSections, type SectionId } from "./workspace/model";
 import { OverviewSection } from "./workspace/OverviewSection";
@@ -296,9 +297,10 @@ export function ProjectWorkspace({
             void run(selected.kind, `${base}/${selected.kind === "spec" ? "spec" : "generate"}`, "POST", selected.kind === "spec" ? { feedback: selected.feedback, provider } : { provider });
           }} />}
 
-          {activeSection === "overview" && (
+          {activeSection === "overview" && <>
             <OverviewSection project={project} sections={sections} next={next} onNavigate={go} />
-          )}
+            {!project.generation && <VisualStudio base={base} />}
+          </>}
 
           {activeSection === "requirements" && (
             <RequirementsSection
