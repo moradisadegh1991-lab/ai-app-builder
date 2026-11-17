@@ -350,3 +350,17 @@ describe("free mobile build admission", () => {
     expect(zero.rows[0]?.allowed).toBe(false);
   });
 });
+
+describe("project cost attribution", () => {
+  it("separates unpriced platform calls and excludes another user's usage and BYOK", async () => {
+    const { projectCost } = await import("../src/lib/billing/project-cost");
+    const [other] = await database.insert(schema.users).values({ email: "other-cost@example.com" }).returning();
+    await database.insert(schema.usageRecords).values([
+      { userId: user!.id, projectId: project!.id, provider: "gemini", model: "a", purpose: "code", inputTokens: 10, outputTokens: 5, usedPlatformKey: true, estimatedCostToman: 12 },
+      { userId: user!.id, projectId: project!.id, provider: "gemini", model: "b", purpose: "code", inputTokens: 10, outputTokens: 5, usedPlatformKey: true },
+      { userId: user!.id, projectId: project!.id, provider: "gemini", model: "c", purpose: "code", inputTokens: 10, outputTokens: 5, usedPlatformKey: false, estimatedCostToman: 100 },
+      { userId: other!.id, projectId: project!.id, provider: "gemini", model: "d", purpose: "code", inputTokens: 10, outputTokens: 5, usedPlatformKey: true, estimatedCostToman: 100 },
+    ]);
+    expect(await projectCost(project!.id, user!.id)).toEqual({ estimatedToman: 12, pricedCalls: 1, unpricedCalls: 1, heldCalls: 0 });
+  });
+});

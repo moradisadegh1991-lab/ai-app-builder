@@ -1,5 +1,6 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { attachmentSummary } from "./attachments";
+import { projectCost } from "./billing/project-cost";
 import { db, schema } from "./db";
 import { HttpError } from "./http";
 import { getIntegration } from "./integrations/store";
@@ -95,13 +96,14 @@ export function requireRepo(project: schema.Project) {
 
 /** Client-safe project view, used by pages and API responses. */
 export async function projectView(project: schema.Project) {
-  const [generation, build, deployment, agent, fixRounds, workflow] = await Promise.all([
+  const [generation, build, deployment, agent, fixRounds, workflow, cost] = await Promise.all([
     currentGeneration(project),
     latestBuild(project.id),
     projectDeployment(project.id),
     projectAgent(project.id),
     fixRoundsSinceGreen(project.id),
     workflowView(project.id),
+    projectCost(project.id, project.userId),
   ]);
   return {
     id: project.id,
@@ -117,6 +119,7 @@ export async function projectView(project: schema.Project) {
     aiProvider: project.aiProvider,
     status: workflow && ["queued", "running"].includes(workflow.status) ? ("generating" as const) : project.status,
     workflow,
+    cost,
     spec: project.spec,
     specApprovedAt: project.specApprovedAt?.toISOString() ?? null,
     lastError: project.lastError,

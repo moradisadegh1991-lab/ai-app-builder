@@ -288,7 +288,7 @@ export function ProjectWorkspace({
             </div>
           )}
 
-          <AgentTeamPanel workflow={project.workflow} base={base} />
+          <AgentTeamPanel workflow={project.workflow} base={base} cost={project.cost} />
 
           {estimate && <CostEstimate key={`${estimate.kind}-${provider}`} kind={estimate.kind} textLength={project.idea.length} screens={project.spec?.screens.length ?? 1} needsBackend={project.spec?.needsBackend ?? project.needsCloud ?? false} attachments={project.attachments.length} provider={activeProvider?.label ?? provider} model={activeProvider?.model} disabled={disabled} onCancel={() => setEstimate(null)} onConfirm={() => {
             const selected = estimate;

@@ -24,7 +24,7 @@ const STATUS: Record<string, string> = {
   failed: "نیاز به بررسی",
   cancelled: "متوقف شد",
 };
-export function AgentTeamPanel({ workflow, base }: { workflow: ProjectView["workflow"]; base: string }) {
+export function AgentTeamPanel({ workflow, base, cost }: { workflow: ProjectView["workflow"]; base: string; cost: ProjectView["cost"] }) {
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState("");
   if (!workflow) return null;
@@ -65,6 +65,12 @@ export function AgentTeamPanel({ workflow, base }: { workflow: ProjectView["work
           {STATUS[workflow.status] ?? workflow.status}
         </span>
       </div>
+      <p className="mt-3 text-xs leading-6 text-muted" aria-live="polite">
+        {cost.pricedCalls ? `هزینهٔ تخمینی ثبت‌شده: ${cost.estimatedToman.toLocaleString("fa-IR")} تومان` : "هزینهٔ تخمینی ثبت‌شده در دسترس نیست."}
+        {cost.unpricedCalls > 0 && ` ${cost.unpricedCalls.toLocaleString("fa-IR")} درخواست بدون نرخ تأییدشده است.`}
+        {cost.heldCalls > 0 && ` ${cost.heldCalls.toLocaleString("fa-IR")} درخواست در انتظار تعیین مصرف است.`}
+        {" "}این مقدار صورتحساب نهایی نیست.
+      </p>
       {workflow.status === "queued" && (
         <p className="mt-3 text-xs leading-6 text-muted">
           درخواست ثبت شد. تیم پس از رسیدن نوبت شروع می‌کند؛ می‌توانید صفحه را ببندید.
