@@ -236,20 +236,27 @@ describe("migrations and durable execution", () => {
 
 describe("atomic token reservations", () => {
   it("counts in-flight requests and settles measured usage exactly once", async () => {
-    const first = await reserveUsage(user!.id, undefined, 60000, true);
-    await expect(reserveUsage(user!.id, undefined, 50000, true)).rejects.toMatchObject({ status: 429 });
+    const ceilings = { platform_day: 100000, platform_month: 100000, user_day: 100000, user_month: 100000, project_day: 100000, project_month: 100000, run: 100000 };
+    vi.stubEnv("AI_TOMAN_LIMITS_JSON", JSON.stringify({ common: ceilings, free: ceilings }));
+    const first = await reserveUsage(user!.id, undefined, 60000, true, { projectId: project!.id, amount: 10 });
+    await expect(reserveUsage(user!.id, undefined, 50000, true, { projectId: project!.id, amount: 10 })).rejects.toMatchObject({ status: 429 });
     const details = {
       provider: "openai",
       model: "test",
       purpose: "code",
       inputTokens: 1000,
       outputTokens: 2000,
+      estimatedCostToman: 1500,
+      tariffSnapshot: { inputTomanPerMillion: 500000, outputTomanPerMillion: 500000, updatedAt: "2026-11-16T00:00:00Z", source: "administrator" },
+      role: "frontend",
     };
     await settleUsage(first, details);
     await settleUsage(first, details);
-    expect(await database.select().from(schema.usageRecords)).toHaveLength(1);
-    await expect(reserveUsage(user!.id, undefined, 97000, true)).resolves.toBeTypeOf("string");
-    await expect(reserveUsage(user!.id, undefined, 1, true)).rejects.toMatchObject({ status: 429 });
+    const records = await database.select().from(schema.usageRecords);
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({ reservationId: first, estimatedCostToman: 1500, agentRole: "frontend", tariffSnapshot: details.tariffSnapshot });
+    await expect(reserveUsage(user!.id, undefined, 97000, true, { projectId: project!.id, amount: 10 })).resolves.toBeTypeOf("string");
+    await expect(reserveUsage(user!.id, undefined, 1, true, { projectId: project!.id, amount: 10 })).rejects.toMatchObject({ status: 429 });
   });
   it("enforces a workflow budget even with a personal API key", async () => {
     const runId = await enqueueWorkflow(user!, project!, input);
@@ -303,5 +310,43 @@ describe("payment and subscription transaction", () => {
     }
     const [sub] = await database.select().from(schema.subscriptions);
     expect(sub!.currentPeriodEnd.getTime() - Date.now()).toBeGreaterThan(59 * 86400000);
+  });
+});
+
+describe("atomic toman reservations", () => {
+  const limits = { platform_day: 100, platform_month: 100, user_day: 100, user_month: 100, project_day: 100, project_month: 100, run: 100 };
+  beforeEach(() => vi.stubEnv("AI_TOMAN_LIMITS_JSON", JSON.stringify({ common: limits, free: limits })));
+  afterAll(() => vi.unstubAllEnvs());
+  it("admits at most one concurrent reservation that exhausts a shared cap", async () => {
+    const attempt = () => reserveUsage(user!.id, undefined, 100, true, { projectId: project!.id, amount: 60 });
+    const results = await Promise.allSettled([attempt(), attempt()]);
+    expect(results.filter(r => r.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter(r => r.status === "rejected")).toHaveLength(1);
+  });
+  it("refuses unconfigured or unknown cost and preserves BYOK", async () => {
+    vi.stubEnv("AI_TOMAN_LIMITS_JSON", "{}");
+    await expect(reserveUsage(user!.id, undefined, 100, true, { amount: 1 })).rejects.toMatchObject({ status: 503 });
+    await expect(reserveUsage(user!.id, undefined, 100, true)).rejects.toMatchObject({ status: 503 });
+    await expect(reserveUsage(user!.id, undefined, 100, false)).resolves.toBeTypeOf("string");
+  });
+  it("never treats legacy unknown usage as zero", async () => {
+    await database.insert(schema.usageRecords).values({ userId: user!.id, provider: "openai", model: "old", purpose: "spec", inputTokens: 1, outputTokens: 1, usedPlatformKey: true });
+    await expect(reserveUsage(user!.id, undefined, 100, true, { amount: 1 })).rejects.toMatchObject({ status: 429 });
+  });
+});
+
+describe("free mobile build admission", () => {
+  it("counts earlier builds and atomically rejects attempts over the limit", async () => {
+    await database.insert(schema.buildJobs).values({ projectId: project!.id, commitSha: "previous", trigger: "push" });
+    const admit = () => client.query<{ allowed: boolean }>("select admit_free_build($1,$2,$3,'dispatch',2) allowed", [randomUUID(), user!.id, project!.id]);
+    const outcomes = await Promise.all([admit(), admit()]);
+    expect(outcomes.map(result => result.rows[0]?.allowed).sort()).toEqual([false, true]);
+  });
+  it("rejects requests for another user's project and a zero quota", async () => {
+    const [other] = await database.insert(schema.users).values({ email: "other@example.com" }).returning();
+    const result = await client.query<{ allowed: boolean }>("select admit_free_build($1,$2,$3,'push',1) allowed", [randomUUID(), other!.id, project!.id]);
+    expect(result.rows[0]?.allowed).toBe(false);
+    const zero = await client.query<{ allowed: boolean }>("select admit_free_build($1,$2,$3,'push',0) allowed", [randomUUID(), user!.id, project!.id]);
+    expect(zero.rows[0]?.allowed).toBe(false);
   });
 });
