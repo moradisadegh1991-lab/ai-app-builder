@@ -357,5 +357,80 @@ INSERT INTO drizzle.__drizzle_migrations(hash,created_at) VALUES('aa6a603ba2923e
 INSERT INTO drizzle.__drizzle_migrations(hash,created_at) VALUES('5a2376711217d2879a286d7952272a525536064efe59b6c7e24e2bf5df679b4f',1793443164524);
 INSERT INTO drizzle.__drizzle_migrations(hash,created_at) VALUES('f701609c7ff54ca6a54c2600ce0d7b6275703d28b2cc59fd559d1b1a84d05ba7',1794498068526);
 INSERT INTO drizzle.__drizzle_migrations(hash,created_at) VALUES('7128a287ae11c432c09f36e98c6287faabc0567b52b7f052ac2f4d8dac706016',1794498138883);
+-- Nullable: historic records and unsupported tariffs remain explicitly unknown.
+ALTER TABLE usage_records ADD COLUMN reservation_id uuid;
+ALTER TABLE usage_records ADD COLUMN run_id uuid REFERENCES workflow_runs(id) ON DELETE SET NULL;
+ALTER TABLE usage_records ADD COLUMN agent_role text;
+ALTER TABLE usage_records ADD COLUMN gateway text;
+ALTER TABLE usage_records ADD COLUMN estimated_cost_toman bigint;
+ALTER TABLE usage_records ADD COLUMN tariff_snapshot jsonb;
+CREATE UNIQUE INDEX usage_records_reservation_idx ON usage_records(reservation_id);
+
+INSERT INTO drizzle.__drizzle_migrations(hash,created_at) VALUES('793c483d879a30ae654f1491a931efe5a40b7b81cc4730ee62d4a16bda9574d4',1795000000000);
+ALTER TABLE usage_reservations ADD COLUMN project_id uuid REFERENCES projects(id) ON DELETE SET NULL;
+ALTER TABLE usage_reservations ADD COLUMN reserved_toman bigint;
+CREATE INDEX usage_reservations_cost_idx ON usage_reservations(created_at) WHERE used_platform_key AND state <> 'released';
+--> statement-breakpoint
+CREATE FUNCTION reserve_ai_money(p_id uuid,p_user uuid,p_project uuid,p_run uuid,p_tokens integer,
+ p_window bigint,p_week bigint,p_amount bigint,p_limits jsonb) RETURNS boolean LANGUAGE plpgsql AS $$
+DECLARE lim bigint; used bigint; pair record;
+BEGIN
+ IF p_amount IS NULL OR p_amount < 1 OR p_limits IS NULL THEN RETURN false; END IF;
+ -- One transaction lock serializes all financial admissions, including different users.
+ PERFORM pg_advisory_xact_lock(19871205);
+ IF p_project IS NOT NULL AND NOT EXISTS (SELECT 1 FROM projects WHERE id=p_project AND user_id=p_user) THEN RETURN false; END IF;
+ IF p_run IS NOT NULL AND NOT EXISTS (SELECT 1 FROM workflow_runs WHERE id=p_run AND user_id=p_user AND (p_project IS NULL OR project_id=p_project)) THEN RETURN false; END IF;
+ -- Existing unpriced platform usage cannot be assumed to be free.
+ IF EXISTS (SELECT 1 FROM usage_records u WHERE u.used_platform_key AND u.created_at >= now()-interval '30 days' AND (u.estimated_cost_toman IS NULL OR u.reservation_id IS NULL OR NOT EXISTS (SELECT 1 FROM usage_reservations x WHERE x.id=u.reservation_id AND x.reserved_toman IS NOT NULL)))
+ OR EXISTS (SELECT 1 FROM usage_reservations u WHERE u.used_platform_key AND u.state='held' AND u.created_at >= now()-interval '30 days' AND u.reserved_toman IS NULL) THEN RETURN false; END IF;
+ FOR pair IN SELECT * FROM (VALUES
+   ('platform_day', 'day'),('platform_month','month'),('user_day','day'),('user_month','month'),
+   ('project_day','day'),('project_month','month'),('run','run')) AS x(name,period)
+ LOOP
+   IF NOT (p_limits ? pair.name) OR (p_limits->>pair.name) !~ '^[0-9]{1,12}$' THEN RETURN false; END IF;
+   lim := (p_limits->>pair.name)::bigint;
+   SELECT coalesce(sum(reserved_toman),0) INTO used FROM usage_reservations u
+   WHERE u.used_platform_key AND u.state<>'released' AND u.reserved_toman IS NOT NULL
+     AND (CASE pair.period WHEN 'day' THEN u.created_at>=now()-interval '1 day' WHEN 'month' THEN u.created_at>=now()-interval '30 days' ELSE true END)
+     AND (CASE WHEN pair.name LIKE 'user_%' THEN u.user_id=p_user
+               WHEN pair.name LIKE 'project_%' THEN p_project IS NOT NULL AND u.project_id=p_project
+               WHEN pair.name='run' THEN p_run IS NOT NULL AND u.run_id=p_run ELSE true END);
+   IF used+p_amount>lim THEN RETURN false; END IF;
+ END LOOP;
+ IF NOT reserve_ai_usage(p_id,p_user,p_run,p_tokens,true,p_window,p_week) THEN RETURN false; END IF;
+ UPDATE usage_reservations SET project_id=p_project,reserved_toman=p_amount WHERE id=p_id;
+ RETURN true;
+END;
+$$;
+
+INSERT INTO drizzle.__drizzle_migrations(hash,created_at) VALUES('b23754521fbb28d1506869d9a215071c5c1e05c1ca445550c66706985332a91c',1795000000001);
+CREATE TABLE build_admissions (
+  id uuid PRIMARY KEY,
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  trigger text NOT NULL CHECK (trigger IN ('push','dispatch')),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  build_job_id uuid REFERENCES build_jobs(id) ON DELETE SET NULL
+);
+CREATE INDEX build_admissions_user_created_idx ON build_admissions(user_id,created_at);
+--> statement-breakpoint
+CREATE FUNCTION admit_free_build(p_id uuid,p_user uuid,p_project uuid,p_trigger text,p_limit integer)
+RETURNS boolean LANGUAGE plpgsql AS $$
+DECLARE used bigint;
+BEGIN
+ IF p_limit IS NULL OR p_limit < 0 OR p_trigger NOT IN ('push','dispatch') THEN RETURN false; END IF;
+ PERFORM id FROM users WHERE id=p_user FOR UPDATE;
+ IF NOT FOUND OR NOT EXISTS (SELECT 1 FROM projects WHERE id=p_project AND user_id=p_user) THEN RETURN false; END IF;
+ SELECT (SELECT count(*) FROM build_admissions WHERE user_id=p_user AND created_at>=now()-interval '30 days') +
+        (SELECT count(*) FROM build_jobs b JOIN projects p ON p.id=b.project_id
+         WHERE p.user_id=p_user AND p.template <> 'web' AND b.created_at>=now()-interval '30 days'
+           AND NOT EXISTS (SELECT 1 FROM build_admissions a WHERE a.build_job_id=b.id)) INTO used;
+ IF used>=p_limit THEN RETURN false; END IF;
+ INSERT INTO build_admissions(id,user_id,project_id,trigger) VALUES(p_id,p_user,p_project,p_trigger);
+ RETURN true;
+END;
+$$;
+
+INSERT INTO drizzle.__drizzle_migrations(hash,created_at) VALUES('63af572c72c91e946b951158218c1bf20bc832db194613ea9d54d875b4efa37c',1795000000002);
 END
 $setup$;

@@ -179,6 +179,19 @@ export const buildJobs = pgTable(
   (t) => [index("build_jobs_project_idx").on(t.projectId)],
 );
 
+export const buildAdmissions = pgTable(
+  "build_admissions",
+  {
+    id: uuid("id").primaryKey(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+    trigger: text("trigger").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    buildJobId: uuid("build_job_id").references(() => buildJobs.id, { onDelete: "set null" }),
+  },
+  (t) => [index("build_admissions_user_created_idx").on(t.userId, t.createdAt)],
+);
+
 export const deployments = pgTable(
   "deployments",
   {
@@ -292,9 +305,15 @@ export const usageRecords = pgTable(
     inputTokens: integer("input_tokens").notNull().default(0),
     outputTokens: integer("output_tokens").notNull().default(0),
     usedPlatformKey: boolean("used_platform_key").notNull(),
+    reservationId: uuid("reservation_id"),
+    runId: uuid("run_id").references(() => workflowRuns.id, { onDelete: "set null" }),
+    agentRole: text("agent_role"),
+    gateway: text("gateway"),
+    estimatedCostToman: bigint("estimated_cost_toman", { mode: "number" }),
+    tariffSnapshot: jsonb("tariff_snapshot").$type<{ inputTomanPerMillion: number; outputTomanPerMillion: number; updatedAt: string; source: string }>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("usage_records_user_created_idx").on(t.userId, t.createdAt)],
+  (t) => [index("usage_records_user_created_idx").on(t.userId, t.createdAt), uniqueIndex("usage_records_reservation_idx").on(t.reservationId)],
 );
 
 /** Fixed-window request counters for rate limiting (works across serverless instances). */
@@ -378,6 +397,8 @@ export const usageReservations = pgTable(
       onDelete: "set null",
     }),
     tokens: integer("tokens").notNull(),
+    projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+    reservedToman: bigint("reserved_toman", { mode: "number" }),
     state: text("state").notNull().default("held"),
     usedPlatformKey: boolean("used_platform_key").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
