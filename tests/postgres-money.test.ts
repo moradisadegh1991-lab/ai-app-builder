@@ -2,6 +2,8 @@ import { beforeAll, afterAll, describe, expect, it } from "vitest";
 import { readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import postgres from "postgres";
+import { drizzle } from "drizzle-orm/postgres-js";
+import { sql } from "drizzle-orm";
 
 // Only an explicitly supplied disposable CI database may be used here.
 const url = process.env.DISPOSABLE_TEST_DATABASE_URL;
@@ -24,6 +26,10 @@ describe.skipIf(!url)("PostgreSQL money admission", () => {
       return row?.allowed;
     };
     expect((await Promise.all([attempt(), attempt()])).sort()).toEqual([false, true]);
+  });
+  it("accepts the application Drizzle JSON parameter shape", async () => {
+    const result = await drizzle(db).execute(sql`select reserve_ai_money(${randomUUID()}::uuid,${user}::uuid,${project}::uuid,null,100,100000,300000,1,${JSON.stringify(limits)}::jsonb) as allowed`);
+    expect(result[0]?.allowed).toBe(true);
   });
   it("does not admit additional spending above the retained reservation", async () => {
     const [row] = await db`select reserve_ai_money(${randomUUID()}::uuid,${user}::uuid,${project}::uuid,null,100,100000,300000,41,${db.json(limits)}::jsonb) as allowed`;
