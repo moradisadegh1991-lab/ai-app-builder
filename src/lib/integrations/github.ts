@@ -247,9 +247,6 @@ export interface WorkflowRun {
   path: string;
   event: string;
   created_at: string;
-  run_started_at?: string | null;
-  updated_at?: string | null;
-  run_attempt?: number | null;
 }
 
 export async function dispatchWorkflow(token: string, owner: string, repo: string, workflowFile: string, ref: string) {

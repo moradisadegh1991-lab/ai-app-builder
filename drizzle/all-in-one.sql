@@ -432,15 +432,5 @@ END;
 $$;
 
 INSERT INTO drizzle.__drizzle_migrations(hash,created_at) VALUES('63af572c72c91e946b951158218c1bf20bc832db194613ea9d54d875b4efa37c',1795000000002);
--- GitHub timestamps are observations, not billed minutes or invoices.
-ALTER TABLE build_jobs ADD COLUMN run_attempt integer;
-ALTER TABLE build_jobs ADD COLUMN run_started_at timestamptz;
-ALTER TABLE build_jobs ADD COLUMN run_updated_at timestamptz;
-ALTER TABLE build_jobs ADD COLUMN reported_elapsed_seconds bigint;
-ALTER TABLE build_jobs ADD COLUMN cost_toman bigint;
-ALTER TABLE build_jobs ADD COLUMN cost_source text;
-ALTER TABLE build_jobs ADD COLUMN cost_recorded_at timestamptz;
-
-INSERT INTO drizzle.__drizzle_migrations(hash,created_at) VALUES('d0ca6070490cd573ea1aa252c1921a839927f9716181608caf1534b4651f8934',1795000000003);
 END
 $setup$;

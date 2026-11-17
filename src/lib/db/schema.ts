@@ -165,13 +165,6 @@ export const buildJobs = pgTable(
     trigger: text("trigger").notNull().default("push"),
     runId: bigint("run_id", { mode: "number" }),
     runNumber: integer("run_number"),
-    runAttempt: integer("run_attempt"),
-    runStartedAt: timestamp("run_started_at", { withTimezone: true }),
-    runUpdatedAt: timestamp("run_updated_at", { withTimezone: true }),
-    reportedElapsedSeconds: bigint("reported_elapsed_seconds", { mode: "number" }),
-    costToman: bigint("cost_toman", { mode: "number" }),
-    costSource: text("cost_source"),
-    costRecordedAt: timestamp("cost_recorded_at", { withTimezone: true }),
     runUrl: text("run_url"),
     // GitHub run status: queued | in_progress | completed (plus "waiting" before the run appears).
     status: text("status").notNull().default("waiting"),
