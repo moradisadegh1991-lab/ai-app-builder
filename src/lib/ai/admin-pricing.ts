@@ -18,11 +18,12 @@ export const tariffInput = z.object({
 }).strict();
 
 /** DB prices override the old environment configuration. No cache: changes take effect immediately. */
-export async function configuredLiaraPrice(gateway: string | undefined, source: string | null, model: string): Promise<LiaraPrice | null> {
+export async function configuredLiaraPrice(gateway: string | undefined, source: string | null, model: string): Promise<(LiaraPrice & { source: "administrator" | "environment-estimate" }) | null> {
   if (!isLiaraGateway(gateway, source)) return null;
   const [entry] = await db().select().from(schema.aiTariffs).where(eq(schema.aiTariffs.key, `liara:${model}`)).limit(1);
   const raw = entry ? JSON.stringify({ [model]: entry.price }) : process.env.LIARA_MODEL_PRICING_JSON;
-  return liaraModelPrice(raw, gateway, source, model);
+  const price = liaraModelPrice(raw, gateway, source, model);
+  return price ? { ...price, source: entry ? "administrator" : "environment-estimate" } : null;
 }
 export async function saveTariff(userId: string, value: z.infer<typeof tariffInput>) {
   const input = tariffInput.parse(value);
@@ -30,4 +31,17 @@ export async function saveTariff(userId: string, value: z.infer<typeof tariffInp
   const key = `liara:${input.model}`;
   await db().insert(schema.aiTariffs).values({ key, price, updatedBy: userId }).onConflictDoUpdate({ target: schema.aiTariffs.key, set: { price, updatedBy: userId, updatedAt: new Date() } });
   return price;
+}
+
+/** Validated environment defaults, displayed separately from saved administrator entries. */
+export function environmentTariffs(raw: string | undefined) {
+  try {
+    const data: unknown = JSON.parse(raw ?? "{}");
+    if (!data || typeof data !== "object" || Array.isArray(data)) return [];
+    return Object.keys(data).flatMap(model => {
+      if (!/^[a-zA-Z0-9._/-]{1,200}$/.test(model)) return [];
+      const price = liaraModelPrice(raw, "https://ai.liara.ir/v1", "platform", model);
+      return price ? [{ key: `liara:${model}`, price, source: "environment" as const }] : [];
+    });
+  } catch { return []; }
 }

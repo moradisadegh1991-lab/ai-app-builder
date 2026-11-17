@@ -130,7 +130,7 @@ export async function providerAvailability(userId: string) {
       const model = own ? own.metadata.model || defaultModels[id]() : platformModel;
       const configured = await configuredLiaraPrice(gatewayBaseUrl(), source, model);
       const price = configured
-        ? { inputPerMillion: configured.inputTomanPerMillion, outputPerMillion: configured.outputTomanPerMillion, currency: "IRT" as const, updatedAt: configured.updatedAt, source: "administrator" as const }
+        ? { inputPerMillion: configured.inputTomanPerMillion, outputPerMillion: configured.outputTomanPerMillion, currency: "IRT" as const, updatedAt: configured.updatedAt, source: configured.source }
         : isLiaraGateway(gatewayBaseUrl(), source) ? await liaraCatalogPrice(model) : null;
       return {
         id,
@@ -230,7 +230,7 @@ export async function generateStructured<T>(options: StructuredCallOptions<T>): 
       outputTokens >= 0 &&
       inputTokens + outputTokens > 0
     ) {
-      // Only exact, current administrator-confirmed Liara text tariffs are used.
+      // Preserve whether a tariff came from saved rates or provisional environment estimates.
       // Vision and other providers remain unknown instead of reporting a false zero.
       const tariff = !options.images?.length && result.model === key.model
         ? quote
@@ -247,7 +247,7 @@ export async function generateStructured<T>(options: StructuredCallOptions<T>): 
         role: options.role,
         gateway: key.gatewayBaseUrl ? new URL(key.gatewayBaseUrl).hostname : undefined,
         estimatedCostToman,
-        tariffSnapshot: tariff && estimatedCostToman !== null ? { ...tariff, source: "administrator" } : null,
+        tariffSnapshot: tariff && estimatedCostToman !== null ? { ...tariff, source: tariff.source } : null,
       });
     }
 

@@ -10,7 +10,7 @@ const h = vi.hoisted(() => ({
 }));
 vi.mock("../src/lib/ai/admin-pricing", async () => {
   const { liaraModelPrice } = await import("../src/lib/ai/liara-pricing");
-  return { configuredLiaraPrice: async (gateway: string | undefined, source: string | null, model: string) => liaraModelPrice(process.env.LIARA_MODEL_PRICING_JSON, gateway, source, model) };
+  return { configuredLiaraPrice: async (gateway: string | undefined, source: string | null, model: string) => { const p = liaraModelPrice(process.env.LIARA_MODEL_PRICING_JSON, gateway, source, model); return p ? { ...p, source: "environment-estimate" as const } : null; } };
 });
 vi.mock("../src/lib/ai/providers", () => ({ callProvider: h.call }));
 vi.mock("../src/lib/integrations/store", () => ({
@@ -148,7 +148,7 @@ describe("AI accounting around provider failures", () => {
     } }));
     h.call.mockResolvedValue({ text: '{"ok":true}', model: "openai/test", inputTokens: 100, outputTokens: 20 });
     await generateStructured({ ...options, role: "frontend" });
-    expect(h.settle).toHaveBeenCalledWith("reservation", expect.objectContaining({ estimatedCostToman: 20, gateway: "ai.liara.ir", role: "frontend", tariffSnapshot: expect.objectContaining({ source: "administrator" }) }));
+    expect(h.settle).toHaveBeenCalledWith("reservation", expect.objectContaining({ estimatedCostToman: 20, gateway: "ai.liara.ir", role: "frontend", tariffSnapshot: expect.objectContaining({ source: "environment-estimate" }) }));
     h.settle.mockClear();
     await expect(generateStructured({ ...options, images: [{ mime: "image/png", data: "abc" }] })).rejects.toMatchObject({ status: 503 });
     expect(h.settle).not.toHaveBeenCalled();
