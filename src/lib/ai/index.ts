@@ -7,6 +7,7 @@ import { getIntegration } from "../integrations/store";
 import { extractJsonObject } from "./json";
 import { callProvider } from "./providers";
 import { CompletionTruncatedError } from "./errors";
+import { estimateToman } from "./cost-estimate";
 import { isLiaraGateway, liaraCatalogPrice, liaraModelPrice } from "./liara-pricing";
 import { AI_PROVIDERS, AI_PROVIDER_LABELS, type AiProviderId, type CompletionImage } from "./types";
 import { reserveUsage, settleUsage, tokenReservation, releaseUsage } from "../workflows/budgets";
@@ -219,6 +220,12 @@ export async function generateStructured<T>(options: StructuredCallOptions<T>): 
       outputTokens >= 0 &&
       inputTokens + outputTokens > 0
     ) {
+      // Only exact, current administrator-confirmed Liara text tariffs are used.
+      // Vision and other providers remain unknown instead of reporting a false zero.
+      const tariff = !options.images?.length && result.model === key.model
+        ? liaraModelPrice(process.env.LIARA_MODEL_PRICING_JSON, key.gatewayBaseUrl, key.usedPlatformKey ? "platform" : "user", key.model)
+        : null;
+      const estimatedCostToman = estimateToman(tariff, inputTokens, outputTokens);
       await settleUsage(reservation, {
         projectId: options.projectId,
         provider: options.provider,
@@ -226,6 +233,11 @@ export async function generateStructured<T>(options: StructuredCallOptions<T>): 
         purpose: options.purpose,
         inputTokens,
         outputTokens,
+        runId: options.runId,
+        role: options.role,
+        gateway: key.gatewayBaseUrl ? new URL(key.gatewayBaseUrl).hostname : undefined,
+        estimatedCostToman,
+        tariffSnapshot: tariff && estimatedCostToman !== null ? { ...tariff, source: "administrator" } : null,
       });
     }
 

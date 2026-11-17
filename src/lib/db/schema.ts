@@ -292,9 +292,15 @@ export const usageRecords = pgTable(
     inputTokens: integer("input_tokens").notNull().default(0),
     outputTokens: integer("output_tokens").notNull().default(0),
     usedPlatformKey: boolean("used_platform_key").notNull(),
+    reservationId: uuid("reservation_id"),
+    runId: uuid("run_id").references(() => workflowRuns.id, { onDelete: "set null" }),
+    agentRole: text("agent_role"),
+    gateway: text("gateway"),
+    estimatedCostToman: bigint("estimated_cost_toman", { mode: "number" }),
+    tariffSnapshot: jsonb("tariff_snapshot").$type<{ inputTomanPerMillion: number; outputTomanPerMillion: number; updatedAt: string; source: string }>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("usage_records_user_created_idx").on(t.userId, t.createdAt)],
+  (t) => [index("usage_records_user_created_idx").on(t.userId, t.createdAt), uniqueIndex("usage_records_reservation_idx").on(t.reservationId)],
 );
 
 /** Fixed-window request counters for rate limiting (works across serverless instances). */
