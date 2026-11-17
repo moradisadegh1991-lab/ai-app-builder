@@ -20,13 +20,13 @@ describe.skipIf(!url)("PostgreSQL money admission", () => {
   it("serializes separate connections competing for the platform limit", async () => {
     const attempt = async () => {
       const id = randomUUID();
-      const [row] = await db`select reserve_ai_money(${id}::uuid,${user}::uuid,${project}::uuid,null,100,100000,300000,60,${JSON.stringify(limits)}::jsonb) as allowed`;
+      const [row] = await db`select reserve_ai_money(${id}::uuid,${user}::uuid,${project}::uuid,null,100,100000,300000,60,${db.json(limits)}::jsonb) as allowed`;
       return row?.allowed;
     };
     expect((await Promise.all([attempt(), attempt()])).sort()).toEqual([false, true]);
   });
   it("does not admit additional spending above the retained reservation", async () => {
-    const [row] = await db`select reserve_ai_money(${randomUUID()}::uuid,${user}::uuid,${project}::uuid,null,100,100000,300000,41,${JSON.stringify(limits)}::jsonb) as allowed`;
+    const [row] = await db`select reserve_ai_money(${randomUUID()}::uuid,${user}::uuid,${project}::uuid,null,100,100000,300000,41,${db.json(limits)}::jsonb) as allowed`;
     expect(row?.allowed).toBe(false);
   });
 });
