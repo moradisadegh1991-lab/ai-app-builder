@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { decryptSecret, encryptSecret } from "./crypto";
 import { admitBuild, linkBuildAdmission } from "./billing/build-admission";
+import { buildObservation } from "./billing/build-observation";
 import { db, schema } from "./db";
 import { env } from "./env";
 import { HttpError } from "./http";
@@ -99,6 +100,7 @@ export async function syncBuild(user: schema.User, project: schema.Project) {
   if (!run) return build;
 
   const update: Partial<schema.BuildJob> = {
+    ...buildObservation(run),
     runId: run.id,
     runNumber: run.run_number,
     runUrl: run.html_url,
