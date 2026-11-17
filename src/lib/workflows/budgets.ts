@@ -37,15 +37,23 @@ export async function settleUsage(
     purpose: string;
     inputTokens: number;
     outputTokens: number;
+    runId?: string;
+    role?: string;
+    gateway?: string;
+    estimatedCostToman?: number | null;
+    tariffSnapshot?: { inputTomanPerMillion: number; outputTomanPerMillion: number; updatedAt: string; source: string } | null;
   },
 ) {
   // A single statement prevents a retry from recording usage twice.
   await queryRows(sql`with settled as (
     update usage_reservations set state='settled',tokens=${details.inputTokens + details.outputTokens}
     where id=${id}::uuid and state='held' returning user_id,used_platform_key
-  ) insert into usage_records(user_id,project_id,provider,model,purpose,input_tokens,output_tokens,used_platform_key)
+  ) insert into usage_records(user_id,project_id,provider,model,purpose,input_tokens,output_tokens,used_platform_key,
+      reservation_id,run_id,agent_role,gateway,estimated_cost_toman,tariff_snapshot)
     select user_id,${details.projectId ?? null}::uuid,${details.provider},${details.model},${details.purpose},
-      ${details.inputTokens},${details.outputTokens},used_platform_key from settled returning id`);
+      ${details.inputTokens},${details.outputTokens},used_platform_key,${id}::uuid,${details.runId ?? null}::uuid,
+      ${details.role ?? null},${details.gateway ?? null},${details.estimatedCostToman ?? null},
+      ${details.tariffSnapshot ? JSON.stringify(details.tariffSnapshot) : null}::jsonb from settled returning id`);
 }
 export async function releaseUsage(id: string) {
   await queryRows(

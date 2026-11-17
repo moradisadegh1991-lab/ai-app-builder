@@ -357,5 +357,15 @@ INSERT INTO drizzle.__drizzle_migrations(hash,created_at) VALUES('aa6a603ba2923e
 INSERT INTO drizzle.__drizzle_migrations(hash,created_at) VALUES('5a2376711217d2879a286d7952272a525536064efe59b6c7e24e2bf5df679b4f',1793443164524);
 INSERT INTO drizzle.__drizzle_migrations(hash,created_at) VALUES('f701609c7ff54ca6a54c2600ce0d7b6275703d28b2cc59fd559d1b1a84d05ba7',1794498068526);
 INSERT INTO drizzle.__drizzle_migrations(hash,created_at) VALUES('7128a287ae11c432c09f36e98c6287faabc0567b52b7f052ac2f4d8dac706016',1794498138883);
+-- Nullable: historic records and unsupported tariffs remain explicitly unknown.
+ALTER TABLE usage_records ADD COLUMN reservation_id uuid;
+ALTER TABLE usage_records ADD COLUMN run_id uuid REFERENCES workflow_runs(id) ON DELETE SET NULL;
+ALTER TABLE usage_records ADD COLUMN agent_role text;
+ALTER TABLE usage_records ADD COLUMN gateway text;
+ALTER TABLE usage_records ADD COLUMN estimated_cost_toman bigint;
+ALTER TABLE usage_records ADD COLUMN tariff_snapshot jsonb;
+CREATE UNIQUE INDEX usage_records_reservation_idx ON usage_records(reservation_id);
+
+INSERT INTO drizzle.__drizzle_migrations(hash,created_at) VALUES('793c483d879a30ae654f1491a931efe5a40b7b81cc4730ee62d4a16bda9574d4',1795000000000);
 END
 $setup$;

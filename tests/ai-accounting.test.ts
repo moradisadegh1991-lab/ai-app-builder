@@ -132,6 +132,20 @@ describe("AI accounting around provider failures", () => {
     });
     expect(h.settle).toHaveBeenCalledOnce();
   });
+  it("stores an estimate only for a current, exact Liara text tariff", async () => {
+    vi.stubEnv("AI_GATEWAY_API_KEY", "test-key");
+    vi.stubEnv("AI_GATEWAY_BASE_URL", "https://ai.liara.ir/v1");
+    vi.stubEnv("OPENAI_ECONOMY_MODEL", "test");
+    vi.stubEnv("LIARA_MODEL_PRICING_JSON", JSON.stringify({ "openai/test": {
+      inputTomanPerMillion: 100000, outputTomanPerMillion: 500000, updatedAt: new Date().toISOString(),
+    } }));
+    h.call.mockResolvedValue({ text: '{"ok":true}', model: "openai/test", inputTokens: 100, outputTokens: 20 });
+    await generateStructured({ ...options, role: "frontend" });
+    expect(h.settle).toHaveBeenCalledWith("reservation", expect.objectContaining({ estimatedCostToman: 20, gateway: "ai.liara.ir", role: "frontend", tariffSnapshot: expect.objectContaining({ source: "administrator" }) }));
+    h.settle.mockClear();
+    await generateStructured({ ...options, images: [{ mime: "image/png", data: "abc" }] });
+    expect(h.settle).toHaveBeenCalledWith("reservation", expect.objectContaining({ estimatedCostToman: null, tariffSnapshot: null }));
+  });
   it("keeps free accounts on the economy role model", async () => {
     vi.stubEnv("AGENT_DESIGNER_MODEL", "expensive-model");
     vi.stubEnv("AGENT_DESIGNER_ECONOMY_MODEL", "economy-model");

@@ -244,10 +244,15 @@ describe("atomic token reservations", () => {
       purpose: "code",
       inputTokens: 1000,
       outputTokens: 2000,
+      estimatedCostToman: 1500,
+      tariffSnapshot: { inputTomanPerMillion: 500000, outputTomanPerMillion: 500000, updatedAt: "2026-11-16T00:00:00Z", source: "administrator" },
+      role: "frontend",
     };
     await settleUsage(first, details);
     await settleUsage(first, details);
-    expect(await database.select().from(schema.usageRecords)).toHaveLength(1);
+    const records = await database.select().from(schema.usageRecords);
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({ reservationId: first, estimatedCostToman: 1500, agentRole: "frontend", tariffSnapshot: details.tariffSnapshot });
     await expect(reserveUsage(user!.id, undefined, 97000, true)).resolves.toBeTypeOf("string");
     await expect(reserveUsage(user!.id, undefined, 1, true)).rejects.toMatchObject({ status: 429 });
   });
