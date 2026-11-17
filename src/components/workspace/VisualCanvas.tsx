@@ -2,7 +2,7 @@ import { createElement, type CSSProperties, type ReactNode } from "react";
 import type { VisualComponent, VisualProject } from "@/lib/visual/schema";
 
 /** Only trusted components render data; arbitrary user code and HTML are never evaluated. */
-function renderNode(node: VisualComponent): ReactNode {
+function renderNode(node: VisualComponent, selectedId?: string): ReactNode {
   if (node.style.visible === false) return null;
   const st: CSSProperties = {
     color: node.style.color, backgroundColor: node.style.background,
@@ -10,11 +10,13 @@ function renderNode(node: VisualComponent): ReactNode {
     borderRadius: node.style.radius,
     width: node.style.width === "full" ? "100%" : node.style.width === "half" ? "50%" : undefined,
     textAlign: node.style.align,
+    outline: node.id === selectedId ? "2px solid #0f766e" : undefined,
+    outlineOffset: node.id === selectedId ? "2px" : undefined,
     ...(node.type === "stack" ? { display: "flex", flexDirection: "column" } : {}),
     ...(node.type === "grid" ? { display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))" } : {}),
   };
   const attr = { key: node.id, style: st, "data-visual-id": node.id };
-  const children = node.children.map(renderNode);
+  const children = node.children.map(child => renderNode(child, selectedId));
   switch (node.type) {
     case "text": return createElement("p", attr, node.props.text);
     case "heading": return createElement("h2", attr, node.props.text);
@@ -26,10 +28,10 @@ function renderNode(node: VisualComponent): ReactNode {
     default: return createElement("div", attr, ...children);
   }
 }
-export function VisualCanvas({ project, pageId }: { project: VisualProject; pageId: string }) {
+export function VisualCanvas({ project, pageId, selectedId }: { project: VisualProject; pageId: string; selectedId?: string }) {
   const page = project.pages.find((p) => p.id === pageId);
   if (!page) return <p role="status">صفحه پیدا نشد.</p>;
   return <div dir={project.designTokens.direction} style={{ color: project.designTokens.primary, backgroundColor: project.designTokens.background }} aria-label={`پیش‌نمایش ${page.title}`}>
-    {page.components.map(renderNode)}
+    {page.components.map(node => renderNode(node, selectedId))}
   </div>;
 }

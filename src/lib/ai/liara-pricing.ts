@@ -7,7 +7,7 @@ const priceSchema = z.object({
 }).strict();
 
 export type LiaraPrice = z.infer<typeof priceSchema>;
-export type DisplayPrice = { inputPerMillion: number; outputPerMillion: number; currency: "USD" | "IRT"; updatedAt: string; source: "liara-catalog" | "administrator" };
+export type DisplayPrice = { inputPerMillion: number; outputPerMillion: number; currency: "USD" | "IRT"; updatedAt: string; source: "liara-catalog" | "administrator" | "environment-estimate" };
 
 export function isLiaraGateway(gateway: string | undefined, source: string | null): boolean {
   if (!gateway || source !== "platform") return false;

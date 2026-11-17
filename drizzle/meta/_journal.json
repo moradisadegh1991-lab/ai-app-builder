@@ -85,6 +85,13 @@
       "when": 1795000000003,
       "tag": "0011_visual_projects",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1795000000004,
+      "tag": "0012_panoramic_champions",
+      "breakpoints": true
     }
   ]
 }
