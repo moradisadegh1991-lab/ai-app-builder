@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { decryptSecret, encryptSecret } from "./crypto";
+import { admitBuild, linkBuildAdmission } from "./billing/build-admission";
 import { db, schema } from "./db";
 import { env } from "./env";
 import { HttpError } from "./http";
@@ -44,6 +45,8 @@ export async function pushToGitHub(user: schema.User, project: schema.Project, m
   if (!generation?.files?.length) throw new HttpError(400, "ابتدا کد اپلیکیشن را تولید کنید.");
   const token = await requireGitHubToken(user.id);
 
+  const admission = await admitBuild(user.id, project.id, project.template, "push");
+
   let owner = project.githubOwner;
   let repoName = project.githubRepo;
   if (!owner || !repoName) {
@@ -63,7 +66,8 @@ export async function pushToGitHub(user: schema.User, project: schema.Project, m
     generation.files,
     message ?? `feat: ${generation.kind === "fix" ? "AI build fix" : "AI generated app"} (${generation.provider})`,
   );
-  await db().insert(schema.buildJobs).values({ projectId: project.id, commitSha, trigger: "push" });
+  const [job] = await db().insert(schema.buildJobs).values({ projectId: project.id, commitSha, trigger: "push" }).returning({ id: schema.buildJobs.id });
+  await linkBuildAdmission(admission, job!.id);
   return updateProject(project.id, {
     status: "pushed",
     lastCommitSha: commitSha,
@@ -128,12 +132,14 @@ export async function rebuild(user: schema.User, project: schema.Project) {
   const { owner, repo } = requireRepo(project);
   if (!project.lastCommitSha) throw new HttpError(400, "هنوز کدی در GitHub ثبت نشده است.");
   const token = await requireGitHubToken(user.id);
+  const admission = await admitBuild(user.id, project.id, project.template, "dispatch");
   await github.dispatchWorkflow(token, owner, repo, workflowFile(project.template), "main");
-  await db().insert(schema.buildJobs).values({
+  const [job] = await db().insert(schema.buildJobs).values({
     projectId: project.id,
     commitSha: project.lastCommitSha,
     trigger: "dispatch",
-  });
+  }).returning({ id: schema.buildJobs.id });
+  await linkBuildAdmission(admission, job!.id);
 }
 
 export async function downloadApkUrl(user: schema.User, project: schema.Project) {

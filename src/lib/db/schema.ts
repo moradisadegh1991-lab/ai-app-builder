@@ -179,6 +179,19 @@ export const buildJobs = pgTable(
   (t) => [index("build_jobs_project_idx").on(t.projectId)],
 );
 
+export const buildAdmissions = pgTable(
+  "build_admissions",
+  {
+    id: uuid("id").primaryKey(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+    trigger: text("trigger").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    buildJobId: uuid("build_job_id").references(() => buildJobs.id, { onDelete: "set null" }),
+  },
+  (t) => [index("build_admissions_user_created_idx").on(t.userId, t.createdAt)],
+);
+
 export const deployments = pgTable(
   "deployments",
   {

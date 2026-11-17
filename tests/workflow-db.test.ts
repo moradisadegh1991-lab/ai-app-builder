@@ -334,3 +334,19 @@ describe("atomic toman reservations", () => {
     await expect(reserveUsage(user!.id, undefined, 100, true, { amount: 1 })).rejects.toMatchObject({ status: 429 });
   });
 });
+
+describe("free mobile build admission", () => {
+  it("counts earlier builds and atomically rejects attempts over the limit", async () => {
+    await database.insert(schema.buildJobs).values({ projectId: project!.id, commitSha: "previous", trigger: "push" });
+    const admit = () => client.query<{ allowed: boolean }>("select admit_free_build($1,$2,$3,'dispatch',2) allowed", [randomUUID(), user!.id, project!.id]);
+    const outcomes = await Promise.all([admit(), admit()]);
+    expect(outcomes.map(result => result.rows[0]?.allowed).sort()).toEqual([false, true]);
+  });
+  it("rejects requests for another user's project and a zero quota", async () => {
+    const [other] = await database.insert(schema.users).values({ email: "other@example.com" }).returning();
+    const result = await client.query<{ allowed: boolean }>("select admit_free_build($1,$2,$3,'push',1) allowed", [randomUUID(), other!.id, project!.id]);
+    expect(result.rows[0]?.allowed).toBe(false);
+    const zero = await client.query<{ allowed: boolean }>("select admit_free_build($1,$2,$3,'push',0) allowed", [randomUUID(), user!.id, project!.id]);
+    expect(zero.rows[0]?.allowed).toBe(false);
+  });
+});
