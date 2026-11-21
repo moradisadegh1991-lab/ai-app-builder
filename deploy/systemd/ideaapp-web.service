@@ -10,7 +10,7 @@ Group=ideaapp
 WorkingDirectory=/opt/ideaapp/current
 Environment=NODE_ENV=production
 Environment=HOSTNAME=127.0.0.1
-Environment=PORT=3100
+Environment=PORT=3310
 EnvironmentFile=/etc/ideaapp/web.env
 ExecStart=/usr/bin/node /opt/ideaapp/current/.next/standalone/server.js
 Restart=on-failure
