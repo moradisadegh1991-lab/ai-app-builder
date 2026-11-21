@@ -22,7 +22,7 @@ npm run build:selfhost
 
 از checkout تازه استفاده کنید: نسخه قبلی Workflow ممکن است فایل‌های تولیدی نادیده‌گرفته‌شده را زیر `src/app/.well-known/workflow/v1` به جا گذاشته باشد و در build جدید خطا بدهد. این مسیر را در checkout کاری دارای فایل سفارشی، بدون بررسی حذف نکنید.
 
-دستور آخر خروجی Next.js standalone به همراه فایل‌های ایستا را می‌سازد. واحد نمونه `deploy/systemd/ideaapp-web.service` فرض می‌کند نسخه در `/opt/ideaapp/current` و تنظیمات در `/etc/ideaapp/web.env` است. مجوز خواندن این فایل را فقط به سرویس مربوط بدهید. Reverse proxy موجود باید دامنه را به `127.0.0.1:3100` هدایت و TLS را مدیریت کند؛ تنظیمات سایت EPC را بازنویسی نکنید.
+دستور آخر خروجی Next.js standalone به همراه فایل‌های ایستا را می‌سازد. واحد نمونه `deploy/systemd/ideaapp-web.service` فرض می‌کند نسخه در `/opt/ideaapp/current` و تنظیمات در `/etc/ideaapp/web.env` است. مجوز خواندن این فایل را فقط به سرویس مربوط بدهید. در صورت نیاز، `CRON_SECRET` برای endpoint گزارش صف به صورت اختیاری تنظیم می‌شود. Reverse proxy موجود باید دامنه را به `127.0.0.1:3100` هدایت و TLS را مدیریت کند؛ تنظیمات سایت EPC را بازنویسی نکنید.
 
 روی میزبان Worker همان commit و `npm ci`، متغیرهای ضروری در `/etc/ideaapp/worker.env`، سپس تصاویر `worker/Build.Dockerfile`، `worker/Dockerfile` و `postgres:17-alpine` را طبق [راهنمای ایجنت](agentic-workflows.md) آماده کنید. واحد `deploy/systemd/ideaapp-worker.service` صرفاً نمونه است و گروه Docker آن اختیار ریشه دارد؛ برای میزبان مشترک تأیید امنیتی کافی نیست. Web و Worker باید دیتابیس و کلید رمزنگاری یکسان داشته باشند؛ متغیرهای سرویس‌ها را به اندازه نیاز محدود کنید.
 
