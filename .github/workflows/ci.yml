@@ -20,7 +20,18 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
-      - run: npm run build
+      - run: npm run build:selfhost
+      - name: Check standalone server
+        run: |
+          PORT=3100 HOSTNAME=127.0.0.1 NODE_ENV=production node .next/standalone/server.js > /tmp/ideaapp-ci.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for attempt in {1..30}; do
+            if curl -fsS http://127.0.0.1:3100/ > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/ideaapp-ci.log
+          exit 1
 
   postgres-budget:
     runs-on: ubuntu-latest

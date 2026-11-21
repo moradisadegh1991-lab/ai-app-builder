@@ -1,0 +1,22 @@
+[Unit]
+Description=IdeaApp Builder isolated agent worker
+After=network-online.target docker.service
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ideaapp-worker
+Group=ideaapp-worker
+SupplementaryGroups=docker
+WorkingDirectory=/opt/ideaapp/current
+ExecStart=/usr/bin/node --env-file=/etc/ideaapp/worker.env --import tsx scripts/agent-worker.ts
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=45
+NoNewPrivileges=true
+PrivateTmp=false
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
