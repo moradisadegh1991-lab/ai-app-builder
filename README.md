@@ -1,6 +1,6 @@
 # Idea2App AI
 
-تولید کد با **تیم تخصصی AI** انجام می‌شود: معمار، طراح UI/UX، Frontend، Backend، ارزیاب مستقل و متخصص رفع خطا. اجرا در صف PostgreSQL و روی Vercel Workflow یا Worker مستقل ادامه پیدا می‌کند و وضعیت هر متخصص، گزارش کیفیت و تصاویر واقعی مرورگر در صفحه پروژه نمایش داده می‌شوند. [راهنمای راه‌اندازی و معماری](docs/agentic-workflows.md).
+تولید کد با **تیم تخصصی AI** انجام می‌شود: معمار، طراح UI/UX، Frontend، Backend، ارزیاب مستقل و متخصص رفع خطا. اجرا در صف PostgreSQL و روی Worker مستقل ادامه پیدا می‌کند و وضعیت هر متخصص، گزارش کیفیت و تصاویر واقعی مرورگر در صفحه پروژه نمایش داده می‌شوند. [راهنمای راه‌اندازی و معماری](docs/agentic-workflows.md).
 
 پلتفرمی که ایده کاربر را با هوش مصنوعی (OpenAI، Claude، Gemini) به **وب‌سایت** یا **اپ اندروید** تبدیل می‌کند. سورس در
 GitHub خود کاربر ذخیره و با GitHub Actions ساخته می‌شود (APK یا Build سایت) و بسته به انتخاب کاربر، روی VPS خودش، یک VPS
@@ -119,17 +119,9 @@ npm run dev
 
 بررسی سلامت: http://localhost:3000/api/health
 
-## استقرار پلتفرم روی Vercel
+## استقرار مستقل پلتفرم
 
-1. Repository را در Vercel Import کنید (Framework: Next.js) و Fluid Compute را فعال نگه دارید (Routeهای AI تا ۳۰۰ ثانیه).
-2. متغیرهای `.env.example` را وارد کنید و `APP_URL` را نشانی نهایی بگذارید.
-3. Callback در OAuth App گیت‌هاب: `https://<domain>/api/auth/github/callback`.
-4. زرین‌پال: Callback خودکار `https://<domain>/api/billing/zarinpal/callback` است (دامنه باید در پنل زرین‌پال ثبت باشد).
-5. Stripe: Webhook با رویداد `checkout.session.completed` روی `https://<domain>/api/billing/stripe/webhook`.
-6. مطابق [راهنمای اجرا روی Vercel](docs/agentic-workflows.md#vercel)، Snapshot ابزار تست را بسازید و `VERCEL_AGENT_SNAPSHOT_ID` و `CRON_SECRET` را تنظیم کنید. Workflow خودکار صف را پردازش می‌کند و به VPS نیاز ندارد.
-
-خود پلتفرم را روی VPS هم می‌توان اجرا کرد: با PostgreSQL محلی (درایور TCP خودکار انتخاب می‌شود)، `npm run build` و
-`npm start` پشت Caddy.
+راهنمای آماده‌سازی وب‌سرور، Worker، نگهداری Neon، اتصال OAuth و بازگشت به نسخه قبل در [راهنمای استقرار مستقل](docs/self-hosted-deployment.md) آمده است. ساخت APK همچنان از GitHub Actions و اتصال اختیاری Vercel پروژه‌های قدیمی به‌صورت جداگانه پشتیبانی می‌شود.
 
 ## توسعه و تست
 
@@ -168,7 +160,7 @@ tests/                 تست‌های Vitest
 
 ## محدودیت‌ها
 
-- برای عملیات AI روی Vercel باید Workflow و Snapshot ابزار Sandbox تنظیم شوند؛ در نصب شخصی، Worker مستقل دارای Docker طبق [راهنمای تیم تخصصی](docs/agentic-workflows.md) اجرا می‌شود.
+- عملیات AI به Worker مستقل و میزبان امن Docker طبق [راهنمای تیم تخصصی](docs/agentic-workflows.md) نیاز دارد.
 - APKها با کلید Debug امضا می‌شوند؛ نسخه امضاشده برای Google Play هنوز پیاده نشده است.
 - Oracle، Google و AWS برای ثبت‌نام کارت بانکی بین‌المللی می‌خواهند؛ Vercel + Neon بدون کارت کار می‌کند.
 - آموزش‌های تصویری تصاویر نمادین‌اند (نه اسکرین‌شات واقعی) و ممکن است با تغییر ظاهر کنسول این سرویس‌ها کمی متفاوت شوند.
