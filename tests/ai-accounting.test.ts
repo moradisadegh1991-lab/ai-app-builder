@@ -59,6 +59,15 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllEnvs());
 describe("AI accounting around provider failures", () => {
+  it("chooses the owner-confirmed Arvan default for each code role", async () => {
+    vi.stubEnv("AI_GATEWAY_KIND", "arvan");
+    vi.stubEnv("AI_GATEWAY_BASE_URL", "https://api.arvancloudai.ir/v1");
+    vi.stubEnv("ARVAN_MODEL_PRICING_JSON", JSON.stringify({ "Kimi-K2.6": { inputTomanPerMillion: 304000, outputTomanPerMillion: 1280000, updatedAt: new Date().toISOString() } }));
+    h.call.mockResolvedValue({ text: '{"ok":true}', model: "Kimi-K2.6", inputTokens: 100, outputTokens: 20 });
+    await generateStructured({ ...options, role: "frontend" });
+    expect(h.call).toHaveBeenCalledWith("openai", expect.objectContaining({ model: "Kimi-K2.6", gatewayKind: "arvan" }));
+    expect(h.settle).toHaveBeenCalledWith("reservation", expect.objectContaining({ provider: "arvan", model: "Kimi-K2.6" }));
+  });
   it("keeps a user's own provider key outside the Arvan gateway", async () => {
     vi.stubEnv("AI_GATEWAY_KIND", "arvan");
     vi.stubEnv("AI_GATEWAY_BASE_URL", "https://api.arvancloudai.ir/v1");

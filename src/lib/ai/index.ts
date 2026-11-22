@@ -10,6 +10,7 @@ import { CompletionTruncatedError } from "./errors";
 import { estimateToman } from "./cost-estimate";
 import { isLiaraGateway, liaraCatalogPrice, parseConfiguredModelPrice } from "./liara-pricing";
 import { configuredLiaraPrice } from "./admin-pricing";
+import { arvanDefaultModel, arvanDefaultModels, arvanReferenceRate } from "./arvan-reference";
 import { AI_PROVIDERS, AI_PROVIDER_LABELS, type AiProviderId, type CompletionImage } from "./types";
 import { reserveUsage, settleUsage, tokenReservation, releaseUsage } from "../workflows/budgets";
 import type { AgentRole } from "../agents/contracts";
@@ -50,7 +51,9 @@ function validArvanGateway(gateway: string | undefined) {
 function gatewayPrice(gateway: string | undefined, source: string | null, model: string) {
   if (!arvanEnabled()) return configuredLiaraPrice(gateway, source, model);
   if (source !== "platform" || !validArvanGateway(gateway)) return Promise.resolve(null);
-  const p = parseConfiguredModelPrice(process.env.ARVAN_MODEL_PRICING_JSON, model);
+  const raw = process.env.ARVAN_MODEL_PRICING_JSON;
+  if (!raw) return Promise.resolve(arvanReferenceRate(model));
+  const p = parseConfiguredModelPrice(raw, model);
   return Promise.resolve(p ? { ...p, source: "environment-estimate" as const } : null);
 }
 
@@ -90,7 +93,7 @@ async function resolveKey(userId: string, provider: AiProviderId): Promise<Resol
     );
   }
   const { plan } = await activePlan(userId);
-  const model = plan.modelTier === "economy" ? economyModels[provider]() : defaultModels[provider]();
+  const model = gateway && arvanEnabled() ? arvanDefaultModel : plan.modelTier === "economy" ? economyModels[provider]() : defaultModels[provider]();
   return gateway
     ? {
         apiKey: platformKey,
@@ -137,7 +140,7 @@ export async function providerAvailability(userId: string) {
           ? "platform"
           : null;
       const baseModel = plan.modelTier === "economy" ? economyModels[id]() : defaultModels[id]();
-      const platformModel = gatewayBaseUrl() ? gatewayModel(id, baseModel) : baseModel;
+      const platformModel = gatewayBaseUrl() && arvanEnabled() ? arvanDefaultModel : gatewayBaseUrl() ? gatewayModel(id, baseModel) : baseModel;
       const model = own ? own.metadata.model || defaultModels[id]() : platformModel;
       const configured = await gatewayPrice(gatewayBaseUrl(), source, model);
       const price = configured
@@ -184,7 +187,7 @@ export async function generateStructured<T>(options: StructuredCallOptions<T>): 
     const { plan } = await activePlan(options.userId);
     const suffix = key.usedPlatformKey && plan.modelTier === "economy" ? "ECONOMY_MODEL" : "MODEL";
     const model = key.usedPlatformKey && key.gatewayBaseUrl && arvanEnabled()
-      ? process.env[`ARVAN_AGENT_${options.role.toUpperCase()}_${suffix}`]
+      ? (process.env[`ARVAN_AGENT_${options.role.toUpperCase()}_${suffix}`] ?? arvanDefaultModels[options.role])
       : process.env[`AGENT_${options.role.toUpperCase()}_${suffix}`];
     if (key.usedPlatformKey && key.gatewayBaseUrl && arvanEnabled() && !model)
       throw new HttpError(503, "مدل این نقش در درگاه آروان هنوز تنظیم نشده است.");
@@ -199,7 +202,10 @@ export async function generateStructured<T>(options: StructuredCallOptions<T>): 
     // Refuse platform-funded calls when model pricing or vision billing is unknown.
     const quote = key.usedPlatformKey && !options.images?.length
       ? await gatewayPrice(key.gatewayBaseUrl, "platform", key.model) : null;
-    const maxRateQuote = quote ? { ...quote, inputTomanPerMillion: Math.max(quote.inputTomanPerMillion, quote.outputTomanPerMillion), outputTomanPerMillion: Math.max(quote.inputTomanPerMillion, quote.outputTomanPerMillion) } : null;
+    // Public catalogue rates are estimates; reserve twice the higher rate to
+    // allow a margin for tier differences. It is not an invoice guarantee.
+    const rateMargin = quote?.source === "public-reference" ? 2 : 1;
+    const maxRateQuote = quote ? { ...quote, inputTomanPerMillion: rateMargin * Math.max(quote.inputTomanPerMillion, quote.outputTomanPerMillion), outputTomanPerMillion: rateMargin * Math.max(quote.inputTomanPerMillion, quote.outputTomanPerMillion) } : null;
     // Include a fixed allowance for protocol overhead; unknown image charges are not estimated.
     const maxCost = key.usedPlatformKey ? estimateToman(maxRateQuote, reserved + 4096, 0) : null;
     if (key.usedPlatformKey && (!maxCost || maxCost < 1))
@@ -254,7 +260,7 @@ export async function generateStructured<T>(options: StructuredCallOptions<T>): 
       const estimatedCostToman = estimateToman(tariff, inputTokens, outputTokens);
       await settleUsage(reservation, {
         projectId: options.projectId,
-        provider: options.provider,
+        provider: key.usedPlatformKey && key.gatewayBaseUrl && arvanEnabled() ? "arvan" : options.provider,
         model: result.model,
         purpose: options.purpose,
         inputTokens,
