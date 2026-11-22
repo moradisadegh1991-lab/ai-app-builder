@@ -1,0 +1,598 @@
+diff --git a/src/components/api.ts b/src/components/api.ts
+index e4ba8ff..3a1a93d 100644
+--- a/src/components/api.ts
++++ b/src/components/api.ts
+@@ -22,7 +22,7 @@ export interface ProviderInfo {
+   model: string;
+   available: boolean;
+   source: "user" | "platform" | null;
+-  price?: { inputPerMillion: number; outputPerMillion: number; currency: "USD" | "IRT"; updatedAt: string; source: "liara-catalog" | "administrator" } | null;
++  price?: { inputPerMillion: number; outputPerMillion: number; currency: "USD" | "IRT"; updatedAt: string; source: "liara-catalog" | "administrator" | "public-reference" } | null;
+ }
+ 
+ export interface ProvidersResponse {
+diff --git a/src/lib/ai/arvan-price-snapshot.json b/src/lib/ai/arvan-price-snapshot.json
+new file mode 100644
+index 0000000..dbe824c
+--- /dev/null
++++ b/src/lib/ai/arvan-price-snapshot.json
+@@ -0,0 +1,388 @@
++{
++  "source": "https://www.arvancloud.ir/fa/pricing/aiaas",
++  "retrievedAt": "2026-11-22",
++  "currency": "IRT",
++  "unit": "per_million_tokens",
++  "models": [
++    {
++      "name": "GPT-6 Astra",
++      "inputTomanPerMillion": 3200000,
++      "outputTomanPerMillion": 16000000
++    },
++    {
++      "name": "GPT-5.6 Sol Large",
++      "inputTomanPerMillion": 3200000,
++      "outputTomanPerMillion": 14400000
++    },
++    {
++      "name": "GPT-5.6 Sol Small",
++      "inputTomanPerMillion": 1600000,
++      "outputTomanPerMillion": 9600000
++    },
++    {
++      "name": "GPT-5.6 Terra Large",
++      "inputTomanPerMillion": 1280000,
++      "outputTomanPerMillion": 5760000
++    },
++    {
++      "name": "GPT-5.6 Terra Small",
++      "inputTomanPerMillion": 640000,
++      "outputTomanPerMillion": 3840000
++    },
++    {
++      "name": "GPT-5.6 Luna Large",
++      "inputTomanPerMillion": 128000,
++      "outputTomanPerMillion": 576000
++    },
++    {
++      "name": "GPT-5.6 Luna Small",
++      "inputTomanPerMillion": 64000,
++      "outputTomanPerMillion": 384000
++    },
++    {
++      "name": "GPT-5.5 Pro",
++      "inputTomanPerMillion": 9600000,
++      "outputTomanPerMillion": 57600000
++    },
++    {
++      "name": "GPT-5.5",
++      "inputTomanPerMillion": 1600000,
++      "outputTomanPerMillion": 9600000
++    },
++    {
++      "name": "GPT-5.4 Pro",
++      "inputTomanPerMillion": 9600000,
++      "outputTomanPerMillion": 57600000
++    },
++    {
++      "name": "GPT-5.4",
++      "inputTomanPerMillion": 800000,
++      "outputTomanPerMillion": 4800000
++    },
++    {
++      "name": "GPT-5.4 mini",
++      "inputTomanPerMillion": 240000,
++      "outputTomanPerMillion": 1440000
++    },
++    {
++      "name": "GPT-5.4 nano",
++      "inputTomanPerMillion": 64000,
++      "outputTomanPerMillion": 400000
++    },
++    {
++      "name": "GPT-5.2 Pro",
++      "inputTomanPerMillion": 6720000,
++      "outputTomanPerMillion": 53760000
++    },
++    {
++      "name": "GPT-5.2",
++      "inputTomanPerMillion": 560000,
++      "outputTomanPerMillion": 4480000
++    },
++    {
++      "name": "GPT-5.2 Codex",
++      "inputTomanPerMillion": 560000,
++      "outputTomanPerMillion": 4480000
++    },
++    {
++      "name": "GPT-5.1",
++      "inputTomanPerMillion": 400000,
++      "outputTomanPerMillion": 3200000
++    },
++    {
++      "name": "GPT-5.1 Codex",
++      "inputTomanPerMillion": 400000,
++      "outputTomanPerMillion": 3200000
++    },
++    {
++      "name": "GPT-5.1 Codex Max",
++      "inputTomanPerMillion": 400000,
++      "outputTomanPerMillion": 3200000
++    },
++    {
++      "name": "GPT-5.1 Codex mini",
++      "inputTomanPerMillion": 80000,
++      "outputTomanPerMillion": 640000
++    },
++    {
++      "name": "GPT-5 Pro",
++      "inputTomanPerMillion": 4800000,
++      "outputTomanPerMillion": 38400000
++    },
++    {
++      "name": "GPT-5",
++      "inputTomanPerMillion": 400000,
++      "outputTomanPerMillion": 3200000
++    },
++    {
++      "name": "GPT-5 Codex",
++      "inputTomanPerMillion": 400000,
++      "outputTomanPerMillion": 3200000
++    },
++    {
++      "name": "GPT-5 mini",
++      "inputTomanPerMillion": 80000,
++      "outputTomanPerMillion": 640000
++    },
++    {
++      "name": "GPT-5 nano",
++      "inputTomanPerMillion": 16000,
++      "outputTomanPerMillion": 128000
++    },
++    {
++      "name": "GPT-4.1",
++      "inputTomanPerMillion": 640000,
++      "outputTomanPerMillion": 2560000
++    },
++    {
++      "name": "GPT-4.1 mini",
++      "inputTomanPerMillion": 128000,
++      "outputTomanPerMillion": 512000
++    },
++    {
++      "name": "GPT-4.1 nano",
++      "inputTomanPerMillion": 32000,
++      "outputTomanPerMillion": 128000
++    },
++    {
++      "name": "GPT-4o",
++      "inputTomanPerMillion": 800000,
++      "outputTomanPerMillion": 3200000
++    },
++    {
++      "name": "GPT-4o mini",
++      "inputTomanPerMillion": 48000,
++      "outputTomanPerMillion": 192000
++    },
++    {
++      "name": "o3-pro",
++      "inputTomanPerMillion": 6400000,
++      "outputTomanPerMillion": 25600000
++    },
++    {
++      "name": "o3",
++      "inputTomanPerMillion": 640000,
++      "outputTomanPerMillion": 2560000
++    },
++    {
++      "name": "o3-mini",
++      "inputTomanPerMillion": 352000,
++      "outputTomanPerMillion": 1408000
++    },
++    {
++      "name": "o4-mini",
++      "inputTomanPerMillion": 352000,
++      "outputTomanPerMillion": 1408000
++    },
++    {
++      "name": "gpt-oss-120b",
++      "inputTomanPerMillion": 48000,
++      "outputTomanPerMillion": 192000
++    },
++    {
++      "name": "gpt-oss-20b",
++      "inputTomanPerMillion": 22400,
++      "outputTomanPerMillion": 96000
++    },
++    {
++      "name": "Claude Fable 5",
++      "inputTomanPerMillion": 3200000,
++      "outputTomanPerMillion": 16000000
++    },
++    {
++      "name": "Claude Opus 4.7",
++      "inputTomanPerMillion": 1600000,
++      "outputTomanPerMillion": 8000000
++    },
++    {
++      "name": "Claude Opus 4.6",
++      "inputTomanPerMillion": 1600000,
++      "outputTomanPerMillion": 8000000
++    },
++    {
++      "name": "Claude Opus 4.5",
++      "inputTomanPerMillion": 1600000,
++      "outputTomanPerMillion": 8000000
++    },
++    {
++      "name": "Claude Sonnet 4.6",
++      "inputTomanPerMillion": 960000,
++      "outputTomanPerMillion": 4800000
++    },
++    {
++      "name": "Claude Sonnet 4.5",
++      "inputTomanPerMillion": 960000,
++      "outputTomanPerMillion": 4800000
++    },
++    {
++      "name": "Claude Sonnet 4",
++      "inputTomanPerMillion": 1920000,
++      "outputTomanPerMillion": 7200000
++    },
++    {
++      "name": "Claude Haiku 4.5",
++      "inputTomanPerMillion": 320000,
++      "outputTomanPerMillion": 1600000
++    },
++    {
++      "name": "Gemini 3.1 Pro Preview",
++      "inputTomanPerMillion": 640000,
++      "outputTomanPerMillion": 3840000
++    },
++    {
++      "name": "Gemini 3 Pro",
++      "inputTomanPerMillion": 640000,
++      "outputTomanPerMillion": 3840000
++    },
++    {
++      "name": "Gemini 3 Flash Preview",
++      "inputTomanPerMillion": 160000,
++      "outputTomanPerMillion": 960000
++    },
++    {
++      "name": "Gemini 3.1 Flash Lite Preview",
++      "inputTomanPerMillion": 80000,
++      "outputTomanPerMillion": 480000
++    },
++    {
++      "name": "Gemini 2.5 Pro",
++      "inputTomanPerMillion": 400000,
++      "outputTomanPerMillion": 3200000
++    },
++    {
++      "name": "Gemini 2.5 Flash",
++      "inputTomanPerMillion": 96000,
++      "outputTomanPerMillion": 800000
++    },
++    {
++      "name": "Gemini 2.5 Flash Lite",
++      "inputTomanPerMillion": 32000,
++      "outputTomanPerMillion": 128000
++    },
++    {
++      "name": "Gemma 4 31B IT",
++      "inputTomanPerMillion": 64000,
++      "outputTomanPerMillion": 256000
++    },
++    {
++      "name": "Gemma 4 26B A4B IT",
++      "inputTomanPerMillion": 48000,
++      "outputTomanPerMillion": 192000
++    },
++    {
++      "name": "DeepSeek V4 Pro",
++      "inputTomanPerMillion": 556800,
++      "outputTomanPerMillion": 1113600
++    },
++    {
++      "name": "DeepSeek V4 Flash",
++      "inputTomanPerMillion": 44800,
++      "outputTomanPerMillion": 89600
++    },
++    {
++      "name": "DeepSeek V3.2",
++      "inputTomanPerMillion": 89600,
++      "outputTomanPerMillion": 134400
++    },
++    {
++      "name": "DeepSeek V3.1",
++      "inputTomanPerMillion": 179200,
++      "outputTomanPerMillion": 537600
++    },
++    {
++      "name": "Qwen3 Coder 480B A35B",
++      "inputTomanPerMillion": 960000,
++      "outputTomanPerMillion": 3840000
++    },
++    {
++      "name": "Qwen3.5 35B A3B",
++      "inputTomanPerMillion": 840000,
++      "outputTomanPerMillion": 840000
++    },
++    {
++      "name": "Qwen3 30B A3B",
++      "inputTomanPerMillion": 122499,
++      "outputTomanPerMillion": 367501
++    },
++    {
++      "name": "Kimi K3",
++      "inputTomanPerMillion": 960000,
++      "outputTomanPerMillion": 4800000
++    },
++    {
++      "name": "Kimi K2.7 Code",
++      "inputTomanPerMillion": 304000,
++      "outputTomanPerMillion": 1280000
++    },
++    {
++      "name": "Kimi K2.6",
++      "inputTomanPerMillion": 304000,
++      "outputTomanPerMillion": 1280000
++    },
++    {
++      "name": "Kimi K2.5",
++      "inputTomanPerMillion": 192000,
++      "outputTomanPerMillion": 960000
++    },
++    {
++      "name": "GLM-5.3",
++      "inputTomanPerMillion": 336000,
++      "outputTomanPerMillion": 1056000
++    },
++    {
++      "name": "GLM-5.3 Flash",
++      "inputTomanPerMillion": 36000,
++      "outputTomanPerMillion": 120000
++    },
++    {
++      "name": "GLM-5.2",
++      "inputTomanPerMillion": 336000,
++      "outputTomanPerMillion": 1056000
++    },
++    {
++      "name": "GLM-5.1",
++      "inputTomanPerMillion": 448000,
++      "outputTomanPerMillion": 1408000
++    },
++    {
++      "name": "GLM-5",
++      "inputTomanPerMillion": 320000,
++      "outputTomanPerMillion": 1024000
++    },
++    {
++      "name": "GLM-4.7",
++      "inputTomanPerMillion": 192000,
++      "outputTomanPerMillion": 704000
++    },
++    {
++      "name": "GLM-4.6",
++      "inputTomanPerMillion": 192000,
++      "outputTomanPerMillion": 704000
++    },
++    {
++      "name": "MiniMax M2.7",
++      "inputTomanPerMillion": 96000,
++      "outputTomanPerMillion": 384000
++    },
++    {
++      "name": "MiniMax M2.5",
++      "inputTomanPerMillion": 96000,
++      "outputTomanPerMillion": 384000
++    },
++    {
++      "name": "Llama 4 Maverick",
++      "inputTomanPerMillion": 64000,
++      "outputTomanPerMillion": 192000
++    },
++    {
++      "name": "Llama 3.3 70B Instruct",
++      "inputTomanPerMillion": 73600,
++      "outputTomanPerMillion": 128000
++    },
++    {
++      "name": "Xerxes",
++      "inputTomanPerMillion": 52499,
++      "outputTomanPerMillion": 210000
++    }
++  ]
++}
+diff --git a/src/lib/ai/arvan-reference.ts b/src/lib/ai/arvan-reference.ts
+new file mode 100644
+index 0000000..e37ec63
+--- /dev/null
++++ b/src/lib/ai/arvan-reference.ts
+@@ -0,0 +1,37 @@
++import snapshot from "./arvan-price-snapshot.json";
++import type { AgentRole } from "../agents/contracts";
++
++/** Display names from the public price list are not API model identifiers. */
++export const arvanReference = snapshot;
++// IDs verified by the account owner in the Arvan gateway. Availability and
++// output quality must still be checked in the target environment.
++export const arvanDefaultModels: Record<AgentRole, string> = {
++  architect: "Gemini-2.5-Pro", designer: "Gemini-2.5-Pro",
++  frontend: "Kimi-K2.6", backend: "Kimi-K2.6",
++  reviewer: "Gemini-2.5-Pro", debugger: "Kimi-K2.6",
++};
++export const arvanDefaultModel = "Gemini-2.5-Pro";
++
++/** Only exact, verified IDs have snapshot prices. Unknown IDs must fail closed. */
++export function arvanReferenceRate(model: string) {
++  const name = model === "Gemini-2.5-Pro" ? "Gemini 2.5 Pro" : model === "Kimi-K2.6" ? "Kimi K2.6" : null;
++  const price = snapshot.models.find(entry => entry.name === name);
++  return price ? { inputTomanPerMillion: price.inputTomanPerMillion, outputTomanPerMillion: price.outputTomanPerMillion, updatedAt: `${snapshot.retrievedAt}T00:00:00Z`, source: "public-reference" as const } : null;
++}
++
++export const arvanRoleRecommendations = [
++  { role: "معمار محصول", model: "Gemini 2.5 Pro" },
++  { role: "طراح UI/UX", model: "Gemini 2.5 Pro" },
++  { role: "توسعه‌دهنده رابط کاربری", model: "Kimi K2.6" },
++  { role: "توسعه‌دهنده سرور", model: "Kimi K2.6" },
++  { role: "ارزیاب کیفیت", model: "Gemini 2.5 Pro" },
++  { role: "متخصص رفع خطا", model: "Kimi K2.6" },
++] as const;
++
++/** Public-list example only: no rounding per token and no external API call. */
++export function estimateReferencePrice(model: string, inputTokens: number, outputTokens: number): number | null {
++  const price = snapshot.models.find(entry => entry.name === model);
++  if (!price || !Number.isSafeInteger(inputTokens) || inputTokens < 0 || !Number.isSafeInteger(outputTokens) || outputTokens < 0) return null;
++  const amount = Math.ceil((inputTokens * price.inputTomanPerMillion + outputTokens * price.outputTomanPerMillion) / 1_000_000);
++  return Number.isSafeInteger(amount) ? amount : null;
++}
+diff --git a/src/lib/ai/index.ts b/src/lib/ai/index.ts
+index 7f0f3d4..27a0054 100644
+--- a/src/lib/ai/index.ts
++++ b/src/lib/ai/index.ts
+@@ -9,6 +9,7 @@ import { callProvider } from "./providers";
+ import { CompletionTruncatedError } from "./errors";
+ import { estimateToman } from "./cost-estimate";
+ import { isLiaraGateway, liaraCatalogPrice, liaraModelPrice } from "./liara-pricing";
++import { arvanDefaultModel, arvanDefaultModels, arvanReferenceRate } from "./arvan-reference";
+ import { AI_PROVIDERS, AI_PROVIDER_LABELS, type AiProviderId, type CompletionImage } from "./types";
+ import { reserveUsage, settleUsage, tokenReservation, releaseUsage } from "../workflows/budgets";
+ import type { AgentRole } from "../agents/contracts";
+@@ -42,10 +43,18 @@ const gatewayVendors: Record<AiProviderId, string> = {
+ };
+ 
+ const gatewayBaseUrl = () => (env.aiGatewayKey() ? env.aiGatewayBaseUrl() : undefined);
++const arvanEnabled = () => process.env.AI_GATEWAY_KIND === "arvan";
++function validArvanGateway(gateway: string | undefined) {
++  try { const u = new URL(gateway ?? ""); return u.protocol === "https:" && u.hostname === "api.arvancloudai.ir" && u.pathname === "/v1" && !u.username && !u.password && !u.search && !u.hash; } catch { return false; }
++}
++function gatewayPrice(gateway: string | undefined, source: string | null, model: string) {
++  if (arvanEnabled()) return source === "platform" && validArvanGateway(gateway) ? arvanReferenceRate(model) : null;
++  return liaraModelPrice(process.env.LIARA_MODEL_PRICING_JSON, gateway, source, model);
++}
+ 
+ /** Accepts both full gateway IDs ("google/gemini-3.7-flash") and bare names ("gemini-3.7-flash"). */
+ function gatewayModel(provider: AiProviderId, model: string) {
+-  return model.includes("/") ? model : `${gatewayVendors[provider]}/${model}`;
++  return arvanEnabled() || model.includes("/") ? model : `${gatewayVendors[provider]}/${model}`;
+ }
+ 
+ export function isAiProvider(value: string): value is AiProviderId {
+@@ -70,6 +79,7 @@ async function resolveKey(userId: string, provider: AiProviderId): Promise<Resol
+     };
+   }
+   const gateway = gatewayBaseUrl();
++  if (arvanEnabled() && !validArvanGateway(gateway)) throw new HttpError(503, "درگاه آروان به‌درستی تنظیم نشده است.");
+   const platformKey = gateway ? env.aiGatewayKey() : platformKeys[provider]();
+   if (!platformKey) {
+     throw new HttpError(
+@@ -78,7 +88,7 @@ async function resolveKey(userId: string, provider: AiProviderId): Promise<Resol
+     );
+   }
+   const { plan } = await activePlan(userId);
+-  const model = plan.modelTier === "economy" ? economyModels[provider]() : defaultModels[provider]();
++  const model = gateway && arvanEnabled() ? arvanDefaultModel : plan.modelTier === "economy" ? economyModels[provider]() : defaultModels[provider]();
+   return gateway
+     ? {
+         apiKey: platformKey,
+@@ -125,11 +135,11 @@ export async function providerAvailability(userId: string) {
+           ? "platform"
+           : null;
+       const baseModel = plan.modelTier === "economy" ? economyModels[id]() : defaultModels[id]();
+-      const platformModel = gatewayBaseUrl() ? gatewayModel(id, baseModel) : baseModel;
++      const platformModel = gatewayBaseUrl() && arvanEnabled() ? arvanDefaultModel : gatewayBaseUrl() ? gatewayModel(id, baseModel) : baseModel;
+       const model = own ? own.metadata.model || defaultModels[id]() : platformModel;
+-      const configured = liaraModelPrice(process.env.LIARA_MODEL_PRICING_JSON, gatewayBaseUrl(), source, model);
++      const configured = gatewayPrice(gatewayBaseUrl(), source, model);
+       const price = configured
+-        ? { inputPerMillion: configured.inputTomanPerMillion, outputPerMillion: configured.outputTomanPerMillion, currency: "IRT" as const, updatedAt: configured.updatedAt, source: "administrator" as const }
++        ? { inputPerMillion: configured.inputTomanPerMillion, outputPerMillion: configured.outputTomanPerMillion, currency: "IRT" as const, updatedAt: configured.updatedAt, source: arvanEnabled() ? "public-reference" as const : "administrator" as const }
+         : isLiaraGateway(gatewayBaseUrl(), source) ? await liaraCatalogPrice(model) : null;
+       return {
+         id,
+@@ -171,7 +181,9 @@ export async function generateStructured<T>(options: StructuredCallOptions<T>):
+   if (options.role) {
+     const { plan } = await activePlan(options.userId);
+     const suffix = key.usedPlatformKey && plan.modelTier === "economy" ? "ECONOMY_MODEL" : "MODEL";
+-    const model = process.env[`AGENT_${options.role.toUpperCase()}_${suffix}`];
++    const model = key.usedPlatformKey && key.gatewayBaseUrl && arvanEnabled()
++      ? (process.env[`ARVAN_AGENT_${options.role.toUpperCase()}_${suffix}`] ?? arvanDefaultModels[options.role])
++      : process.env[`AGENT_${options.role.toUpperCase()}_${suffix}`];
+     if (model) key.model = key.gatewayBaseUrl ? gatewayModel(options.provider, model) : model;
+   }
+   let maxOutputTokens = options.maxOutputTokens;
+@@ -182,8 +194,9 @@ export async function generateStructured<T>(options: StructuredCallOptions<T>):
+     const reserved = tokenReservation(options.system, options.prompt, maxOutputTokens, options.images);
+     // Refuse platform-funded calls when model pricing or vision billing is unknown.
+     const quote = key.usedPlatformKey && !options.images?.length
+-      ? liaraModelPrice(process.env.LIARA_MODEL_PRICING_JSON, key.gatewayBaseUrl, "platform", key.model) : null;
+-    const maxRateQuote = quote ? { ...quote, inputTomanPerMillion: Math.max(quote.inputTomanPerMillion, quote.outputTomanPerMillion), outputTomanPerMillion: Math.max(quote.inputTomanPerMillion, quote.outputTomanPerMillion) } : null;
++      ? gatewayPrice(key.gatewayBaseUrl, "platform", key.model) : null;
++    const margin = arvanEnabled() ? 2 : 1;
++    const maxRateQuote = quote ? { ...quote, inputTomanPerMillion: margin * Math.max(quote.inputTomanPerMillion, quote.outputTomanPerMillion), outputTomanPerMillion: margin * Math.max(quote.inputTomanPerMillion, quote.outputTomanPerMillion) } : null;
+     // Include a fixed allowance for protocol overhead; unknown image charges are not estimated.
+     const maxCost = key.usedPlatformKey ? estimateToman(maxRateQuote, reserved + 4096, 0) : null;
+     if (key.usedPlatformKey && (!maxCost || maxCost < 1))
+@@ -197,6 +210,7 @@ export async function generateStructured<T>(options: StructuredCallOptions<T>):
+       result = await callProvider(options.provider, {
+         apiKey: key.apiKey,
+         gatewayBaseUrl: key.gatewayBaseUrl,
++        gatewayKind: key.gatewayBaseUrl && arvanEnabled() ? "arvan" : undefined,
+         model: key.model,
+         system: options.system,
+         prompt: options.prompt,
+@@ -229,15 +243,14 @@ export async function generateStructured<T>(options: StructuredCallOptions<T>):
+       outputTokens >= 0 &&
+       inputTokens + outputTokens > 0
+     ) {
+-      // Only exact, current administrator-confirmed Liara text tariffs are used.
+-      // Vision and other providers remain unknown instead of reporting a false zero.
++      // Vision and unknown tariffs remain unknown instead of reporting a false zero.
+       const tariff = !options.images?.length && result.model === key.model
+-        ? liaraModelPrice(process.env.LIARA_MODEL_PRICING_JSON, key.gatewayBaseUrl, key.usedPlatformKey ? "platform" : "user", key.model)
++        ? gatewayPrice(key.gatewayBaseUrl, key.usedPlatformKey ? "platform" : "user", key.model)
+         : null;
+       const estimatedCostToman = estimateToman(tariff, inputTokens, outputTokens);
+       await settleUsage(reservation, {
+         projectId: options.projectId,
+-        provider: options.provider,
++        provider: key.usedPlatformKey && key.gatewayBaseUrl && arvanEnabled() ? "arvan" : options.provider,
+         model: result.model,
+         purpose: options.purpose,
+         inputTokens,
+@@ -246,7 +259,7 @@ export async function generateStructured<T>(options: StructuredCallOptions<T>):
+         role: options.role,
+         gateway: key.gatewayBaseUrl ? new URL(key.gatewayBaseUrl).hostname : undefined,
+         estimatedCostToman,
+-        tariffSnapshot: tariff && estimatedCostToman !== null ? { ...tariff, source: "administrator" } : null,
++        tariffSnapshot: tariff && estimatedCostToman !== null ? { ...tariff, source: arvanEnabled() ? "public-reference" : "administrator" } : null,
+       });
+     }
+ 
+diff --git a/src/lib/ai/providers.ts b/src/lib/ai/providers.ts
+index 1470593..275f3f7 100644
+--- a/src/lib/ai/providers.ts
++++ b/src/lib/ai/providers.ts
+@@ -194,7 +194,7 @@ async function callGateway(req: CompletionRequest): Promise<CompletionResult> {
+     ],
+     max_tokens: req.maxOutputTokens,
+   };
+-  const headers = { authorization: `Bearer ${req.apiKey}` };
++  const headers = { authorization: req.gatewayKind === "arvan" ? `apikey ${req.apiKey.replace(/^apikey\s+/i, "")}` : `Bearer ${req.apiKey}` };
+   let data: any;
+   try {
+     data = await postJson(url, headers, { ...body, response_format: { type: "json_object" } }, req.signal);
+diff --git a/src/lib/ai/types.ts b/src/lib/ai/types.ts
+index 6279423..d504227 100644
+--- a/src/lib/ai/types.ts
++++ b/src/lib/ai/types.ts
+@@ -18,6 +18,7 @@ export interface CompletionRequest {
+   apiKey: string;
+   /** Set to route the call through an OpenAI-compatible gateway instead of the provider's own API. */
+   gatewayBaseUrl?: string;
++  gatewayKind?: "arvan";
+   model: string;
+   system: string;
+   prompt: string;
