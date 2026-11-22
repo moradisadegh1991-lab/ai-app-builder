@@ -7,7 +7,7 @@ const priceSchema = z.object({
 }).strict();
 
 export type LiaraPrice = z.infer<typeof priceSchema>;
-export type DisplayPrice = { inputPerMillion: number; outputPerMillion: number; currency: "USD" | "IRT"; updatedAt: string; source: "liara-catalog" | "administrator" | "environment-estimate" };
+export type DisplayPrice = { inputPerMillion: number; outputPerMillion: number; currency: "USD" | "IRT"; updatedAt: string; source: "liara-catalog" | "administrator" | "environment-estimate" | "public-reference" };
 
 export function isLiaraGateway(gateway: string | undefined, source: string | null): boolean {
   if (!gateway || source !== "platform") return false;
@@ -19,7 +19,13 @@ export function isLiaraGateway(gateway: string | undefined, source: string | nul
 
 /** Only admin-configured prices for the exact model on Liara's platform gateway. */
 export function liaraModelPrice(raw: string | undefined, gateway: string | undefined, source: string | null, model: string): LiaraPrice | null {
-  if (!raw || !isLiaraGateway(gateway, source)) return null;
+  if (!isLiaraGateway(gateway, source)) return null;
+  return parseConfiguredModelPrice(raw, model);
+}
+
+/** Exact model ID and valid dated configured price; caller must verify gateway identity. */
+export function parseConfiguredModelPrice(raw: string | undefined, model: string): LiaraPrice | null {
+  if (!raw) return null;
   try {
     const data: unknown = JSON.parse(raw);
     if (!data || typeof data !== "object" || Array.isArray(data) || !Object.hasOwn(data, model)) return null;

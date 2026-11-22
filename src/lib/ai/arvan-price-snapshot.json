@@ -1,0 +1,388 @@
+{
+  "source": "https://www.arvancloud.ir/fa/pricing/aiaas",
+  "retrievedAt": "2026-11-22",
+  "currency": "IRT",
+  "unit": "per_million_tokens",
+  "models": [
+    {
+      "name": "GPT-6 Astra",
+      "inputTomanPerMillion": 3200000,
+      "outputTomanPerMillion": 16000000
+    },
+    {
+      "name": "GPT-5.6 Sol Large",
+      "inputTomanPerMillion": 3200000,
+      "outputTomanPerMillion": 14400000
+    },
+    {
+      "name": "GPT-5.6 Sol Small",
+      "inputTomanPerMillion": 1600000,
+      "outputTomanPerMillion": 9600000
+    },
+    {
+      "name": "GPT-5.6 Terra Large",
+      "inputTomanPerMillion": 1280000,
+      "outputTomanPerMillion": 5760000
+    },
+    {
+      "name": "GPT-5.6 Terra Small",
+      "inputTomanPerMillion": 640000,
+      "outputTomanPerMillion": 3840000
+    },
+    {
+      "name": "GPT-5.6 Luna Large",
+      "inputTomanPerMillion": 128000,
+      "outputTomanPerMillion": 576000
+    },
+    {
+      "name": "GPT-5.6 Luna Small",
+      "inputTomanPerMillion": 64000,
+      "outputTomanPerMillion": 384000
+    },
+    {
+      "name": "GPT-5.5 Pro",
+      "inputTomanPerMillion": 9600000,
+      "outputTomanPerMillion": 57600000
+    },
+    {
+      "name": "GPT-5.5",
+      "inputTomanPerMillion": 1600000,
+      "outputTomanPerMillion": 9600000
+    },
+    {
+      "name": "GPT-5.4 Pro",
+      "inputTomanPerMillion": 9600000,
+      "outputTomanPerMillion": 57600000
+    },
+    {
+      "name": "GPT-5.4",
+      "inputTomanPerMillion": 800000,
+      "outputTomanPerMillion": 4800000
+    },
+    {
+      "name": "GPT-5.4 mini",
+      "inputTomanPerMillion": 240000,
+      "outputTomanPerMillion": 1440000
+    },
+    {
+      "name": "GPT-5.4 nano",
+      "inputTomanPerMillion": 64000,
+      "outputTomanPerMillion": 400000
+    },
+    {
+      "name": "GPT-5.2 Pro",
+      "inputTomanPerMillion": 6720000,
+      "outputTomanPerMillion": 53760000
+    },
+    {
+      "name": "GPT-5.2",
+      "inputTomanPerMillion": 560000,
+      "outputTomanPerMillion": 4480000
+    },
+    {
+      "name": "GPT-5.2 Codex",
+      "inputTomanPerMillion": 560000,
+      "outputTomanPerMillion": 4480000
+    },
+    {
+      "name": "GPT-5.1",
+      "inputTomanPerMillion": 400000,
+      "outputTomanPerMillion": 3200000
+    },
+    {
+      "name": "GPT-5.1 Codex",
+      "inputTomanPerMillion": 400000,
+      "outputTomanPerMillion": 3200000
+    },
+    {
+      "name": "GPT-5.1 Codex Max",
+      "inputTomanPerMillion": 400000,
+      "outputTomanPerMillion": 3200000
+    },
+    {
+      "name": "GPT-5.1 Codex mini",
+      "inputTomanPerMillion": 80000,
+      "outputTomanPerMillion": 640000
+    },
+    {
+      "name": "GPT-5 Pro",
+      "inputTomanPerMillion": 4800000,
+      "outputTomanPerMillion": 38400000
+    },
+    {
+      "name": "GPT-5",
+      "inputTomanPerMillion": 400000,
+      "outputTomanPerMillion": 3200000
+    },
+    {
+      "name": "GPT-5 Codex",
+      "inputTomanPerMillion": 400000,
+      "outputTomanPerMillion": 3200000
+    },
+    {
+      "name": "GPT-5 mini",
+      "inputTomanPerMillion": 80000,
+      "outputTomanPerMillion": 640000
+    },
+    {
+      "name": "GPT-5 nano",
+      "inputTomanPerMillion": 16000,
+      "outputTomanPerMillion": 128000
+    },
+    {
+      "name": "GPT-4.1",
+      "inputTomanPerMillion": 640000,
+      "outputTomanPerMillion": 2560000
+    },
+    {
+      "name": "GPT-4.1 mini",
+      "inputTomanPerMillion": 128000,
+      "outputTomanPerMillion": 512000
+    },
+    {
+      "name": "GPT-4.1 nano",
+      "inputTomanPerMillion": 32000,
+      "outputTomanPerMillion": 128000
+    },
+    {
+      "name": "GPT-4o",
+      "inputTomanPerMillion": 800000,
+      "outputTomanPerMillion": 3200000
+    },
+    {
+      "name": "GPT-4o mini",
+      "inputTomanPerMillion": 48000,
+      "outputTomanPerMillion": 192000
+    },
+    {
+      "name": "o3-pro",
+      "inputTomanPerMillion": 6400000,
+      "outputTomanPerMillion": 25600000
+    },
+    {
+      "name": "o3",
+      "inputTomanPerMillion": 640000,
+      "outputTomanPerMillion": 2560000
+    },
+    {
+      "name": "o3-mini",
+      "inputTomanPerMillion": 352000,
+      "outputTomanPerMillion": 1408000
+    },
+    {
+      "name": "o4-mini",
+      "inputTomanPerMillion": 352000,
+      "outputTomanPerMillion": 1408000
+    },
+    {
+      "name": "gpt-oss-120b",
+      "inputTomanPerMillion": 48000,
+      "outputTomanPerMillion": 192000
+    },
+    {
+      "name": "gpt-oss-20b",
+      "inputTomanPerMillion": 22400,
+      "outputTomanPerMillion": 96000
+    },
+    {
+      "name": "Claude Fable 5",
+      "inputTomanPerMillion": 3200000,
+      "outputTomanPerMillion": 16000000
+    },
+    {
+      "name": "Claude Opus 4.7",
+      "inputTomanPerMillion": 1600000,
+      "outputTomanPerMillion": 8000000
+    },
+    {
+      "name": "Claude Opus 4.6",
+      "inputTomanPerMillion": 1600000,
+      "outputTomanPerMillion": 8000000
+    },
+    {
+      "name": "Claude Opus 4.5",
+      "inputTomanPerMillion": 1600000,
+      "outputTomanPerMillion": 8000000
+    },
+    {
+      "name": "Claude Sonnet 4.6",
+      "inputTomanPerMillion": 960000,
+      "outputTomanPerMillion": 4800000
+    },
+    {
+      "name": "Claude Sonnet 4.5",
+      "inputTomanPerMillion": 960000,
+      "outputTomanPerMillion": 4800000
+    },
+    {
+      "name": "Claude Sonnet 4",
+      "inputTomanPerMillion": 1920000,
+      "outputTomanPerMillion": 7200000
+    },
+    {
+      "name": "Claude Haiku 4.5",
+      "inputTomanPerMillion": 320000,
+      "outputTomanPerMillion": 1600000
+    },
+    {
+      "name": "Gemini 3.1 Pro Preview",
+      "inputTomanPerMillion": 640000,
+      "outputTomanPerMillion": 3840000
+    },
+    {
+      "name": "Gemini 3 Pro",
+      "inputTomanPerMillion": 640000,
+      "outputTomanPerMillion": 3840000
+    },
+    {
+      "name": "Gemini 3 Flash Preview",
+      "inputTomanPerMillion": 160000,
+      "outputTomanPerMillion": 960000
+    },
+    {
+      "name": "Gemini 3.1 Flash Lite Preview",
+      "inputTomanPerMillion": 80000,
+      "outputTomanPerMillion": 480000
+    },
+    {
+      "name": "Gemini 2.5 Pro",
+      "inputTomanPerMillion": 400000,
+      "outputTomanPerMillion": 3200000
+    },
+    {
+      "name": "Gemini 2.5 Flash",
+      "inputTomanPerMillion": 96000,
+      "outputTomanPerMillion": 800000
+    },
+    {
+      "name": "Gemini 2.5 Flash Lite",
+      "inputTomanPerMillion": 32000,
+      "outputTomanPerMillion": 128000
+    },
+    {
+      "name": "Gemma 4 31B IT",
+      "inputTomanPerMillion": 64000,
+      "outputTomanPerMillion": 256000
+    },
+    {
+      "name": "Gemma 4 26B A4B IT",
+      "inputTomanPerMillion": 48000,
+      "outputTomanPerMillion": 192000
+    },
+    {
+      "name": "DeepSeek V4 Pro",
+      "inputTomanPerMillion": 556800,
+      "outputTomanPerMillion": 1113600
+    },
+    {
+      "name": "DeepSeek V4 Flash",
+      "inputTomanPerMillion": 44800,
+      "outputTomanPerMillion": 89600
+    },
+    {
+      "name": "DeepSeek V3.2",
+      "inputTomanPerMillion": 89600,
+      "outputTomanPerMillion": 134400
+    },
+    {
+      "name": "DeepSeek V3.1",
+      "inputTomanPerMillion": 179200,
+      "outputTomanPerMillion": 537600
+    },
+    {
+      "name": "Qwen3 Coder 480B A35B",
+      "inputTomanPerMillion": 960000,
+      "outputTomanPerMillion": 3840000
+    },
+    {
+      "name": "Qwen3.5 35B A3B",
+      "inputTomanPerMillion": 840000,
+      "outputTomanPerMillion": 840000
+    },
+    {
+      "name": "Qwen3 30B A3B",
+      "inputTomanPerMillion": 122499,
+      "outputTomanPerMillion": 367501
+    },
+    {
+      "name": "Kimi K3",
+      "inputTomanPerMillion": 960000,
+      "outputTomanPerMillion": 4800000
+    },
+    {
+      "name": "Kimi K2.7 Code",
+      "inputTomanPerMillion": 304000,
+      "outputTomanPerMillion": 1280000
+    },
+    {
+      "name": "Kimi K2.6",
+      "inputTomanPerMillion": 304000,
+      "outputTomanPerMillion": 1280000
+    },
+    {
+      "name": "Kimi K2.5",
+      "inputTomanPerMillion": 192000,
+      "outputTomanPerMillion": 960000
+    },
+    {
+      "name": "GLM-5.3",
+      "inputTomanPerMillion": 336000,
+      "outputTomanPerMillion": 1056000
+    },
+    {
+      "name": "GLM-5.3 Flash",
+      "inputTomanPerMillion": 36000,
+      "outputTomanPerMillion": 120000
+    },
+    {
+      "name": "GLM-5.2",
+      "inputTomanPerMillion": 336000,
+      "outputTomanPerMillion": 1056000
+    },
+    {
+      "name": "GLM-5.1",
+      "inputTomanPerMillion": 448000,
+      "outputTomanPerMillion": 1408000
+    },
+    {
+      "name": "GLM-5",
+      "inputTomanPerMillion": 320000,
+      "outputTomanPerMillion": 1024000
+    },
+    {
+      "name": "GLM-4.7",
+      "inputTomanPerMillion": 192000,
+      "outputTomanPerMillion": 704000
+    },
+    {
+      "name": "GLM-4.6",
+      "inputTomanPerMillion": 192000,
+      "outputTomanPerMillion": 704000
+    },
+    {
+      "name": "MiniMax M2.7",
+      "inputTomanPerMillion": 96000,
+      "outputTomanPerMillion": 384000
+    },
+    {
+      "name": "MiniMax M2.5",
+      "inputTomanPerMillion": 96000,
+      "outputTomanPerMillion": 384000
+    },
+    {
+      "name": "Llama 4 Maverick",
+      "inputTomanPerMillion": 64000,
+      "outputTomanPerMillion": 192000
+    },
+    {
+      "name": "Llama 3.3 70B Instruct",
+      "inputTomanPerMillion": 73600,
+      "outputTomanPerMillion": 128000
+    },
+    {
+      "name": "Xerxes",
+      "inputTomanPerMillion": 52499,
+      "outputTomanPerMillion": 210000
+    }
+  ]
+}

@@ -194,7 +194,7 @@ async function callGateway(req: CompletionRequest): Promise<CompletionResult> {
     ],
     max_tokens: req.maxOutputTokens,
   };
-  const headers = { authorization: `Bearer ${req.apiKey}` };
+  const headers = { authorization: req.gatewayKind === "arvan" ? `apikey ${req.apiKey.replace(/^apikey\s+/i, "")}` : `Bearer ${req.apiKey}` };
   let data: any;
   try {
     data = await postJson(url, headers, { ...body, response_format: { type: "json_object" } }, req.signal);
