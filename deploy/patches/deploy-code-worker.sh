@@ -26,7 +26,7 @@ node /tmp/ideaapp-queue-check.mjs "$(systemctl show "$web" -p MainPID --value --
 node_bin=$(command -v node)
 backup=$(mktemp -d /root/ideaapp-before-code-worker.XXXXXX)
 newbuild="$app/.next-code-new-$$"
-tar -C "$app" -cf "$backup/source.tar" src/lib/agents/orchestrator.ts src/lib/agents/sandbox.ts src/lib/ai/index.ts src/lib/workflows/budgets.ts
+tar -C "$app" -cf "$backup/source.tar" src/lib/agents/orchestrator.ts src/lib/agents/sandbox.ts src/lib/ai/index.ts src/lib/workflows/budgets.ts src/lib/ai/providers.ts src/lib/ai/types.ts src/lib/ai/arvan-reference.ts src/lib/ai/arvan-price-snapshot.json src/components/api.ts
 cp -a "$stage/.next" "$newbuild"
 chown -R moradiidea:moradiidea "$newbuild"
 stopped=0
@@ -62,6 +62,8 @@ for file in src/lib/agents/orchestrator.ts src/lib/agents/sandbox.ts src/lib/ai/
   cmp -s "$stage/$file" "$app/$file" || { echo 'Staged source differs from applied patch'; false; }
   chown moradiidea:moradiidea "$app/$file"
 done
+chmod g+r "$app/src/lib/agents/orchestrator.ts" "$app/src/lib/agents/sandbox.ts" "$app/src/lib/ai/index.ts" "$app/src/lib/workflows/budgets.ts" "$app/src/lib/ai/providers.ts" "$app/src/lib/ai/types.ts" "$app/src/lib/ai/arvan-reference.ts" "$app/src/lib/ai/arvan-price-snapshot.json" "$app/src/components/api.ts"
+(cd "$app" && runuser -u ideaappcode -- "$node_bin" --import tsx -e 'import("./src/lib/workflows/worker.ts").then(()=>console.log("Worker imports readable")).catch(e=>{console.error("Worker import failed:", e.code || e.name);process.exit(1)})')
 install -o moradiidea -g moradiidea -m 644 "$worker_src" "$worker"
 worker_created=1
 cat > "$unit" <<UNIT
