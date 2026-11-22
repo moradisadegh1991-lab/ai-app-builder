@@ -1,0 +1,125 @@
+diff --git a/src/lib/agents/orchestrator.ts b/src/lib/agents/orchestrator.ts
+index 709ef2e..b35606c 100644
+--- a/src/lib/agents/orchestrator.ts
++++ b/src/lib/agents/orchestrator.ts
+@@ -296,7 +296,7 @@ export async function runAgents(ctx: AgentContext): Promise<AgentResult> {
+           aiFiles,
+           libraries,
+           files: rendered.files,
+-          warnings: [...rendered.warnings, ...ignoredChanges, ...reviewed.data.issues.map((i) => i.evidence)],
++          warnings: [...rendered.warnings, ...ignoredChanges, ...(reviewed.visionOmitted ? ["ارزیاب هوش مصنوعی تصاویر را بررسی نکرده است؛ پیش‌نمایش را از نظر ظاهری بررسی کنید."] : []), ...reviewed.data.issues.map((i) => i.evidence)],
+           notes: reviewed.data.summary,
+           model,
+         },
+diff --git a/src/lib/agents/sandbox.ts b/src/lib/agents/sandbox.ts
+index 20d020b..afd1bfc 100644
+--- a/src/lib/agents/sandbox.ts
++++ b/src/lib/agents/sandbox.ts
+@@ -105,11 +105,13 @@ export const verifyInSandbox: AgentContext["verify"] = async (files, template, n
+     const installName = `i2a-install-${suffix}`;
+     containers.push(installName);
+     const ca = process.env.AGENT_NPM_CA_FILE;
++    const npmMirror = process.env.AGENT_USE_LIARA_NPM_MIRROR === "1";
+     const install = await docker([
+       ...base,
+       "--name",
+       installName,
+       ...(ca ? ["-v", `${path.resolve(ca)}:/run/npm-ca.pem:ro`, "-e", "NODE_EXTRA_CA_CERTS=/run/npm-ca.pem"] : []),
++      ...(npmMirror ? ["-e", "npm_config_registry=https://package-mirror.liara.ir/repository/npm/"] : []),
+       buildImage,
+       "npm",
+       "install",
+diff --git a/src/lib/ai/index.ts b/src/lib/ai/index.ts
+index 27a0054..789acbe 100644
+--- a/src/lib/ai/index.ts
++++ b/src/lib/ai/index.ts
+@@ -173,7 +173,7 @@ export interface StructuredCallOptions<T> {
+  * Runs one model call that must return JSON matching `schema`, enforcing the
+  * plan's usage windows and recording token usage for cost control.
+  */
+-export async function generateStructured<T>(options: StructuredCallOptions<T>): Promise<{ data: T; model: string }> {
++export async function generateStructured<T>(options: StructuredCallOptions<T>): Promise<{ data: T; model: string; visionOmitted?: boolean }> {
+   // A burst guard on top of the plan's token windows (which do not apply to users' own keys).
+   await enforce("ai", options.userId, 60, 3600, "درخواست هوش مصنوعی");
+   const key = await resolveKey(options.userId, options.provider);
+@@ -186,14 +186,17 @@ export async function generateStructured<T>(options: StructuredCallOptions<T>):
+       : process.env[`AGENT_${options.role.toUpperCase()}_${suffix}`];
+     if (model) key.model = key.gatewayBaseUrl ? gatewayModel(options.provider, model) : model;
+   }
++  const visionOmitted = Boolean(key.usedPlatformKey && key.gatewayBaseUrl && arvanEnabled() && options.role === "reviewer" && options.images?.length);
++  const images = visionOmitted ? undefined : options.images;
++  const prompt = visionOmitted ? `${options.prompt}\n\nNo screenshots were sent to you. Do not claim to have visually inspected them. Review the code and textual test evidence only.` : options.prompt;
+   let maxOutputTokens = options.maxOutputTokens;
+   // One bounded retry, separately reserved and metered, leaves room for models
+   // whose reasoning consumes part of the completion limit (e.g. Gemini Pro).
+   for (let attempt = 0; ; attempt++) {
+     options.signal?.throwIfAborted();
+-    const reserved = tokenReservation(options.system, options.prompt, maxOutputTokens, options.images);
++    const reserved = tokenReservation(options.system, prompt, maxOutputTokens, images);
+     // Refuse platform-funded calls when model pricing or vision billing is unknown.
+-    const quote = key.usedPlatformKey && !options.images?.length
++    const quote = key.usedPlatformKey && !images?.length
+       ? gatewayPrice(key.gatewayBaseUrl, "platform", key.model) : null;
+     const margin = arvanEnabled() ? 2 : 1;
+     const maxRateQuote = quote ? { ...quote, inputTomanPerMillion: margin * Math.max(quote.inputTomanPerMillion, quote.outputTomanPerMillion), outputTomanPerMillion: margin * Math.max(quote.inputTomanPerMillion, quote.outputTomanPerMillion) } : null;
+@@ -213,8 +216,8 @@ export async function generateStructured<T>(options: StructuredCallOptions<T>):
+         gatewayKind: key.gatewayBaseUrl && arvanEnabled() ? "arvan" : undefined,
+         model: key.model,
+         system: options.system,
+-        prompt: options.prompt,
+-        images: options.images,
++        prompt,
++        images,
+         maxOutputTokens,
+         signal: options.signal,
+       });
+@@ -244,7 +247,7 @@ export async function generateStructured<T>(options: StructuredCallOptions<T>):
+       inputTokens + outputTokens > 0
+     ) {
+       // Vision and unknown tariffs remain unknown instead of reporting a false zero.
+-      const tariff = !options.images?.length && result.model === key.model
++      const tariff = !images?.length && result.model === key.model
+         ? gatewayPrice(key.gatewayBaseUrl, key.usedPlatformKey ? "platform" : "user", key.model)
+         : null;
+       const estimatedCostToman = estimateToman(tariff, inputTokens, outputTokens);
+@@ -259,6 +262,9 @@ export async function generateStructured<T>(options: StructuredCallOptions<T>):
+         role: options.role,
+         gateway: key.gatewayBaseUrl ? new URL(key.gatewayBaseUrl).hostname : undefined,
+         estimatedCostToman,
++        // Retain twice the dated public estimate after measured text usage;
++        // unknown usage, vision and uncertain network failures keep the full hold.
++        settlementBudgetToman: key.usedPlatformKey && key.gatewayBaseUrl && arvanEnabled() && estimatedCostToman !== null && Number.isSafeInteger(estimatedCostToman * 2) ? estimatedCostToman * 2 : null,
+         tariffSnapshot: tariff && estimatedCostToman !== null ? { ...tariff, source: arvanEnabled() ? "public-reference" : "administrator" } : null,
+       });
+     }
+@@ -277,6 +283,6 @@ export async function generateStructured<T>(options: StructuredCallOptions<T>):
+         .join("; ");
+       throw new HttpError(502, `خروجی مدل با ساختار مورد انتظار مطابقت نداشت (${issues}). دوباره تلاش کنید.`);
+     }
+-    return { data: parsed.data, model: result.model };
++    return { data: parsed.data, model: result.model, ...(visionOmitted ? { visionOmitted: true } : {}) };
+   }
+ }
+diff --git a/src/lib/workflows/budgets.ts b/src/lib/workflows/budgets.ts
+index b8d6900..cb6d4e3 100644
+--- a/src/lib/workflows/budgets.ts
++++ b/src/lib/workflows/budgets.ts
+@@ -62,13 +62,17 @@ export async function settleUsage(
+     role?: string;
+     gateway?: string;
+     estimatedCostToman?: number | null;
++    settlementBudgetToman?: number | null;
+     tariffSnapshot?: { inputTomanPerMillion: number; outputTomanPerMillion: number; updatedAt: string; source: string } | null;
+   },
+ ) {
+   // A single statement prevents a retry from recording usage twice.
+   await queryRows(sql`with guard as (select pg_advisory_xact_lock(19871205)), settled as (
+     update usage_reservations set state='settled',tokens=${details.inputTokens + details.outputTokens},
+-      reserved_toman=case when reserved_toman is null then null else greatest(reserved_toman, coalesce(${details.estimatedCostToman ?? null}::bigint,0)) end
++      reserved_toman=case when reserved_toman is null then null
++        when ${details.settlementBudgetToman ?? null}::bigint is not null and ${details.settlementBudgetToman ?? null}::bigint >= 1
++          then greatest(${details.settlementBudgetToman ?? null}::bigint, coalesce(${details.estimatedCostToman ?? null}::bigint,0))
++        else greatest(reserved_toman, coalesce(${details.estimatedCostToman ?? null}::bigint,0)) end
+     from guard where id=${id}::uuid and state='held' returning user_id,used_platform_key
+   ) insert into usage_records(user_id,project_id,provider,model,purpose,input_tokens,output_tokens,used_platform_key,
+       reservation_id,run_id,agent_role,gateway,estimated_cost_toman,tariff_snapshot)
