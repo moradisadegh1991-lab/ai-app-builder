@@ -23,6 +23,15 @@ const ok = (content: string, finish = "stop") =>
 afterEach(() => vi.unstubAllGlobals());
 
 describe("OpenAI-compatible gateway", () => {
+  it("authenticates Arvan with apikey and keeps its exact model identifier", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(ok('{"a":1}'));
+    vi.stubGlobal("fetch", fetchMock);
+    await callProvider("gemini", { ...request, gatewayKind: "arvan", model: "Gemini-2.5-Pro" });
+    const init = fetchMock.mock.calls[0]![1];
+    expect(init.headers.authorization).toBe("apikey gateway-key");
+    expect(JSON.parse(init.body).model).toBe("Gemini-2.5-Pro");
+  });
+
   it("posts to {base}/chat/completions with the gateway key and reads usage", async () => {
     const fetchMock = vi.fn().mockResolvedValue(ok('{"a":1}'));
     vi.stubGlobal("fetch", fetchMock);

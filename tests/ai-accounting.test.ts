@@ -7,6 +7,7 @@ const h = vi.hoisted(() => ({
   reserve: vi.fn(),
   settle: vi.fn(),
   release: vi.fn(),
+  own: vi.fn(),
 }));
 vi.mock("../src/lib/ai/admin-pricing", async () => {
   const { liaraModelPrice } = await import("../src/lib/ai/liara-pricing");
@@ -14,7 +15,7 @@ vi.mock("../src/lib/ai/admin-pricing", async () => {
 });
 vi.mock("../src/lib/ai/providers", () => ({ callProvider: h.call }));
 vi.mock("../src/lib/integrations/store", () => ({
-  getIntegration: async () => null,
+  getIntegration: h.own,
 }));
 vi.mock("../src/lib/rate-limit", () => ({ enforce: async () => undefined }));
 vi.mock("../src/lib/billing/subscription", () => ({
@@ -42,6 +43,7 @@ const options = {
 };
 beforeEach(() => {
   vi.resetAllMocks();
+  h.own.mockResolvedValue(null);
   vi.stubEnv("OPENAI_API_KEY", "test-key");
   vi.stubEnv("AI_GATEWAY_API_KEY", "test-key");
   vi.stubEnv("AI_GATEWAY_BASE_URL", "https://ai.liara.ir/v1");
@@ -57,6 +59,35 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllEnvs());
 describe("AI accounting around provider failures", () => {
+  it("keeps a user's own provider key outside the Arvan gateway", async () => {
+    vi.stubEnv("AI_GATEWAY_KIND", "arvan");
+    vi.stubEnv("AI_GATEWAY_BASE_URL", "https://api.arvancloudai.ir/v1");
+    h.own.mockResolvedValue({ secret: "personal-key", metadata: { model: "personal-model" } });
+    await generateStructured({ ...options, role: "frontend" });
+    expect(h.call).toHaveBeenCalledWith("openai", expect.objectContaining({ apiKey: "personal-key", model: "personal-model", gatewayBaseUrl: undefined }));
+    expect(h.reserve).toHaveBeenCalledWith("user", undefined, 1000, false, undefined);
+  });
+  it("requires an exact configured Arvan role and tariff before reserving or calling", async () => {
+    vi.stubEnv("AI_GATEWAY_KIND", "arvan");
+    vi.stubEnv("AI_GATEWAY_BASE_URL", "https://ai.example.test/v1");
+    vi.stubEnv("ARVAN_AGENT_FRONTEND_ECONOMY_MODEL", "Kimi-Code");
+    vi.stubEnv("ARVAN_MODEL_PRICING_JSON", JSON.stringify({ "Kimi-Code": { inputTomanPerMillion: 304000, outputTomanPerMillion: 1280000, updatedAt: new Date().toISOString() } }));
+    h.call.mockResolvedValue({ text: '{"ok":true}', model: "Kimi-Code", inputTokens: 100, outputTokens: 20 });
+    await generateStructured({ ...options, role: "frontend" });
+    expect(h.call).toHaveBeenCalledWith("openai", expect.objectContaining({ model: "Kimi-Code", gatewayKind: "arvan" }));
+    expect(h.settle).toHaveBeenCalledWith("reservation", expect.objectContaining({ estimatedCostToman: 56, model: "Kimi-Code" }));
+    h.call.mockClear(); h.reserve.mockClear();
+    vi.stubEnv("ARVAN_MODEL_PRICING_JSON", "{}");
+    await expect(generateStructured({ ...options, role: "frontend" })).rejects.toMatchObject({ status: 503 });
+    expect(h.call).not.toHaveBeenCalled(); expect(h.reserve).not.toHaveBeenCalled();
+    vi.stubEnv("ARVAN_MODEL_PRICING_JSON", JSON.stringify({ "Kimi-Code": { inputTomanPerMillion: 304000, outputTomanPerMillion: 1280000, updatedAt: "2020-01-01T00:00:00Z" } }));
+    await expect(generateStructured({ ...options, role: "frontend" })).rejects.toMatchObject({ status: 503 });
+    expect(h.call).not.toHaveBeenCalled(); expect(h.reserve).not.toHaveBeenCalled();
+    await expect(generateStructured({ ...options, role: "backend" })).rejects.toMatchObject({ status: 503 });
+    vi.stubEnv("AI_GATEWAY_BASE_URL", "http://ai.example.test/v1");
+    await expect(generateStructured({ ...options, role: "frontend" })).rejects.toMatchObject({ status: 503 });
+  });
+
   const truncated = () => new CompletionTruncatedError({
     text: '{"ok":', model: "test", inputTokens: 100, outputTokens: 100,
   });
