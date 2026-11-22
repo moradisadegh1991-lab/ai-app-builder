@@ -55,7 +55,7 @@ done
 [[ "$ready" == 1 ]] || { echo 'Web readiness failed'; false; }
 for svc in "$web" "$spec" "$code"; do systemctl is-active --quiet "$svc"; done
 trap - ERR INT TERM
-echo 'Budget updated. No AI request was started.'
+echo 'Budget updated; existing workers are active.'
 echo 'Platform: 2,000,000 toman / 30 days; 500,000 toman / day.'
 echo 'Free user: 300,000 toman / day; 500,000 toman / 30 days; 250,000 toman / run.'
 echo "Backup: $backup"
