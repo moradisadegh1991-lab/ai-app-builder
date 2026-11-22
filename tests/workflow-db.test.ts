@@ -11,6 +11,7 @@ import { workOne } from "../src/lib/workflows/worker";
 import { appSpecSchema } from "../src/lib/spec";
 import { approveSpec } from "../src/lib/pipeline";
 import { WorkflowYield } from "../src/lib/workflows/yield";
+import { configuredLiaraPrice, saveTariff } from "../src/lib/ai/admin-pricing";
 
 const h = vi.hoisted(() => ({ database: null as unknown, agents: vi.fn() }));
 vi.mock("../src/lib/db", async () => ({
@@ -58,6 +59,16 @@ beforeEach(async () => {
 });
 
 describe("migrations and durable execution", () => {
+  it("persists administrator tariffs and uses them only for the exact Liara platform model", async () => {
+    const model = "google/gemini-2.5-pro";
+    await saveTariff(user!.id, { model, inputTomanPerMillion: 100, outputTomanPerMillion: 400 });
+    expect(await configuredLiaraPrice("https://ai.liara.ir/v1", "platform", model)).toMatchObject({ inputTomanPerMillion: 100, outputTomanPerMillion: 400 });
+    expect(await configuredLiaraPrice("https://example.com", "platform", model)).toBeNull();
+    expect(await configuredLiaraPrice("https://ai.liara.ir/v1", "user", model)).toBeNull();
+    await saveTariff(user!.id, { model, inputTomanPerMillion: 200, outputTomanPerMillion: 500 });
+    expect(await configuredLiaraPrice("https://ai.liara.ir/v1", "platform", model)).toMatchObject({ inputTomanPerMillion: 200 });
+  });
+
   it("shows a failed verification as needing attention even when the tool call completed", async () => {
     await enqueueWorkflow(user!, project!, input);
     const run = (await claimRun())!;

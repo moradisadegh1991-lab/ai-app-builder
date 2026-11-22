@@ -22,7 +22,7 @@ export interface ProviderInfo {
   model: string;
   available: boolean;
   source: "user" | "platform" | null;
-  price?: { inputPerMillion: number; outputPerMillion: number; currency: "USD" | "IRT"; updatedAt: string; source: "liara-catalog" | "administrator" } | null;
+  price?: { inputPerMillion: number; outputPerMillion: number; currency: "USD" | "IRT"; updatedAt: string; source: "liara-catalog" | "administrator" | "environment-estimate" | "public-reference" } | null;
 }
 
 export interface ProvidersResponse {

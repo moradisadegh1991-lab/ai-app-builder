@@ -23,6 +23,25 @@ const ok = (content: string, finish = "stop") =>
 afterEach(() => vi.unstubAllGlobals());
 
 describe("OpenAI-compatible gateway", () => {
+  it("authenticates Arvan with apikey and keeps its exact model identifier", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(ok('{"a":1}'));
+    vi.stubGlobal("fetch", fetchMock);
+    await callProvider("gemini", { ...request, gatewayKind: "arvan", model: "Gemini-2.5-Pro" });
+    const init = fetchMock.mock.calls[0]![1];
+    expect(init.headers.authorization).toBe("apikey gateway-key");
+    expect(JSON.parse(init.body).model).toBe("Gemini-2.5-Pro");
+  });
+
+  it("meters Arvan prompt and completion tokens when alternate counters are zero", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      model: "Gemini-2.5-Pro", choices: [{ message: { content: "{}" }, finish_reason: "stop" }],
+      usage: { prompt_tokens: 2, completion_tokens: 6, input_tokens: 0, output_tokens: 0,
+        completion_tokens_details: { reasoning_tokens: 5 } },
+    }))));
+    const result = await callProvider("gemini", { ...request, gatewayKind: "arvan", model: "Gemini-2.5-Pro" });
+    expect(result).toMatchObject({ model: "Gemini-2.5-Pro", inputTokens: 2, outputTokens: 6 });
+  });
+
   it("posts to {base}/chat/completions with the gateway key and reads usage", async () => {
     const fetchMock = vi.fn().mockResolvedValue(ok('{"a":1}'));
     vi.stubGlobal("fetch", fetchMock);

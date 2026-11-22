@@ -10,6 +10,7 @@ import { providerAvailability } from "@/lib/ai";
 import { usageSummary } from "@/lib/billing/subscription";
 import { listIntegrations } from "@/lib/integrations/store";
 import { requirePageUser } from "@/lib/session";
+import { isPricingAdmin } from "@/lib/ai/admin-pricing";
 
 export const dynamic = "force-dynamic";
 
@@ -129,6 +130,7 @@ export default async function SettingsPage({
       <Header user={user} />
 
       <main className="page-container flex !max-w-6xl flex-col gap-10 py-8">
+        {isPricingAdmin(user.id) && <Link href="/admin/ai-pricing" className="btn btn-secondary self-start">مدیریت تعرفه هوش مصنوعی</Link>}
         {/* Page heading */}
         <header className="mb-8">
           <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
