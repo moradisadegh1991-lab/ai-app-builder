@@ -14,7 +14,7 @@ export async function reconcile(query, backup) {
   if(Number(active[0]?.count)!==0) throw Error('Active work exists');
   const rows=await query(`select u.id::text as id, u.reservation_id::text as reservation_id,
     u.estimated_cost_toman::text as estimated_cost_toman, u.tariff_snapshot,
-    r.reserved_toman::text as reserved_toman
+    r.reserved_toman::text as reserved_toman,r.run_id::text as run_id
     from usage_records u join usage_reservations r on r.id=u.reservation_id
     where u.provider='arvan' and u.gateway='api.arvancloudai.ir'
       and u.model='moonshotai/kimi-k2.6' and u.agent_role='frontend'
@@ -30,7 +30,8 @@ export async function reconcile(query, backup) {
   await backup({record_id:row.id,reservation_id:row.reservation_id,previous_estimated_cost_toman:null,previous_tariff_snapshot:null,reserved_toman:row.reserved_toman,new_estimated_cost_toman:amount,tariff:rate});
   const changed=await query(`update usage_records set estimated_cost_toman=$1::bigint,tariff_snapshot=$2::jsonb where id=$3::uuid and estimated_cost_toman is null and tariff_snapshot is null returning id`,[amount,JSON.stringify(rate),row.id]);
   if(changed.length!==1) throw Error('Record changed during update');
-  return {estimated_toman:amount,reservation_toman:Number(row.reserved_toman)};
+  const checkpoints=await query('select role,status from agent_tasks where run_id=$1::uuid order by created_at,key',[row.run_id]);
+  return {estimated_toman:amount,reservation_toman:Number(row.reserved_toman),checkpoints};
 }
 async function main(){
  const pid=process.argv[2];
