@@ -1,0 +1,161 @@
+diff --git a/src/lib/billing/subscription.ts b/src/lib/billing/subscription.ts
+index 3e6fb92..b1eff0d 100644
+--- a/src/lib/billing/subscription.ts
++++ b/src/lib/billing/subscription.ts
+@@ -8,24 +8,26 @@ import { queryRows } from "../workflows/sql";
+ export interface ActivePlan {
+   plan: Plan;
+   currentPeriodEnd: Date | null;
++  isDeveloper: boolean;
+ }
+ 
+-async function isUnlimitedUser(userId: string) {
++export async function isUnlimitedUser(userId: string) {
+   const emails = env.unlimitedEmails();
+-  if (emails.length === 0) return false;
++  const githubIds = env.developerGithubIds();
++  if (emails.length === 0 && githubIds.length === 0) return false;
+   const [user] = await db()
+-    .select({ email: schema.users.email })
++    .select({ email: schema.users.email, githubId: schema.users.githubId })
+     .from(schema.users)
+     .where(eq(schema.users.id, userId))
+     .limit(1);
+-  return Boolean(user && emails.includes(user.email.toLowerCase()));
++  return Boolean(user && (emails.includes(user.email.toLowerCase()) || (user.githubId !== null && githubIds.includes(String(user.githubId)))));
+ }
+ 
+ export async function activePlan(userId: string): Promise<ActivePlan> {
+-  if (await isUnlimitedUser(userId)) return { plan: DEVELOPER_PLAN, currentPeriodEnd: null };
++  if (await isUnlimitedUser(userId)) return { plan: DEVELOPER_PLAN, currentPeriodEnd: null, isDeveloper: true };
+   const [sub] = await db().select().from(schema.subscriptions).where(eq(schema.subscriptions.userId, userId)).limit(1);
+-  if (!sub || sub.currentPeriodEnd < new Date()) return { plan: PLANS.free, currentPeriodEnd: null };
+-  return { plan: PLANS[sub.plan], currentPeriodEnd: sub.currentPeriodEnd };
++  if (!sub || sub.currentPeriodEnd < new Date()) return { plan: PLANS.free, currentPeriodEnd: null, isDeveloper: false };
++  return { plan: PLANS[sub.plan], currentPeriodEnd: sub.currentPeriodEnd, isDeveloper: false };
+ }
+ 
+ /**
+diff --git a/src/lib/env.ts b/src/lib/env.ts
+index 0273635..7650a4d 100644
+--- a/src/lib/env.ts
++++ b/src/lib/env.ts
+@@ -43,6 +43,11 @@ export const env = {
+       .split(",")
+       .map((email) => email.trim().toLowerCase())
+       .filter(Boolean),
++  developerGithubIds: () =>
++    (optional("DEVELOPER_GITHUB_IDS") ?? "")
++      .split(",")
++      .map((id) => id.trim())
++      .filter((id) => /^[1-9][0-9]{0,14}$/.test(id)),
+   // Optional OpenAI-compatible gateway (e.g. Liara AI) that serves all three providers with one key.
+   aiGatewayBaseUrl: () => optional("AI_GATEWAY_BASE_URL")?.replace(/\/+$/, ""),
+   aiGatewayKey: () => optional("AI_GATEWAY_API_KEY"),
+diff --git a/src/lib/rate-limit.ts b/src/lib/rate-limit.ts
+index 798e8a9..fb1eaba 100644
+--- a/src/lib/rate-limit.ts
++++ b/src/lib/rate-limit.ts
+@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
+ import { db } from "./db";
+ import { env } from "./env";
+ import { HttpError } from "./http";
++import { isUnlimitedUser } from "./billing/subscription";
+ 
+ // Fixed-window counters kept in the platform database, so limits hold across serverless
+ // instances. One statement per check. If the counter cannot be read (e.g. migration 0005 is not
+@@ -44,6 +45,9 @@ export async function hit(scope: string, id: string, limit: number, windowSecond
+ 
+ /** Throws 429 when the caller is over the limit. */
+ export async function enforce(scope: string, id: string, limit: number, windowSeconds: number, what = "درخواست") {
++  if (["ai", "project-create", "workflow"].includes(scope)) {
++    try { if (await isUnlimitedUser(id)) return; } catch { /* Apply ordinary limits if identity cannot be verified. */ }
++  }
+   let result: RateLimitResult;
+   try {
+     result = await hit(scope, id, limit, windowSeconds);
+diff --git a/src/lib/workflows/budgets.ts b/src/lib/workflows/budgets.ts
+index cb6d4e3..6e33522 100644
+--- a/src/lib/workflows/budgets.ts
++++ b/src/lib/workflows/budgets.ts
+@@ -18,7 +18,7 @@ type MoneyReservation = { projectId?: string; amount: number };
+ const moneyKeys = ["platform_day", "platform_month", "user_day", "user_month", "project_day", "project_month", "run"] as const;
+ 
+ /** Limits are explicit administrator configuration; never infer financial limits from plan prices. */
+-export function moneyLimits(raw: string | undefined, free: boolean): Record<string, number> | null {
++export function moneyLimits(raw: string | undefined, free: boolean, developer = false): Record<string, number> | null {
+   try {
+     const config = JSON.parse(raw ?? "") as { common?: Record<string, unknown>; free?: Record<string, unknown> };
+     const common = config.common, trial = config.free;
+@@ -31,15 +31,20 @@ export function moneyLimits(raw: string | undefined, free: boolean): Record<stri
+       // Platform limits are shared; a free user cannot lower the platform-wide cap for others.
+       limits[k] = free && !k.startsWith("platform_") ? Math.min(v, f) : v;
+     }
++    if (developer) {
++      for (const k of moneyKeys) {
++        if (!k.startsWith("platform_")) limits[k] = k.endsWith("_day") ? limits.platform_day! : limits.platform_month!;
++      }
++    }
+     return limits;
+   } catch { return null; }
+ }
+ export async function reserveUsage(userId: string, runId: string | undefined, tokens: number, platform: boolean, money?: MoneyReservation) {
+   const id = randomUUID();
+-  const { plan } = await activePlan(userId);
++  const { plan, isDeveloper } = await activePlan(userId);
+   if (platform && (!money || !Number.isSafeInteger(money.amount) || money.amount < 1))
+     throw new HttpError(503, "هزینهٔ این مدل قابل تأیید نیست؛ تنظیمات قیمت را بررسی کنید.");
+-  const limits = platform ? moneyLimits(process.env.AI_TOMAN_LIMITS_JSON, plan.id === "free") : null;
++  const limits = platform ? moneyLimits(process.env.AI_TOMAN_LIMITS_JSON, plan.id === "free", isDeveloper) : null;
+   if (platform && !limits) throw new HttpError(503, "سقف هزینهٔ سرویس تنظیم نشده است؛ لطفاً بعداً تلاش کنید.");
+   const rows = platform
+     ? await queryRows<{ allowed: boolean }>(sql`select reserve_ai_money(${id}::uuid,${userId}::uuid,${money!.projectId ?? null}::uuid,${runId ?? null}::uuid,
+diff --git a/src/lib/workflows/queue.ts b/src/lib/workflows/queue.ts
+index aece5aa..f612d86 100644
+--- a/src/lib/workflows/queue.ts
++++ b/src/lib/workflows/queue.ts
+@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
+ import { db, schema } from "../db";
+ import { HttpError } from "../http";
+ import { enforce } from "../rate-limit";
++import { isUnlimitedUser } from "../billing/subscription";
+ import { queryRows } from "./sql";
+ import type { AgentTaskInput } from "../agents/contracts";
+ import { WorkflowYield } from "./yield";
+@@ -33,8 +34,9 @@ export async function enqueueWorkflow(user: schema.User, project: schema.Project
+   if ((input.kind === "edit" || input.kind === "fix") && !project.currentGenerationId)
+     throw new HttpError(400, "کد قبلی پیدا نشد.");
+   await enforce("workflow", user.id, 20, 3600, "درخواست ساخت با تیم هوش مصنوعی");
+-  const maxTokens = Number(process.env.WORKFLOW_MAX_TOKENS ?? 250000);
+-  if (!Number.isSafeInteger(maxTokens) || maxTokens < 1000 || maxTokens > 10_000_000)
++  const developer = await isUnlimitedUser(user.id);
++  const maxTokens = developer ? 2_000_000_000 : Number(process.env.WORKFLOW_MAX_TOKENS ?? 250000);
++  if (!Number.isSafeInteger(maxTokens) || maxTokens < 1000 || (!developer && maxTokens > 10_000_000))
+     throw new Error("Invalid WORKFLOW_MAX_TOKENS");
+   // One SQL statement holds the project lock, rejects a stale caller and inserts at most one active run.
+   const runs = await queryRows<{ id: string }>(sql`
+diff --git a/src/lib/workflows/worker.ts b/src/lib/workflows/worker.ts
+index de5adf1..2c04d5a 100644
+--- a/src/lib/workflows/worker.ts
++++ b/src/lib/workflows/worker.ts
+@@ -13,6 +13,7 @@ import { pushToGitHub, syncBuild } from "../pipeline";
+ import { claimRun, renewLease, taskStore, type ClaimedRun } from "./queue";
+ import { queryRows } from "./sql";
+ import { WorkflowYield } from "./yield";
++import { isUnlimitedUser } from "../billing/subscription";
+ 
+ async function finish(run: ClaimedRun, result: AgentResult) {
+   const code = result.code;
+@@ -73,6 +74,12 @@ export async function workOne(
+   try {
+     if (run.attempts > 3)
+       throw new Error("بازیابی این اجرا پس از سه تلاش متوقف شد؛ گزارش را بررسی و دوباره شروع کنید.");
++    // Existing runs may have been queued before the owner received developer access.
++    if (await isUnlimitedUser(run.user_id)) {
++      const updated = await queryRows(sql`update workflow_runs set max_tokens=2000000000
++        where id=${run.id}::uuid and owner_token=${run.owner_token}::uuid and status='running' and lease_expires_at>now() returning id`);
++      if (!updated.length) throw new Error("Workflow lease lost before developer quota update");
++    }
+     const project = await getOwnedProject(run.user_id, run.project_id);
+     if (project.currentGenerationId !== run.base_generation_id)
+       throw new Error("نسخه پروژه پس از ورود به صف تغییر کرده است.");
