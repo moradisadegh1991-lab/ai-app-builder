@@ -44,6 +44,7 @@ export async function resume(query,audit,recordId,reservationId) {
 }
 async function main(){
  const pid=process.argv[2], backup=process.argv[3];
+ const preview=process.argv[4]==='--check';
  if(!/^\d+$/.test(pid??'')||!/^\/root\/ideaapp-kimi-ledger-before-[0-9a-f-]+\.json$/.test(backup??''))throw Error('Invalid arguments');
  const old=JSON.parse(await readFile(backup,'utf8'));
  if(!/^[0-9a-f-]{36}$/.test(old.record_id??'')||!/^[0-9a-f-]{36}$/.test(old.reservation_id??'')||old.new_estimated_cost_toman!==34319)throw Error('Invalid reconciliation backup');
@@ -52,17 +53,26 @@ async function main(){
  const req=createRequire(`${app}/package.json`);
  req('@next/env').loadEnvConfig(app,false,{info(){},warn(){},error(){}});
  const limits=JSON.parse(process.env.AI_TOMAN_LIMITS_JSON??'{}');
- if(limits.common?.platform_month!==2000000||limits.common?.platform_day!==500000||limits.free?.user_month!==500000||limits.free?.user_day!==500000||limits.free?.project_day!==500000)throw Error('Budget configuration mismatch');
+ if(limits.common?.platform_month!==2000000||limits.common?.platform_day!==500000||limits.free?.user_month!==500000||limits.free?.project_month!==500000)throw Error('Budget configuration mismatch');
+ if(!preview && (limits.common?.run!==400000||limits.free?.run!==400000||limits.free?.user_day!==500000||limits.free?.project_day!==500000))throw Error('Budget configuration mismatch');
+ if(!preview && !(await readFile(`${app}/src/lib/workflows/queue.ts`,'utf8')).includes('order by updated_at desc,created_at desc'))throw Error('Resume view fix missing');
  if(!process.env.DATABASE_URL)throw Error('Database configuration unavailable');
  const sql=req('postgres')(process.env.DATABASE_URL,{max:1,connect_timeout:8,idle_timeout:1,prepare:false});
  let auditPath;
  try {
-  const result=await sql.begin(tx=>resume((q,p=[])=>tx.unsafe(q,p),async data=>{
-   const marker=createHash('sha256').update(old.record_id).digest('hex').slice(0,16);
-   auditPath=`/root/ideaapp-before-checkpoint-retry-${marker}.json`;
-   await writeFile(auditPath,JSON.stringify(data,null,2)+'\n',{mode:0o600,flag:'wx'});
-  },old.record_id,old.reservation_id));
-  console.log(JSON.stringify({...result,audit:auditPath},null,2));
+  let previewInfo;
+  try {
+   const result=await sql.begin(tx=>resume((q,p=[])=>tx.unsafe(q,p),async data=>{
+    if(preview){previewInfo={eligible:true,checkpoints:data.checkpoints};throw Error('CHECKPOINT_PREVIEW_READY')}
+    const marker=createHash('sha256').update(old.record_id).digest('hex').slice(0,16);
+    auditPath=`/root/ideaapp-before-checkpoint-retry-${marker}.json`;
+    await writeFile(auditPath,JSON.stringify(data,null,2)+'\n',{mode:0o600,flag:'wx'});
+   },old.record_id,old.reservation_id));
+   console.log(JSON.stringify({...result,audit:auditPath},null,2));
+  } catch(e) {
+   if(preview && e instanceof Error && e.message==='CHECKPOINT_PREVIEW_READY' && previewInfo)console.log(JSON.stringify(previewInfo,null,2));
+   else throw e;
+  }
  } finally {await sql.end({timeout:2})}
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href)main().catch(()=>{console.error('Retry preparation stopped; no database details were printed.');process.exitCode=1});
