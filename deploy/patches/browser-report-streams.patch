@@ -1,0 +1,113 @@
+diff --git a/src/lib/agents/sandbox.ts b/src/lib/agents/sandbox.ts
+index 03fd853..57521c9 100644
+--- a/src/lib/agents/sandbox.ts
++++ b/src/lib/agents/sandbox.ts
+@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+ import os from "node:os";
+ import path from "node:path";
+ import { randomBytes } from "node:crypto";
++import { z } from "zod";
+ import type { AgentContext } from "./orchestrator";
+ import type { Verification } from "./contracts";
+ import { classifyVerificationBlocker, type VerificationStage } from "./verification-failure";
+@@ -10,6 +11,8 @@ import { classifyVerificationBlocker, type VerificationStage } from "./verificat
+ interface CommandResult {
+   code: number;
+   output: string;
++  stdout: string;
++  stdoutTruncated: boolean;
+ }
+ export function command(
+   program: string,
+@@ -17,6 +20,7 @@ export function command(
+   signal?: AbortSignal,
+   timeout = 240_000,
+   maxBytes = 80_000,
++  maxStdoutBytes = 0,
+ ): Promise<CommandResult> {
+   return new Promise((resolve, reject) => {
+     const child = spawn(program, args, {
+@@ -27,7 +31,20 @@ export function command(
+     const append = (chunk: Buffer) => {
+       output = (output + chunk.toString()).slice(-maxBytes);
+     };
+-    child.stdout.on("data", append);
++    const stdoutChunks: Buffer[] = [];
++    let stdoutBytes = 0;
++    let stdoutTruncated = false;
++    child.stdout.on("data", (chunk: Buffer) => {
++      if (maxStdoutBytes === 0) {
++        append(chunk);
++        return;
++      }
++      const remaining = maxStdoutBytes - stdoutBytes;
++      if (chunk.length > remaining) stdoutTruncated = true;
++      const retained = chunk.subarray(0, remaining);
++      if (retained.length) stdoutChunks.push(retained);
++      stdoutBytes += retained.length;
++    });
+     child.stderr.on("data", append);
+     let timedOut = false;
+     const timer = setTimeout(() => { timedOut = true; child.kill("SIGKILL"); }, timeout);
+@@ -37,11 +54,25 @@ export function command(
+     });
+     child.on("close", (code) => {
+       clearTimeout(timer);
+-      resolve({ code: timedOut ? 124 : (code ?? 1), output: timedOut ? `${output}\nCommand timed out` : output });
++      resolve({
++        code: timedOut ? 124 : (code ?? 1),
++        output: timedOut ? `${output}\nCommand timed out` : output,
++        stdout: Buffer.concat(stdoutChunks, stdoutBytes).toString("utf8"),
++        stdoutTruncated,
++      });
+     });
+   });
+ }
+ 
++const browserReport = z.object({
++  checks: z.array(z.object({
++    name: z.string(),
++    status: z.enum(["passed", "failed", "skipped"]),
++    detail: z.string(),
++  })).min(1),
++  screenshots: z.array(z.object({ name: z.string(), mime: z.literal("image/png"), data: z.string() })),
++});
++
+ /** Only a dedicated worker imports this module. Never run generated code on the web server. */
+ export const verifyInSandbox: AgentContext["verify"] = async (files, template, needsBackend, signal, journeys) => {
+   const checks: Verification["checks"] = [];
+@@ -79,7 +110,7 @@ export const verifyInSandbox: AgentContext["verify"] = async (files, template, n
+     "-e",
+     "EXPO_OFFLINE=1",
+   ];
+-  const docker = async (args: string[], maxBytes = 80_000) => command("docker", args, signal, 240_000, maxBytes);
++  const docker = (args: string[], maxStdoutBytes = 0) => command("docker", args, signal, 240_000, 80_000, maxStdoutBytes);
+   const blocked = (detail: string, stage?: VerificationStage): Verification => ({
+     status: "blocked",
+     blocker: classifyVerificationBlocker(detail, stage),
+@@ -345,13 +376,22 @@ export const verifyInSandbox: AgentContext["verify"] = async (files, template, n
+       6_000_000,
+     );
+     if (browser.code) return blocked(browser.code === 137 ? "Exited with code 137" : browser.output, "browser");
+-    const result = JSON.parse(browser.output) as Pick<Verification, "checks" | "screenshots">;
+-    checks.push(...result.checks);
++    // Docker and Chromium can put warnings on stderr even when the runner succeeds.
++    // The runner writes its JSON protocol on stdout.
++    let parsed: unknown;
++    try {
++      if (!browser.stdoutTruncated) parsed = JSON.parse(browser.stdout);
++    } catch {
++      return blocked("Invalid browser report", "browser");
++    }
++    const result = browserReport.safeParse(parsed);
++    if (!result.success) return blocked("Incomplete browser report", "browser");
++    checks.push(...result.data.checks);
+     return {
+       status: checks.some((c) => c.status === "failed") ? "failed" : "passed",
+       checks,
+       log: log.slice(-20000),
+-      screenshots: result.screenshots,
++      screenshots: result.data.screenshots,
+     };
+   } catch (error) {
+     signal.throwIfAborted();
