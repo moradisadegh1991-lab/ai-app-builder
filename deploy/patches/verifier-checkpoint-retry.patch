@@ -1,0 +1,494 @@
+diff --git a/src/components/friendly-error.ts b/src/components/friendly-error.ts
+index 918cf7e..0fadf33 100644
+--- a/src/components/friendly-error.ts
++++ b/src/components/friendly-error.ts
+@@ -1,8 +1,10 @@
++import { verificationFailures, verificationMessage, type VerificationBlocker } from "@/lib/agents/verification-failure";
+ import { quotaFailureMessages, workflowMessages } from "@/lib/workflows/failure";
+ 
+ /** Give users a useful next step while keeping provider responses and logs private. */
+ export function friendlyError(value: unknown): string {
+   const message = typeof value === "string" ? value : value instanceof Error ? value.message : "";
++  if ((Object.keys(verificationFailures) as VerificationBlocker[]).some((blocker) => message === verificationMessage(blocker))) return message;
+   if ([...Object.values(workflowMessages), ...Object.values(quotaFailureMessages)].includes(message)) return message;
+   if (/^(سقف مصرف (۵ ساعته|هفتگی) طرح|سقف توکن ۳۰ روزهٔ (حساب|این مدل) پر شده است\.|بودجهٔ پلتفرم یا سهمیهٔ این اجرا کافی نیست، یا مصرف قبلی نیاز به بررسی دارد\.|این اجرا قابل ادامه نیست\.|برای حذف پروژه، ابتدا اجرای فعال را متوقف کنید\.|دسترسی مدیریت سهمیه برای این حساب فعال نیست\.|کاربر پیدا نشد\.|ارائه‌دهنده دسترسی این کلید یا مدل را رد کرد\.|قیمت معتبر این مدل در دسترس نیست؛|درگاه آروان به‌درستی تنظیم نشده است\.|سقف هزینهٔ سرویس تنظیم نشده است؛)/.test(message))
+     return message.split(/\n/, 1)[0]!;
+diff --git a/src/components/workspace/AgentTeamPanel.tsx b/src/components/workspace/AgentTeamPanel.tsx
+index 1bdf98d..b2d9da1 100644
+--- a/src/components/workspace/AgentTeamPanel.tsx
++++ b/src/components/workspace/AgentTeamPanel.tsx
+@@ -30,17 +30,7 @@ export function AgentTeamPanel({ workflow, base, cost, onResume }: { onResume: (
+   const [resuming, setResuming] = useState(false);
+   const [cancelError, setCancelError] = useState("");
+   if (!workflow) return null;
+-  const report = workflow.evaluation?.report as
+-    | {
+-        review?: {
+-          summary: string;
+-          issues: { severity: string; evidence: string; fix: string }[];
+-        };
+-        verification?: {
+-          checks: { name: string; status: string; detail: string }[];
+-        };
+-      }
+-    | undefined;
++  const report = workflow.evaluation?.report;
+   const active = ["queued", "running"].includes(workflow.status);
+   const completed = workflow.tasks.filter((task) => task.status === "succeeded").length;
+   const badge =
+@@ -75,13 +65,16 @@ export function AgentTeamPanel({ workflow, base, cost, onResume }: { onResume: (
+       </p>
+       {workflow.status === "queued" && (
+         <p className="mt-3 text-xs leading-6 text-muted">
+-          {workflow.retryAt ? `ارائه‌دهنده موقتاً درخواست را محدود کرد. تلاش خودکار بعدی از همین مرحله، حدود ${new Date(workflow.retryAt).toLocaleTimeString("fa-IR", { timeZone: "Asia/Tehran", hour: "2-digit", minute: "2-digit" })} به وقت تهران است.` : "درخواست ثبت شد. تیم پس از رسیدن نوبت شروع می‌کند؛ می‌توانید صفحه را ببندید."}
++          {workflow.retryAt ? `پلتفرم این مرحله را خودکار دوباره بررسی می‌کند. تلاش بعدی حدود ${new Date(workflow.retryAt).toLocaleTimeString("fa-IR", { timeZone: "Asia/Tehran", hour: "2-digit", minute: "2-digit" })} به وقت تهران است.` : "درخواست ثبت شد. تیم پس از رسیدن نوبت شروع می‌کند؛ می‌توانید صفحه را ببندید."}
+         </p>
+       )}
+       {workflow.status === "failed" && workflow.error && (
+         <div className="mt-3 rounded-lg border border-line p-3 text-xs leading-6">
+           <p>{friendlyError(workflow.error)}</p>
+-          <p className="text-muted" dir="ltr">{workflow.id}</p>
++          <details className="mt-2 text-muted">
++            <summary className="cursor-pointer">شناسهٔ پیگیری برای پشتیبانی</summary>
++            <code className="break-all" dir="ltr">{workflow.id}</code>
++          </details>
+         </div>
+       )}
+       {["failed", "cancelled"].includes(workflow.status) && (
+@@ -164,7 +157,7 @@ export function AgentTeamPanel({ workflow, base, cost, onResume }: { onResume: (
+         <details className="mt-3 text-xs">
+           <summary className="cursor-pointer font-semibold">گزارش ارزیابی کیفیت</summary>
+           <p className="mt-2 leading-6">{workflow.evaluation?.status === "passed" ? "بررسی کیفیت با موفقیت انجام شد." : "بررسی کیفیت به پایان رسیده و نتیجه نیاز به پیگیری دارد."}</p>
+-          {report.verification?.checks.map((check, index) => (
++          {report.verification.checks.map((check, index) => (
+             <div key={index} className="mt-2 rounded border border-line p-2">
+               <span dir="auto">
+                 {check.name}:{" "}
+@@ -172,7 +165,7 @@ export function AgentTeamPanel({ workflow, base, cost, onResume }: { onResume: (
+               </span>
+             </div>
+           ))}
+-          {Boolean(report.review?.issues.length) && <p className="mt-2 leading-6">نتایج بررسی برای پیگیری تیم ثبت شده‌اند.</p>}
++          {report.review.issueCount > 0 && <p className="mt-2 leading-6">نتایج بررسی برای پیگیری تیم ثبت شده‌اند.</p>}
+         </details>
+       )}
+       {workflow.screenshots.length > 0 && (
+diff --git a/src/lib/agents/contracts.ts b/src/lib/agents/contracts.ts
+index 61fc01a..8af60ac 100644
+--- a/src/lib/agents/contracts.ts
++++ b/src/lib/agents/contracts.ts
+@@ -1,3 +1,4 @@
++import type { VerificationBlocker } from "./verification-failure";
+ import { z } from "zod";
+ import type { AiProviderId } from "../ai/types";
+ import type { GeneratedFile } from "../templates/types";
+@@ -103,6 +104,7 @@ export type Review = z.infer<typeof reviewSchema>;
+ 
+ export interface Verification {
+   status: "passed" | "failed" | "blocked";
++  blocker?: VerificationBlocker;
+   checks: {
+     name: string;
+     status: "passed" | "failed" | "skipped";
+diff --git a/src/lib/agents/orchestrator.ts b/src/lib/agents/orchestrator.ts
+index fb47f10..1d6015c 100644
+--- a/src/lib/agents/orchestrator.ts
++++ b/src/lib/agents/orchestrator.ts
+@@ -21,6 +21,7 @@ import {
+   type Verification,
+ } from "./contracts";
+ import { ROLE_PROMPTS } from "./prompts";
++import { classifyVerificationBlocker, VerificationBlockedError } from "./verification-failure";
+ 
+ export interface AgentContext {
+   runId: string;
+@@ -231,12 +232,26 @@ export async function runAgents(ctx: AgentContext): Promise<AgentResult> {
+           screenshots: [],
+         };
+       } else {
+-        verification = await store.step(`verify-${round}`, "verifier", rendered.files, () =>
+-          ctx.verify(rendered!.files, project.template, spec.needsBackend, ctx.signal, architecture.data.journeys),
+-        );
++        verification = await store.step(`verify-${round}`, "verifier", rendered.files, async () => {
++          let result: Verification;
++          try {
++            result = await ctx.verify(rendered!.files, project.template, spec.needsBackend, ctx.signal, architecture.data.journeys);
++          } catch (error) {
++            ctx.signal.throwIfAborted();
++            throw new VerificationBlockedError(classifyVerificationBlocker(String(error)));
++          }
++          if (result.status === "blocked")
++            throw new VerificationBlockedError(result.blocker ?? classifyVerificationBlocker(result.log));
++          return result;
++        });
+       }
+     } catch (error) {
++      ctx.signal.throwIfAborted();
+       if (error instanceof WorkflowYield) throw error;
++      if (error instanceof VerificationBlockedError) {
++        await store.evaluation(round, { verification: { status: "blocked", blocker: error.blocker, checks: [] } }, false);
++        throw error;
++      }
+       verification = {
+         status: "failed",
+         checks: [{ name: "render", status: "failed", detail: String(error) }],
+@@ -244,22 +259,6 @@ export async function runAgents(ctx: AgentContext): Promise<AgentResult> {
+         screenshots: [],
+       };
+     }
+-    if (verification.status === "blocked") {
+-      await store.evaluation(
+-        round,
+-        {
+-          ignoredChanges: [...ignoredChanges],
+-          verification: {
+-            ...verification,
+-            screenshots: verification.screenshots.map((s) => ({
+-              name: s.name,
+-            })),
+-          },
+-        },
+-        false,
+-      );
+-      throw new Error(`ابزار ارزیابی در دسترس نیست: ${verification.log}`);
+-    }
+     const reviewed = await call(
+       `review-${round}`,
+       "reviewer",
+diff --git a/src/lib/agents/sandbox.ts b/src/lib/agents/sandbox.ts
+index afd1bfc..03fd853 100644
+--- a/src/lib/agents/sandbox.ts
++++ b/src/lib/agents/sandbox.ts
+@@ -5,6 +5,7 @@ import path from "node:path";
+ import { randomBytes } from "node:crypto";
+ import type { AgentContext } from "./orchestrator";
+ import type { Verification } from "./contracts";
++import { classifyVerificationBlocker, type VerificationStage } from "./verification-failure";
+ 
+ interface CommandResult {
+   code: number;
+@@ -28,14 +29,15 @@ export function command(
+     };
+     child.stdout.on("data", append);
+     child.stderr.on("data", append);
+-    const timer = setTimeout(() => child.kill("SIGKILL"), timeout);
++    let timedOut = false;
++    const timer = setTimeout(() => { timedOut = true; child.kill("SIGKILL"); }, timeout);
+     child.on("error", (error) => {
+       clearTimeout(timer);
+       reject(error);
+     });
+     child.on("close", (code) => {
+       clearTimeout(timer);
+-      resolve({ code: code ?? 1, output });
++      resolve({ code: timedOut ? 124 : (code ?? 1), output: timedOut ? `${output}\nCommand timed out` : output });
+     });
+   });
+ }
+@@ -78,22 +80,20 @@ export const verifyInSandbox: AgentContext["verify"] = async (files, template, n
+     "EXPO_OFFLINE=1",
+   ];
+   const docker = async (args: string[], maxBytes = 80_000) => command("docker", args, signal, 240_000, maxBytes);
++  const blocked = (detail: string, stage?: VerificationStage): Verification => ({
++    status: "blocked",
++    blocker: classifyVerificationBlocker(detail, stage),
++    checks,
++    log: "",
++    screenshots: [],
++  });
++  const containerFailure = (result: CommandResult) =>
++    result.code === 125 || result.code === 124 || result.code === 137;
+   try {
+     const ready = await docker(["image", "inspect", image]);
+-    if (ready.code)
+-      return {
+-        status: "blocked",
+-        checks,
+-        log: `تصویر ${image} نصب نیست. worker/Dockerfile را روی میزبان Worker بسازید.`,
+-        screenshots: [],
+-      };
+-    if ((await docker(["image", "inspect", buildImage])).code)
+-      return {
+-        status: "blocked",
+-        checks,
+-        log: `تصویر ${buildImage} نصب نیست. worker/Build.Dockerfile را بسازید.`,
+-        screenshots: [],
+-      };
++    if (ready.code) return blocked(ready.output, "image");
++    const buildReady = await docker(["image", "inspect", buildImage]);
++    if (buildReady.code) return blocked(buildReady.output, "image");
+     for (const file of files) {
+       const target = path.resolve(dir, file.path);
+       if (!target.startsWith(dir + path.sep)) throw new Error("Unsafe sandbox path");
+@@ -121,12 +121,7 @@ export const verifyInSandbox: AgentContext["verify"] = async (files, template, n
+     ]);
+     log += install.output;
+     if (install.code)
+-      return {
+-        status: "blocked",
+-        checks,
+-        log: `Dependency installation failed:\n${log.slice(-15000)}`,
+-        screenshots: [],
+-      };
++      return blocked(install.code === 137 ? "Exited with code 137" : install.output, install.code === 125 ? "runner" : "install");
+     const typeName = `i2a-types-${suffix}`;
+     containers.push(typeName);
+     const typecheck = await docker([
+@@ -138,6 +133,7 @@ export const verifyInSandbox: AgentContext["verify"] = async (files, template, n
+       "./node_modules/.bin/tsc",
+       "--noEmit",
+     ]);
++    if (containerFailure(typecheck)) return blocked(typecheck.code === 137 ? "Exited with code 137" : typecheck.output, "runner");
+     checks.push({
+       name: "typecheck",
+       status: typecheck.code ? "failed" : "passed",
+@@ -168,6 +164,7 @@ export const verifyInSandbox: AgentContext["verify"] = async (files, template, n
+         "server/node.ts",
+         "api/index.ts",
+       ]);
++      if (containerFailure(result)) return blocked(result.code === 137 ? "Exited with code 137" : result.output, "runner");
+       checks.push({
+         name: "backend-typecheck",
+         status: result.code ? "failed" : "passed",
+@@ -187,6 +184,7 @@ export const verifyInSandbox: AgentContext["verify"] = async (files, template, n
+         ? ["./node_modules/.bin/expo", "export", "--platform", "android"]
+         : ["npm", "run", "build"]),
+     ]);
++    if (containerFailure(build)) return blocked(build.code === 137 ? "Exited with code 137" : build.output, "runner");
+     checks.push({
+       name: template === "expo" ? "metro-export" : "build",
+       status: build.code ? "failed" : "passed",
+@@ -237,7 +235,7 @@ export const verifyInSandbox: AgentContext["verify"] = async (files, template, n
+         `POSTGRES_PASSWORD=${password}`,
+         "postgres:17-alpine",
+       ]);
+-      if (dbStart.code) throw new Error("Cannot start sandbox PostgreSQL (pre-pull postgres:17-alpine)");
++      if (dbStart.code) return blocked(dbStart.output, "database");
+       let ready = false;
+       for (let attempt = 0; attempt < 30; attempt++) {
+         // The image starts a temporary Unix-socket-only server during initdb.
+@@ -262,7 +260,7 @@ export const verifyInSandbox: AgentContext["verify"] = async (files, template, n
+         "-c",
+         "CREATE DATABASE app OWNER sandbox_app;",
+       ]);
+-      if (setup.code) throw new Error(`Cannot initialize sandbox database: ${setup.output.replaceAll(appPassword, "[redacted]").replaceAll(password, "[redacted]").slice(-2000)}`);
++      if (setup.code) return blocked(setup.output, "database");
+       databaseUrl = `postgres://sandbox_app:${appPassword}@db:5432/app`;
+       const schemaName = `i2a-schema-${suffix}`;
+       containers.push(schemaName);
+@@ -280,6 +278,7 @@ export const verifyInSandbox: AgentContext["verify"] = async (files, template, n
+         "-e",
+         "import postgres from 'postgres'; import {readFile} from 'node:fs/promises'; const sql=postgres(process.env.DATABASE_URL); try {const schema=await readFile('db/schema.sql','utf8');await sql.unsafe(schema);await sql.unsafe(schema);} finally {await sql.end();}",
+       ]);
++      if (containerFailure(schema)) return blocked(schema.output, "runner");
+       checks.push({
+         name: "database-schema",
+         status: schema.code ? "failed" : "passed",
+@@ -314,7 +313,7 @@ export const verifyInSandbox: AgentContext["verify"] = async (files, template, n
+         ? "./node_modules/.bin/tsx server/node.ts & node /opt/runner/serve.mjs"
+         : "node /opt/runner/serve.mjs",
+     ]);
+-    if (start.code) throw new Error("Cannot start sandbox app");
++    if (start.code) return blocked(start.output, "browser");
+     const browserName = `i2a-browser-${suffix}`;
+     containers.push(browserName);
+     const browser = await docker(
+@@ -345,7 +344,7 @@ export const verifyInSandbox: AgentContext["verify"] = async (files, template, n
+       ],
+       6_000_000,
+     );
+-    if (browser.code) throw new Error(`Browser runner failed: ${browser.output.slice(-1000)}`);
++    if (browser.code) return blocked(browser.code === 137 ? "Exited with code 137" : browser.output, "browser");
+     const result = JSON.parse(browser.output) as Pick<Verification, "checks" | "screenshots">;
+     checks.push(...result.checks);
+     return {
+@@ -356,12 +355,7 @@ export const verifyInSandbox: AgentContext["verify"] = async (files, template, n
+     };
+   } catch (error) {
+     signal.throwIfAborted();
+-    return {
+-      status: "blocked",
+-      checks,
+-      log: String(error).slice(-2000),
+-      screenshots: [],
+-    };
++    return blocked(String(error));
+   } finally {
+     // Cleanup also runs after cancellation; never reuse an aborted signal here.
+     await Promise.allSettled(containers.map((name) => command("docker", ["rm", "-f", name], undefined, 15000)));
+diff --git a/src/lib/agents/verification-failure.ts b/src/lib/agents/verification-failure.ts
+new file mode 100644
+index 0000000..ad3b1b4
+--- /dev/null
++++ b/src/lib/agents/verification-failure.ts
+@@ -0,0 +1,41 @@
++export const verificationFailures = {
++  docker_access: { detail: "سرویس بررسی به محیط اجرای آزمایشی دسترسی ندارد.", retry: false },
++  image_missing: { detail: "یکی از ابزارهای لازم برای محیط آزمایشی روی سرور آماده نیست.", retry: false },
++  packages_unavailable: { detail: "دریافت بسته‌های لازم برای بررسی پروژه موقتاً قطع شده است.", retry: true },
++  package_missing: { detail: "یکی از بسته‌های لازم در منبع بسته‌های پلتفرم در دسترس نیست.", retry: false },
++  package_install: { detail: "پلتفرم نتوانست بسته‌های لازم برای بررسی پروژه را آماده کند.", retry: false },
++  capacity: { detail: "محیط آزمایشی با کمبود منابع روبه‌رو شد.", retry: true },
++  preview_database: { detail: "دیتابیس موقت بررسی آماده نشد.", retry: true },
++  browser: { detail: "مرورگر آزمایشی نتوانست بررسی پروژه را آغاز کند.", retry: true },
++  runner_unavailable: { detail: "محیط اجرای آزمایشی موقتاً پاسخ نداد.", retry: true },
++  unknown: { detail: "پلتفرم نتوانست بررسی فنی را اجرا کند.", retry: false },
++} as const;
++
++export type VerificationBlocker = keyof typeof verificationFailures;
++export type VerificationStage = "runner" | "image" | "install" | "database" | "browser";
++
++export function classifyVerificationBlocker(log: string, stage?: VerificationStage): VerificationBlocker {
++  if (/permission denied.*docker|docker.*permission denied|docker daemon socket|spawn docker ENOENT|docker:.*not found/i.test(log)) return "docker_access";
++  if (/no such image|image.*(?:missing|not found)|تصویر .*نصب نیست|manifest unknown|pre-pull postgres/i.test(log)) return "image_missing";
++  if (/no space left|out of memory|cannot allocate memory|exited with code 137/i.test(log)) return "capacity";
++  if (/cannot connect to the docker daemon|docker daemon.*not running|error during connect|Cannot create isolated Docker network/i.test(log)) return "runner_unavailable";
++  if (stage === "install" || /dependency installation failed/i.test(log)) {
++    if (/ETARGET|E404|no matching version|404 not found/i.test(log)) return "package_missing";
++    if (/EAI_AGAIN|ECONNRESET|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|E(?:5\d\d|429)|5\d\d (?:bad gateway|service unavailable|gateway timeout)|command timed out/i.test(log)) return "packages_unavailable";
++    return "package_install";
++  }
++  if (stage === "database" || /sandbox (?:postgresql|database)/i.test(log)) return "preview_database";
++  if (stage === "browser" || /browser runner failed|cannot start sandbox app/i.test(log)) return "browser";
++  if (stage === "runner" || /command timed out/i.test(log)) return "runner_unavailable";
++  return "unknown";
++}
++
++export function verificationMessage(blocker: VerificationBlocker) {
++  return `${verificationFailures[blocker].detail} مراحل انجام‌شده ذخیره شده‌اند. اگر مشکل ادامه داشت، شناسهٔ اجرا را به پشتیبانی پلتفرم بدهید.`;
++}
++
++export class VerificationBlockedError extends Error {
++  constructor(public readonly blocker: VerificationBlocker) {
++    super(verificationMessage(blocker));
++  }
++}
+diff --git a/src/lib/workflows/failure.ts b/src/lib/workflows/failure.ts
+index 6b8f619..fa7aff6 100644
+--- a/src/lib/workflows/failure.ts
++++ b/src/lib/workflows/failure.ts
+@@ -1,4 +1,7 @@
+ import { CompletionTruncatedError } from "../ai/errors";
++import {
++  VerificationBlockedError, classifyVerificationBlocker, verificationFailures, verificationMessage, type VerificationBlocker,
++} from "../agents/verification-failure";
+ 
+ export const quotaFailureMessages: Record<string, string> = {
+   user_tokens: "سقف توکن ۳۰ روزهٔ حساب پر شده است. پس از آزاد شدن سهمیه یا تغییر آن در پنل، همین مرحله را ادامه دهید.",
+@@ -15,25 +18,33 @@ export const quotaFailureMessages: Record<string, string> = {
+ };
+ 
+ 
++export const legacySandboxMessage = "محیط بررسی و ساخت آماده نبود. پس از رفع مشکل محیط، ساخت را از همان مرحله ادامه دهید.";
++
+ export const workflowMessages = {
+   rate: "ارائه‌دهندهٔ هوش مصنوعی موقتاً تعداد درخواست‌ها را محدود کرده است. مرحله‌های کامل‌شده ذخیره‌اند؛ کمی بعد ادامه دهید.",
+   timeout: "پاسخ سرویس در زمان مقرر نرسید. مصرف این درخواست ممکن است هنوز در حال ثبت باشد؛ پس از بررسی مصرف می‌توانید از همین مرحله ادامه دهید.",
+   unavailable: "سرویس هوش مصنوعی یا ابزار ساخت موقتاً در دسترس نبود. وضعیت سرویس را بررسی کنید و از همین مرحله ادامه دهید.",
+-  sandbox: "محیط بررسی و ساخت آماده نبود. پس از رفع مشکل محیط، ساخت را از همان مرحله ادامه دهید.",
++  sandbox: verificationMessage("unknown"),
+   invalidOutput: "خروجی مدل کامل یا قابل استفاده نبود. از همین مرحله ادامه دهید یا مدل را بررسی کنید.",
+   version: "نسخهٔ پروژه بعد از ثبت اجرا تغییر کرده است. ساخت را با نسخهٔ فعلی شروع کنید.",
+   generic: "این مرحله کامل نشد. نتیجهٔ مراحل موفق ذخیره شده است. از دکمهٔ ادامه استفاده کنید؛ اگر مشکل تکرار شد، شناسهٔ اجرا را برای پشتیبانی بفرستید.",
+ } as const;
+ 
+ export function describeWorkflowFailure(error: unknown) {
++  if (error instanceof VerificationBlockedError)
++    return { message: error.message, autoRetry: verificationFailures[error.blocker].retry };
+   const message = error instanceof Error ? error.message : String(error ?? "");
++  const verificationMessageSaved = (Object.keys(verificationFailures) as VerificationBlocker[]).some((blocker) => message === verificationMessage(blocker));
++  if (verificationMessageSaved) return { message, autoRetry: false };
++  if (message === legacySandboxMessage) return { message: workflowMessages.sandbox, autoRetry: false };
++  if (/^ابزار ارزیابی در دسترس نیست/.test(message))
++    return { message: verificationMessage(classifyVerificationBlocker(message)), autoRetry: false };
+   if (/^AI provider error 429:/.test(message)) return { message: workflowMessages.rate, autoRetry: true };
+   if (error instanceof CompletionTruncatedError || /invalid JSON|JSON.*schema|JSON معتبر نبود|پاسخ.*کامل نشد/i.test(message))
+     return { message: workflowMessages.invalidOutput, autoRetry: false };
+   if (/timeout|timed out|زمان مقرر/i.test(message)) return { message: workflowMessages.timeout, autoRetry: false };
+   if (/^AI provider error 5\d\d:|fetch failed|ECONNRESET|^Model unavailable$/i.test(message))
+     return { message: workflowMessages.unavailable, autoRetry: false };
+-  if (/^ابزار ارزیابی در دسترس نیست/.test(message)) return { message: workflowMessages.sandbox, autoRetry: false };
+   if (/^نسخه پروژه پس از ورود به صف تغییر کرده/.test(message)) return { message: workflowMessages.version, autoRetry: false };
+   // Only stable server-authored text is allowed here. Provider responses can contain arbitrary data.
+   if (/^(سقف مصرف (۵ ساعته|هفتگی) طرح|سقف توکن ۳۰ روزهٔ (حساب|این مدل) پر شده است\.|بودجهٔ پلتفرم یا سهمیهٔ این اجرا کافی نیست، یا مصرف قبلی نیاز به بررسی دارد\.|سقف توکن این اجرا کافی نیست\.|اعتبار سرویس هوش مصنوعی برای مدل انتخاب‌شده کافی نیست\.|قیمت معتبر این مدل در دسترس نیست؛|درگاه آروان به‌درستی تنظیم نشده است\.|سقف هزینهٔ سرویس تنظیم نشده است؛|بودجهٔ باقی‌مانده کافی نیست یا مصرف قبلی نیاز به بررسی دارد\.)/.test(message)) {
+diff --git a/src/lib/workflows/queue.ts b/src/lib/workflows/queue.ts
+index 0ab17b2..9030d8f 100644
+--- a/src/lib/workflows/queue.ts
++++ b/src/lib/workflows/queue.ts
+@@ -5,9 +5,10 @@ import { HttpError } from "../http";
+ import { enforce } from "../rate-limit";
+ import { isUnlimitedUser } from "../billing/subscription";
+ import { queryRows } from "./sql";
+-import type { AgentTaskInput } from "../agents/contracts";
++import type { AgentTaskInput, Verification } from "../agents/contracts";
++import { classifyVerificationBlocker, verificationMessage } from "../agents/verification-failure";
+ import { WorkflowYield } from "./yield";
+-import { describeWorkflowFailure, workflowMessages } from "./failure";
++import { describeWorkflowFailure, legacySandboxMessage, workflowMessages } from "./failure";
+ 
+ export interface ClaimedRun {
+   id: string;
+@@ -123,7 +124,10 @@ export function taskStore(run: ClaimedRun, signal: AbortSignal, slice = false):
+         input_hash: string;
+         output: T;
+       }>(sql`select status,input_hash,output from agent_tasks where run_id=${run.id} and key=${key}`);
+-      if (existing[0]?.status === "succeeded" && existing[0].input_hash === hash) return existing[0].output;
++      const previous = existing[0];
++      // Older workers persisted a blocked verifier run as a successful checkpoint.
++      const blockedVerification = role === "verifier" && (previous?.output as { status?: string } | null)?.status === "blocked";
++      if (previous?.status === "succeeded" && previous.input_hash === hash && !blockedVerification) return previous.output;
+       if (existing[0]?.status === "running" && await hasUnresolvedRequest(run.id, key))
+         throw new Error(workflowMessages.timeout);
+       // Keep frontend/backend parallel, but move each subsequent phase to a new
+@@ -181,8 +185,13 @@ export async function workflowView(projectId: string) {
+     select id,key,role,status,error,jsonb_build_object('model',output->'model','verification',output->'status','screenshots',
+       coalesce((select jsonb_agg(jsonb_build_object('name',s->>'name')) from jsonb_array_elements(output->'screenshots') s),'[]'::jsonb)) as output
+       from agent_tasks where run_id=${run.id} order by created_at,key`);
+-  const evaluations = await queryRows<{ status: string; report: unknown }>(sql`
+-    select status,report from evaluations where run_id=${run.id} order by round desc limit 1`);
++  const [evaluation] = await queryRows<{
++    status: string;
++    report: { verification?: Partial<Verification>; review?: { issues?: unknown[] } } | null;
++  }>(sql`select status,report from evaluations where run_id=${run.id} order by round desc limit 1`);
++  const verification = evaluation?.report?.verification;
++  const historicalBlocker = run.error === legacySandboxMessage && verification?.status === "blocked"
++    ? classifyVerificationBlocker(verification.log ?? "") : null;
+   const costs = await queryRows<{ task_key: string; total: string; metered: number; pending: number; unpriced: number }>(sql`
+     select r.task_key,coalesce(sum(u.estimated_cost_toman),0)::text as total,
+       count(u.estimated_cost_toman)::int as metered,
+@@ -198,7 +207,7 @@ export async function workflowView(projectId: string) {
+     id: run.id,
+     status: run.status,
+     kind: run.input.kind,
+-    error: run.error ? describeWorkflowFailure(run.error).message : null,
++    error: historicalBlocker ? verificationMessage(historicalBlocker) : run.error ? describeWorkflowFailure(run.error).message : null,
+     retryAt: run.status === "queued" && run.retry_after ? new Date(run.retry_after).toISOString() : null,
+     createdAt: new Date(run.created_at).toISOString(),
+     tasks: tasks.map((t) => ({
+@@ -218,6 +227,12 @@ export async function workflowView(projectId: string) {
+           name: s.name,
+         })),
+       ),
+-    evaluation: evaluations[0] ?? null,
++    evaluation: evaluation ? {
++      status: evaluation.status,
++      report: {
++        verification: { checks: (verification?.checks ?? []).map(({ name, status }) => ({ name, status })) },
++        review: { issueCount: evaluation.report?.review?.issues?.length ?? 0 },
++      },
++    } : null,
+   };
+ }
+diff --git a/src/lib/workflows/worker.ts b/src/lib/workflows/worker.ts
+index 67405ea..4d40946 100644
+--- a/src/lib/workflows/worker.ts
++++ b/src/lib/workflows/worker.ts
+@@ -44,7 +44,7 @@ async function finish(run: ClaimedRun, result: AgentResult) {
+ 
+ async function fail(run: ClaimedRun, error: unknown) {
+   const { message, autoRetry } = describeWorkflowFailure(error);
+-  // A provider 429 explicitly rejects inference. Uncertain failures keep their hold and need a manual decision.
++  // Retry only known temporary verifier outages or a provider rejection before inference.
+   const retry = autoRetry && run.attempts < 3;
+   await db().execute(sql`with failed as (
+     update workflow_runs set status=case when ${retry} then 'queued' else 'failed' end,
