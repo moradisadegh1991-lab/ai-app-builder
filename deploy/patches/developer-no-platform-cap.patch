@@ -1,0 +1,14 @@
+diff --git a/src/lib/workflows/budgets.ts b/src/lib/workflows/budgets.ts
+index 6e33522..3d62a50 100644
+--- a/src/lib/workflows/budgets.ts
++++ b/src/lib/workflows/budgets.ts
+@@ -33,7 +33,8 @@ export function moneyLimits(raw: string | undefined, free: boolean, developer =
+     }
+     if (developer) {
+       for (const k of moneyKeys) {
+-        if (!k.startsWith("platform_")) limits[k] = k.endsWith("_day") ? limits.platform_day! : limits.platform_month!;
++        // SQL accepts at most 12 digits; this is a technical bound, not a plan quota.
++        limits[k] = 999_999_999_999;
+       }
+     }
+     return limits;
