@@ -83,6 +83,9 @@ async function main(){
    },old.record_id,old.reservation_id,mode==='--check'));
   await sql.end({timeout:2}).catch(()=>{});
   console.log(JSON.stringify({...result,...(auditPath?{audit:auditPath}:{})},null,2));
- }catch{await sql.end({timeout:2}).catch(()=>{});throw Error('Preparation failed')}
+ }catch(e){await sql.end({timeout:2}).catch(()=>{});throw e}
 }
-if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href)main().catch(()=>{console.error('Preparation stopped; no database details were printed.');process.exitCode=1});
+if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href)main().catch(e=>{
+ const categories={'Active work exists':'active-work','Latest run no longer eligible':'run-changed','Required checkpoint missing':'checkpoint-missing','Expected failed frontend missing':'frontend-status','Unpriced usage exists':'unpriced-usage','Expected settled reservation missing':'reservation-changed','Tariff evidence mismatch':'tariff-mismatch','Monthly limit mismatch':'monthly-limit','Daily limit mismatch':'daily-limit','Kimi fix missing':'kimi-fix-missing'};
+ console.error(`Preparation stopped: ${categories[e?.message]??'configuration-or-database'}. No sensitive details were printed.`);process.exitCode=1;
+});
