@@ -56,6 +56,7 @@ async function main(){
  if(limits.common?.platform_month!==2000000||limits.common?.platform_day!==500000||limits.free?.user_month!==500000||limits.free?.project_month!==500000)throw Error('Budget configuration mismatch');
  if(!preview && (limits.common?.run!==400000||limits.free?.run!==400000||limits.free?.user_day!==500000||limits.free?.project_day!==500000))throw Error('Budget configuration mismatch');
  if(!preview && !(await readFile(`${app}/src/lib/workflows/queue.ts`,'utf8')).includes('order by updated_at desc,created_at desc'))throw Error('Resume view fix missing');
+ if(!(await readFile(`${app}/src/lib/ai/index.ts`,'utf8')).includes('result.model === "moonshotai/kimi-k2.6"'))throw Error('Kimi fix missing');
  if(!process.env.DATABASE_URL)throw Error('Database configuration unavailable');
  const sql=req('postgres')(process.env.DATABASE_URL,{max:1,connect_timeout:8,idle_timeout:1,prepare:false});
  let auditPath;
