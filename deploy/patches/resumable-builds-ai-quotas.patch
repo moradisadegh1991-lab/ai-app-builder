@@ -1,0 +1,1090 @@
+diff --git a/drizzle/0013_ai_quota_recovery.sql b/drizzle/0013_ai_quota_recovery.sql
+new file mode 100644
+index 0000000..37c3396
+--- /dev/null
++++ b/drizzle/0013_ai_quota_recovery.sql
+@@ -0,0 +1,110 @@
++CREATE TABLE ai_quota_defaults (
++  model text PRIMARY KEY,
++  token_limit integer NOT NULL CHECK (token_limit >= 0)
++);
++CREATE TABLE ai_user_quotas (
++  user_id uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
++  token_limit integer NOT NULL CHECK (token_limit >= 0)
++);
++ALTER TABLE usage_reservations ADD COLUMN requested_model text;
++ALTER TABLE usage_reservations ADD COLUMN task_key text;
++ALTER TABLE workflow_runs ADD COLUMN retry_after timestamptz;
++--> statement-breakpoint
++CREATE FUNCTION admit_ai_request(
++  p_id uuid, p_user uuid, p_project uuid, p_run uuid, p_tokens integer,
++  p_window bigint, p_week bigint, p_amount bigint, p_limits jsonb, p_model text,
++  p_task text, p_developer boolean
++) RETURNS text LANGUAGE plpgsql AS $$
++DECLARE
++  total_limit integer;
++  model_limit integer;
++  total_used bigint;
++  model_used bigint;
++  bucket record;
++  used_toman bigint;
++BEGIN
++  IF p_amount IS NULL OR p_amount < 1 OR p_tokens < 1 THEN RETURN 'configuration'; END IF;
++  PERFORM pg_advisory_xact_lock(19871205);
++  PERFORM id FROM users WHERE id=p_user FOR UPDATE;
++  IF NOT FOUND THEN RETURN 'ownership'; END IF;
++  IF p_project IS NOT NULL AND NOT EXISTS (SELECT 1 FROM projects WHERE id=p_project AND user_id=p_user) THEN RETURN 'ownership'; END IF;
++  IF p_run IS NOT NULL AND NOT EXISTS (
++    SELECT 1 FROM workflow_runs WHERE id=p_run AND user_id=p_user AND status='running'
++      AND (p_project IS NULL OR project_id=p_project) AND lease_expires_at>now()
++  ) THEN RETURN 'ownership'; END IF;
++
++  IF p_developer THEN
++    -- Developer access changes admission only. It does not erase or discount spending.
++    INSERT INTO usage_reservations(id,user_id,project_id,run_id,tokens,used_platform_key,reserved_toman,requested_model,task_key)
++      VALUES(p_id,p_user,p_project,p_run,p_tokens,true,p_amount,p_model,p_task);
++    RETURN 'allowed';
++  END IF;
++
++  SELECT coalesce(
++    (SELECT token_limit FROM ai_user_quotas WHERE user_id=p_user),
++    (SELECT token_limit FROM ai_quota_defaults WHERE model='*')
++  ) INTO total_limit;
++  SELECT token_limit INTO model_limit FROM ai_quota_defaults WHERE model=p_model;
++  IF total_limit IS NOT NULL OR model_limit IS NOT NULL THEN
++    SELECT coalesce(sum(amount),0), coalesce(sum(amount) FILTER (WHERE model=p_model),0)
++      INTO total_used, model_used
++    FROM (
++      SELECT u.input_tokens::bigint+u.output_tokens AS amount,
++        coalesce(r.requested_model, CASE WHEN lower(u.model)='moonshotai/kimi-k2.6' THEN 'kimi-k2.6' ELSE lower(u.model) END) AS model
++      FROM usage_records u LEFT JOIN usage_reservations r ON r.id=u.reservation_id
++      WHERE u.user_id=p_user AND u.used_platform_key AND u.created_at>=now()-interval '30 days'
++      UNION ALL
++      SELECT tokens,requested_model FROM usage_reservations
++      WHERE user_id=p_user AND used_platform_key AND state='held' AND created_at>=now()-interval '30 days'
++    ) AS consumption;
++    IF total_limit IS NOT NULL AND total_used+p_tokens>total_limit THEN RETURN 'user_tokens'; END IF;
++    IF model_limit IS NOT NULL AND model_used+p_tokens>model_limit THEN RETURN 'model_tokens'; END IF;
++  END IF;
++
++  IF NOT reserve_ai_money(p_id,p_user,p_project,p_run,p_tokens,p_window,p_week,p_amount,p_limits) THEN
++    IF EXISTS (
++      SELECT 1 FROM usage_records u LEFT JOIN usage_reservations r ON r.id=u.reservation_id
++      WHERE u.used_platform_key AND u.created_at>=now()-interval '30 days'
++        AND (u.estimated_cost_toman IS NULL OR r.reserved_toman IS NULL)
++    ) OR EXISTS (
++      SELECT 1 FROM usage_reservations WHERE used_platform_key AND state='held'
++        AND created_at>=now()-interval '30 days' AND reserved_toman IS NULL
++    ) THEN RETURN 'uncertain_usage'; END IF;
++
++    FOR bucket IN SELECT * FROM (VALUES
++      ('platform_day', interval '1 day'), ('platform_month', interval '30 days'),
++      ('user_day', interval '1 day'), ('user_month', interval '30 days'),
++      ('project_day', interval '1 day'), ('project_month', interval '30 days'),
++      ('run', null::interval)
++    ) AS b(scope, period)
++    LOOP
++      SELECT coalesce(sum(reserved_toman),0) INTO used_toman
++      FROM usage_reservations r WHERE r.used_platform_key AND r.state<>'released'
++        AND (bucket.period IS NULL OR r.created_at>=now()-bucket.period)
++        AND CASE
++          WHEN bucket.scope LIKE 'user_%' THEN r.user_id=p_user
++          WHEN bucket.scope LIKE 'project_%' THEN r.project_id=p_project
++          WHEN bucket.scope='run' THEN r.run_id=p_run
++          ELSE true
++        END;
++      IF used_toman + p_amount > (p_limits->>bucket.scope)::bigint THEN RETURN bucket.scope; END IF;
++    END LOOP;
++    RETURN 'plan_tokens';
++  END IF;
++  UPDATE usage_reservations SET requested_model=p_model,task_key=p_task WHERE id=p_id;
++  RETURN 'allowed';
++END;
++$$;
++--> statement-breakpoint
++CREATE FUNCTION delete_owned_project(p_project uuid, p_user uuid) RETURNS text LANGUAGE plpgsql AS $$
++BEGIN
++  PERFORM pg_advisory_xact_lock(19871205);
++  PERFORM id FROM projects WHERE id=p_project AND user_id=p_user FOR UPDATE;
++  IF NOT FOUND THEN RETURN 'missing'; END IF;
++  IF EXISTS (SELECT 1 FROM workflow_runs WHERE project_id=p_project AND status IN ('queued','running')) THEN
++    RETURN 'active';
++  END IF;
++  DELETE FROM projects WHERE id=p_project AND user_id=p_user;
++  RETURN 'deleted';
++END;
++$$;
+diff --git a/src/app/admin/ai-quotas/page.tsx b/src/app/admin/ai-quotas/page.tsx
+new file mode 100644
+index 0000000..edce9ed
+--- /dev/null
++++ b/src/app/admin/ai-quotas/page.tsx
+@@ -0,0 +1,21 @@
++import { arvanDefaultModels } from "@/lib/ai/arvan-reference";
++import { notFound } from "next/navigation";
++import { Header } from "@/components/Header";
++import { AiQuotaPanel } from "@/components/AiQuotaPanel";
++import { isQuotaAdmin, quotaSettings } from "@/lib/billing/ai-quotas";
++import { requirePageUser } from "@/lib/session";
++
++export default async function AiQuotasPage() {
++  const user = await requirePageUser();
++  if (!isQuotaAdmin(user)) notFound();
++  const data = await quotaSettings("", 0);
++  return (
++    <>
++      <Header user={user} />
++      <main className="page-container space-y-5 py-8">
++        <h1 className="text-2xl font-bold">مدیریت سهمیهٔ هوش مصنوعی</h1>
++        <AiQuotaPanel initial={data} models={[...new Set(Object.values(arvanDefaultModels).map((model) => model.toLowerCase()))]} />
++      </main>
++    </>
++  );
++}
+diff --git a/src/app/api/admin/ai-quotas/route.ts b/src/app/api/admin/ai-quotas/route.ts
+new file mode 100644
+index 0000000..f9cbc6e
+--- /dev/null
++++ b/src/app/api/admin/ai-quotas/route.ts
+@@ -0,0 +1,27 @@
++import { z } from "zod";
++import { isQuotaAdmin, quotaChange, quotaSettings, saveQuota } from "@/lib/billing/ai-quotas";
++import { handleRoute, HttpError, readJson } from "@/lib/http";
++import { requireApiUser } from "@/lib/session";
++
++async function authorize() {
++  if (!isQuotaAdmin(await requireApiUser())) throw new HttpError(403, "دسترسی مدیریت سهمیه برای این حساب فعال نیست.");
++}
++
++export async function GET(request: Request) {
++  return handleRoute(async () => {
++    await authorize();
++    const params = new URL(request.url).searchParams;
++    const page = z.coerce.number().int().min(0).max(10000).parse(params.get("page") ?? 0);
++    const search = z.string().trim().max(100).parse(params.get("q") ?? "");
++    return Response.json(await quotaSettings(search, page), { headers: { "Cache-Control": "private, no-store" } });
++  });
++}
++
++export async function PATCH(request: Request) {
++  return handleRoute(async () => {
++    await authorize();
++    const change = await readJson(request, quotaChange.parse);
++    if (!(await saveQuota(change))) throw new HttpError(404, "کاربر پیدا نشد.");
++    return Response.json({ ok: true });
++  });
++}
+diff --git a/src/app/api/projects/[id]/route.ts b/src/app/api/projects/[id]/route.ts
+index bebac91..fb64801 100644
+--- a/src/app/api/projects/[id]/route.ts
++++ b/src/app/api/projects/[id]/route.ts
+@@ -1,7 +1,7 @@
+-import { and, eq } from "drizzle-orm";
++import { sql } from "drizzle-orm";
+ import { NextResponse } from "next/server";
+-import { db, schema } from "@/lib/db";
+-import { handleRoute } from "@/lib/http";
++import { queryRows } from "@/lib/workflows/sql";
++import { handleRoute, HttpError } from "@/lib/http";
+ import { getOwnedProject, projectView } from "@/lib/projects";
+ import type { ProjectRouteContext } from "@/lib/route-helpers";
+ import { requireApiUser } from "@/lib/session";
+@@ -23,9 +23,9 @@ export async function DELETE(_request: Request, ctx: ProjectRouteContext) {
+   return handleRoute(async () => {
+     const user = await requireApiUser();
+     const project = await getOwnedProject(user.id, (await ctx.params).id);
+-    await db()
+-      .delete(schema.projects)
+-      .where(and(eq(schema.projects.id, project.id), eq(schema.projects.userId, user.id)));
++    const [row] = await queryRows<{ result: string }>(sql`select delete_owned_project(${project.id}::uuid,${user.id}::uuid) as result`);
++    if (row?.result === "active") throw new HttpError(409, "برای حذف پروژه، ابتدا اجرای فعال را متوقف کنید.");
++    if (row?.result !== "deleted") throw new HttpError(404, "پروژه پیدا نشد.");
+     return NextResponse.json({ ok: true });
+   });
+ }
+diff --git a/src/app/api/projects/[id]/workflow/route.ts b/src/app/api/projects/[id]/workflow/route.ts
+index f40ad65..43edede 100644
+--- a/src/app/api/projects/[id]/workflow/route.ts
++++ b/src/app/api/projects/[id]/workflow/route.ts
+@@ -1,9 +1,12 @@
+ import { sql } from "drizzle-orm";
++import { z } from "zod";
+ import { NextResponse } from "next/server";
+ import { requireApiUser } from "@/lib/session";
+ import { getOwnedProject, projectView } from "@/lib/projects";
+-import { handleRoute, HttpError } from "@/lib/http";
++import { handleRoute, HttpError, readJson } from "@/lib/http";
+ import { queryRows } from "@/lib/workflows/sql";
++import { resumeWorkflow } from "@/lib/workflows/queue";
++import { dispatchWorkflow } from "@/lib/workflows/dispatch";
+ import type { ProjectRouteContext } from "@/lib/route-helpers";
+ 
+ export async function GET(request: Request, ctx: ProjectRouteContext) {
+@@ -44,3 +47,13 @@ export async function DELETE(_request: Request, ctx: ProjectRouteContext) {
+     return NextResponse.json({ project: await projectView(project) });
+   });
+ }
++
++export async function POST(request: Request, ctx: ProjectRouteContext) {
++  return handleRoute(async () => {
++    const user = await requireApiUser();
++    const project = await getOwnedProject(user.id, (await ctx.params).id);
++    const { runId } = await readJson(request, z.object({ runId: z.uuid() }).parse);
++    await dispatchWorkflow(await resumeWorkflow(user.id, project.id, runId));
++    return NextResponse.json({ project: await projectView(await getOwnedProject(user.id, project.id)) });
++  });
++}
+diff --git a/src/components/AiQuotaPanel.tsx b/src/components/AiQuotaPanel.tsx
+new file mode 100644
+index 0000000..5cd5139
+--- /dev/null
++++ b/src/components/AiQuotaPanel.tsx
+@@ -0,0 +1,116 @@
++"use client";
++
++import { useState, type FormEvent } from "react";
++import type { quotaSettings } from "@/lib/billing/ai-quotas";
++import { api } from "./api";
++
++type Data = Awaited<ReturnType<typeof quotaSettings>>;
++type Target = { type: "default"; model: string } | { type: "user"; userId: string };
++
++const endpoint = "/api/admin/ai-quotas";
++
++function LimitForm({ limit, label, onSave }: { limit: number | null; label: string; onSave: (limit: number | null) => Promise<void> }) {
++  const [saving, setSaving] = useState(false);
++  async function submit(event: FormEvent<HTMLFormElement>) {
++    event.preventDefault();
++    const value = new FormData(event.currentTarget).get("limit");
++    setSaving(true);
++    try { await onSave(value === "" ? null : Number(value)); }
++    finally { setSaving(false); }
++  }
++  return (
++    <form onSubmit={submit} className="flex flex-wrap items-center gap-2">
++      <input key={limit} aria-label={label} className="input !w-40" name="limit" type="number" dir="ltr"
++        min={0} max={2000000000} step={1} placeholder="بدون سقف افزوده" defaultValue={limit ?? ""} />
++      <button className="btn-secondary btn-sm" disabled={saving} type="submit">ذخیره</button>
++    </form>
++  );
++}
++
++export function AiQuotaPanel({ initial, models }: { initial: Data; models: string[] }) {
++  const [data, setData] = useState(initial);
++  const [search, setSearch] = useState("");
++  const [page, setPage] = useState(0);
++  const [pending, setPending] = useState(false);
++  const [notice, setNotice] = useState("");
++  const modelNames = [...new Set([...models, ...data.defaults.map((row) => row.model)].filter((model) => model !== "*"))];
++  const defaultTotal = data.defaults.find((row) => row.model === "*")?.limit ?? null;
++
++  async function load(query: string, targetPage: number) {
++    const params = new URLSearchParams({ q: query, page: String(targetPage) });
++    setData(await api<Data>(`${endpoint}?${params}`));
++    setPage(targetPage);
++  }
++
++  async function refresh(query: string, targetPage: number) {
++    setPending(true);
++    setNotice("");
++    try { await load(query, targetPage); }
++    catch (error) { setNotice((error as Error).message); }
++    finally { setPending(false); }
++  }
++
++  async function save(target: Target, limit: number | null) {
++    setNotice("");
++    try {
++      await api(endpoint, { method: "PATCH", body: JSON.stringify({ ...target, limit }) });
++      setNotice("سهمیه ذخیره شد.");
++      await load(search, page);
++    } catch (error) { setNotice((error as Error).message); }
++  }
++
++  return (
++    <div className="space-y-4">
++      <section className="panel space-y-3 p-4">
++        <h2 className="font-bold">سقف‌های پیش‌فرض</h2>
++        <p className="text-sm text-muted">مبنای همهٔ سقف‌ها تعداد توکن کلید مرکزی در ۳۰ روز شناور است. سقف هر مدل برای هر کاربر اعمال می‌شود. صفر یعنی توقف مصرف و فیلد خالی یعنی برداشتن این سقف افزوده. حساب توسعه‌دهنده از این سهمیه‌ها معاف است.</p>
++        <div className="flex flex-wrap items-center gap-3">
++          <span>سهمیهٔ کل پیش‌فرض</span>
++          <LimitForm label="سهمیهٔ کل پیش‌فرض" limit={defaultTotal} onSave={(limit) => save({ type: "default", model: "*" }, limit)} />
++        </div>
++        {modelNames.map((model) => (
++          <div key={model} className="flex flex-wrap items-center gap-3">
++            <span dir="ltr">{model}</span>
++            <LimitForm label={`سقف ${model}`} limit={data.defaults.find((row) => row.model === model)?.limit ?? null}
++              onSave={(limit) => save({ type: "default", model }, limit)} />
++          </div>
++        ))}
++        <form className="flex flex-wrap items-center gap-2" onSubmit={(event) => {
++          event.preventDefault();
++          const input = new FormData(event.currentTarget);
++          void save({ type: "default", model: String(input.get("model")) }, Number(input.get("limit")));
++        }}>
++          <input className="input !w-52" name="model" aria-label="شناسه مدل جدید" placeholder="Gemini-2.5-Pro" dir="ltr" maxLength={150} required />
++          <input className="input !w-36" name="limit" aria-label="سقف مدل جدید" type="number" dir="ltr" min={0} max={2000000000} step={1} required />
++          <button className="btn-secondary btn-sm" type="submit">ثبت سقف مدل</button>
++        </form>
++      </section>
++      <section className="panel space-y-3 p-4">
++        <h2 className="font-bold">کاربران و مصرف توکن</h2>
++        <p className="text-sm text-muted">سقف اختصاصی جایگزین سهمیهٔ کل پیش‌فرض می‌شود. برای بازگشت به پیش‌فرض، فیلد را خالی و ذخیره کنید.</p>
++        <form className="flex flex-wrap gap-2" onSubmit={(event) => {
++          event.preventDefault();
++          void refresh(search, 0);
++        }}>
++          <input className="input !w-60" aria-label="جست‌وجوی کاربران" placeholder="نام یا ایمیل" maxLength={100} value={search} onChange={(event) => setSearch(event.target.value)} />
++          <button className="btn-secondary btn-sm" type="submit" disabled={pending}>جست‌وجو</button>
++        </form>
++        {data.users.length === 0 && <p className="text-sm text-muted">کاربری پیدا نشد.</p>}
++        {data.users.map((user) => (
++          <div key={user.id} className="flex flex-wrap items-center justify-between gap-3 border-t border-line py-3">
++            <div className="min-w-0">
++              <p className="break-all text-sm" dir="auto">{user.name ? `${user.name} · ${user.email}` : user.email}</p>
++              <p className="text-xs text-muted">{Number(user.used).toLocaleString("fa-IR")} توکن مصرف و رزرو شده</p>
++            </div>
++            <LimitForm label={`سهمیهٔ اختصاصی ${user.email}`} limit={user.limit} onSave={(limit) => save({ type: "user", userId: user.id }, limit)} />
++          </div>
++        ))}
++        <div className="flex gap-2">
++          {page > 0 && <button className="btn-secondary btn-sm" disabled={pending} onClick={() => void refresh(search, page - 1)}>قبلی</button>}
++          {data.more && <button className="btn-secondary btn-sm" disabled={pending} onClick={() => void refresh(search, page + 1)}>بعدی</button>}
++        </div>
++      </section>
++      <p role="status" className="text-sm">{notice}</p>
++    </div>
++  );
++}
+diff --git a/src/components/Header.tsx b/src/components/Header.tsx
+index d97e023..1181ce2 100644
+--- a/src/components/Header.tsx
++++ b/src/components/Header.tsx
+@@ -1,3 +1,4 @@
++import { isQuotaAdmin } from "@/lib/billing/ai-quotas";
+ import { activePlan } from "@/lib/billing/subscription";
+ import type { schema } from "@/lib/db";
+ import { HeaderBar } from "./HeaderBar";
+@@ -7,5 +8,5 @@ export async function Header({ user }: { user: schema.User }) {
+   const { plan } = await activePlan(user.id);
+   const displayName = user.name ?? user.githubLogin ?? user.email.split("@")[0]!;
+ 
+-  return <HeaderBar displayName={displayName} email={user.email} avatarUrl={user.avatarUrl} planName={plan.name} />;
++  return <HeaderBar displayName={displayName} email={user.email} avatarUrl={user.avatarUrl} planName={plan.name} quotaAdmin={isQuotaAdmin(user)} />;
+ }
+diff --git a/src/components/HeaderBar.tsx b/src/components/HeaderBar.tsx
+index 03f3882..79ae57b 100644
+--- a/src/components/HeaderBar.tsx
++++ b/src/components/HeaderBar.tsx
+@@ -9,11 +9,13 @@ export function HeaderBar({
+   email,
+   avatarUrl,
+   planName,
++  quotaAdmin,
+ }: {
+   displayName: string;
+   email: string;
+   avatarUrl: string | null;
+   planName: string;
++  quotaAdmin?: boolean;
+ }) {
+   return (
+     <header className="app-header">
+@@ -24,7 +26,7 @@ export function HeaderBar({
+           <HeaderNavigation variant="desktop" />
+           <div className="ms-auto flex items-center gap-2">
+             <ThemeToggle compact />
+-            <UserMenu displayName={displayName} email={email} avatarUrl={avatarUrl} planName={planName} />
++            <UserMenu displayName={displayName} email={email} avatarUrl={avatarUrl} planName={planName} quotaAdmin={quotaAdmin} />
+           </div>
+         </div>
+         <HeaderNavigation variant="mobile" />
+diff --git a/src/components/ProjectWorkspace.tsx b/src/components/ProjectWorkspace.tsx
+index 346befc..92ab13f 100644
+--- a/src/components/ProjectWorkspace.tsx
++++ b/src/components/ProjectWorkspace.tsx
+@@ -1,6 +1,7 @@
+ "use client";
+ 
+ import Link from "next/link";
++import { useRouter } from "next/navigation";
+ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+ import type { ProjectView } from "@/lib/projects";
+ import { api, type ProviderInfo, type ProvidersResponse } from "./api";
+@@ -23,7 +24,7 @@ import { ResponseGate } from "./workspace/sync";
+ import { useAutoFixPreference } from "./workspace/useAutoFixPreference";
+ import { useProjectSync } from "./workspace/useProjectSync";
+ 
+-type Busy = null | "spec" | "approve" | "code" | "github" | "rebuild" | "fix" | "edit" | "cloud";
++type Busy = null | "spec" | "approve" | "code" | "github" | "rebuild" | "fix" | "edit" | "cloud" | "resume" | "delete";
+ 
+ const BUSY_MESSAGES: Record<Exclude<Busy, null>, string> = {
+   spec: "هوش مصنوعی در حال تحلیل ایده است (معمولاً کمتر از یک دقیقه)…",
+@@ -33,6 +34,8 @@ const BUSY_MESSAGES: Record<Exclude<Busy, null>, string> = {
+   rebuild: "در حال شروع Build جدید…",
+   fix: "هوش مصنوعی در حال بررسی گزارش خطا و اصلاح کد است…",
+   edit: "هوش مصنوعی در حال اعمال تغییر روی کد است؛ بعد از آن Build جدید شروع می‌شود…",
++  resume: "در حال ادامهٔ ساخت…",
++  delete: "در حال حذف پروژه…",
+   cloud: "در حال ساخت دیتابیس Neon و پروژه Vercel…",
+ };
+ 
+@@ -49,13 +52,14 @@ export function ProjectWorkspace({
+   initialProject: ProjectView;
+   githubConnected: boolean;
+ }) {
++  const router = useRouter();
+   const [project, setProject] = useState(initialProject);
+   const [providers, setProviders] = useState<ProviderInfo[]>([]);
+   const [provider, setProvider] = useState<ProviderInfo["id"]>(
+     isAiProviderId(initialProject.aiProvider) ? initialProject.aiProvider : "openai",
+   );
+   const [busy, setBusy] = useState<Busy>(null);
+-  const [error, setError] = useState<string | null>(initialProject.lastError);
++  const [error, setError] = useState<string | null>(initialProject.workflow?.status === "failed" ? null : initialProject.lastError);
+   const [section, setSection] = useState<SectionId>(() => currentSection(initialProject));
+   const [estimate, setEstimate] = useState<{ kind: "spec" | "code"; feedback?: string } | null>(null);
+ 
+@@ -105,9 +109,19 @@ export function ProjectWorkspace({
+   const base = `/api/projects/${project.id}`;
+   const teamActive = Boolean(project.workflow && ["queued", "running"].includes(project.workflow.status));
+   const disabled = busy !== null || teamActive;
+-  useEffect(() => {
+-    if (project.workflow?.status === "failed") setError(project.workflow.error);
+-  }, [project.workflow?.status, project.workflow?.error]);
++  async function removeProject() {
++    if (disabled || !window.confirm(`پروژهٔ «${project.name}» از پلتفرم حذف شود؟ این عمل قابل بازگشت نیست.`)) return;
++    setBusy("delete");
++    setError(null);
++    try {
++      await track(() => api(base, { method: "DELETE" }));
++      router.replace("/dashboard");
++      router.refresh();
++    } catch (error) {
++      setError((error as Error).message);
++      setBusy(null);
++    }
++  }
+ 
+   // ---------------------------------------------------------------- navigation
+   const go = useCallback((id: SectionId) => {
+@@ -288,7 +302,11 @@ export function ProjectWorkspace({
+             </div>
+           )}
+ 
+-          <AgentTeamPanel workflow={project.workflow} base={base} cost={project.cost} />
++          <button type="button" className="btn-ghost btn-sm self-start text-danger-fg" disabled={disabled} onClick={() => void removeProject()}>
++            حذف پروژه
++          </button>
++          <AgentTeamPanel workflow={project.workflow} base={base} cost={project.cost}
++            onResume={(runId) => run("resume", `${base}/workflow`, "POST", { runId })} />
+ 
+           {estimate && <CostEstimate key={`${estimate.kind}-${provider}`} kind={estimate.kind} textLength={project.idea.length} screens={project.spec?.screens.length ?? 1} needsBackend={project.spec?.needsBackend ?? project.needsCloud ?? false} attachments={project.attachments.length} provider={activeProvider?.label ?? provider} model={activeProvider?.model} disabled={disabled} onCancel={() => setEstimate(null)} onConfirm={() => {
+             const selected = estimate;
+diff --git a/src/components/UserMenu.tsx b/src/components/UserMenu.tsx
+index eff7fb5..b0d8a03 100644
+--- a/src/components/UserMenu.tsx
++++ b/src/components/UserMenu.tsx
+@@ -14,11 +14,13 @@ export function UserMenu({
+   email,
+   avatarUrl,
+   planName,
++  quotaAdmin,
+ }: {
+   displayName: string;
+   email: string;
+   avatarUrl: string | null;
+   planName: string;
++  quotaAdmin?: boolean;
+ }) {
+   const [open, setOpen] = useState(false);
+   const root = useRef<HTMLDivElement>(null);
+@@ -85,6 +87,12 @@ export function UserMenu({
+               <Icon name="settings" size={16} />
+               اتصال‌ها و کلیدها
+             </Link>
++            {quotaAdmin && (
++              <Link href="/admin/ai-quotas" className="nav-link w-full" onClick={() => setOpen(false)}>
++                <Icon name="settings" size={16} />
++                مدیریت سهمیهٔ AI
++              </Link>
++            )}
+             <form action="/api/auth/logout" method="post">
+               <button type="submit" className="nav-link w-full text-danger-fg hover:!bg-danger-soft hover:!text-danger-fg">
+                 <Icon name="logout" size={16} />
+diff --git a/src/components/friendly-error.ts b/src/components/friendly-error.ts
+index 75a5447..918cf7e 100644
+--- a/src/components/friendly-error.ts
++++ b/src/components/friendly-error.ts
+@@ -1,6 +1,11 @@
++import { quotaFailureMessages, workflowMessages } from "@/lib/workflows/failure";
++
+ /** Give users a useful next step while keeping provider responses and logs private. */
+ export function friendlyError(value: unknown): string {
+   const message = typeof value === "string" ? value : value instanceof Error ? value.message : "";
++  if ([...Object.values(workflowMessages), ...Object.values(quotaFailureMessages)].includes(message)) return message;
++  if (/^(سقف مصرف (۵ ساعته|هفتگی) طرح|سقف توکن ۳۰ روزهٔ (حساب|این مدل) پر شده است\.|بودجهٔ پلتفرم یا سهمیهٔ این اجرا کافی نیست، یا مصرف قبلی نیاز به بررسی دارد\.|این اجرا قابل ادامه نیست\.|برای حذف پروژه، ابتدا اجرای فعال را متوقف کنید\.|دسترسی مدیریت سهمیه برای این حساب فعال نیست\.|کاربر پیدا نشد\.|ارائه‌دهنده دسترسی این کلید یا مدل را رد کرد\.|قیمت معتبر این مدل در دسترس نیست؛|درگاه آروان به‌درستی تنظیم نشده است\.|سقف هزینهٔ سرویس تنظیم نشده است؛)/.test(message))
++    return message.split(/\n/, 1)[0]!;
+   if (/402|اعتبار سرویس هوش مصنوعی|balance must be higher/i.test(message))
+     return "اعتبار سرویس هوش مصنوعی کافی نیست. موجودی سرویس یا کلید شخصی را در بخش اتصال‌ها بررسی کنید و دوباره تلاش کنید.";
+   if (/429|سقف مصرف|بودجهٔ باقی|سهمیه/i.test(message))
+diff --git a/src/components/workspace/AgentTeamPanel.tsx b/src/components/workspace/AgentTeamPanel.tsx
+index c28633f..1bdf98d 100644
+--- a/src/components/workspace/AgentTeamPanel.tsx
++++ b/src/components/workspace/AgentTeamPanel.tsx
+@@ -5,6 +5,7 @@ import { AGENT_LABELS } from "@/lib/agents/contracts";
+ import { useState } from "react";
+ import { Icon, type IconName } from "../ui/Icon";
+ import { api } from "../api";
++import { friendlyError } from "../friendly-error";
+ 
+ const ROLE_ICONS: Record<string, IconName> = {
+   architect: "layers",
+@@ -24,8 +25,9 @@ const STATUS: Record<string, string> = {
+   failed: "نیاز به بررسی",
+   cancelled: "متوقف شد",
+ };
+-export function AgentTeamPanel({ workflow, base, cost }: { workflow: ProjectView["workflow"]; base: string; cost: ProjectView["cost"] }) {
++export function AgentTeamPanel({ workflow, base, cost, onResume }: { onResume: (runId: string) => Promise<boolean>; workflow: ProjectView["workflow"]; base: string; cost: ProjectView["cost"] }) {
+   const [cancelling, setCancelling] = useState(false);
++  const [resuming, setResuming] = useState(false);
+   const [cancelError, setCancelError] = useState("");
+   if (!workflow) return null;
+   const report = workflow.evaluation?.report as
+@@ -66,16 +68,31 @@ export function AgentTeamPanel({ workflow, base, cost }: { workflow: ProjectView
+         </span>
+       </div>
+       <p className="mt-3 text-xs leading-6 text-muted" aria-live="polite">
+-        {cost.pricedCalls ? `هزینهٔ تخمینی ثبت‌شده: ${cost.estimatedToman.toLocaleString("fa-IR")} تومان` : "هزینهٔ تخمینی ثبت‌شده در دسترس نیست."}
++        {cost.pricedCalls ? `مجموع هزینهٔ تخمینی پروژه: ${cost.estimatedToman.toLocaleString("fa-IR")} تومان` : "هنوز هزینه‌ای برای پروژه ثبت نشده است."}
+         {cost.unpricedCalls > 0 && ` ${cost.unpricedCalls.toLocaleString("fa-IR")} درخواست بدون نرخ تأییدشده است.`}
+         {cost.heldCalls > 0 && ` ${cost.heldCalls.toLocaleString("fa-IR")} درخواست در انتظار تعیین مصرف است.`}
+         {" "}این مقدار صورتحساب نهایی نیست.
+       </p>
+       {workflow.status === "queued" && (
+         <p className="mt-3 text-xs leading-6 text-muted">
+-          درخواست ثبت شد. تیم پس از رسیدن نوبت شروع می‌کند؛ می‌توانید صفحه را ببندید.
++          {workflow.retryAt ? `ارائه‌دهنده موقتاً درخواست را محدود کرد. تلاش خودکار بعدی از همین مرحله، حدود ${new Date(workflow.retryAt).toLocaleTimeString("fa-IR", { timeZone: "Asia/Tehran", hour: "2-digit", minute: "2-digit" })} به وقت تهران است.` : "درخواست ثبت شد. تیم پس از رسیدن نوبت شروع می‌کند؛ می‌توانید صفحه را ببندید."}
+         </p>
+       )}
++      {workflow.status === "failed" && workflow.error && (
++        <div className="mt-3 rounded-lg border border-line p-3 text-xs leading-6">
++          <p>{friendlyError(workflow.error)}</p>
++          <p className="text-muted" dir="ltr">{workflow.id}</p>
++        </div>
++      )}
++      {["failed", "cancelled"].includes(workflow.status) && (
++        <button type="button" className="btn-primary btn-sm mt-3" disabled={resuming} onClick={async () => {
++          setResuming(true);
++          try { await onResume(workflow.id); }
++          finally { setResuming(false); }
++        }}>
++          {resuming ? "در حال ثبت ادامه…" : "ادامه از مرحلهٔ توقف"}
++        </button>
++      )}
+       {workflow.tasks.length > 0 && (
+         <div>
+           <div className="agent-progress-label">
+@@ -127,6 +144,13 @@ export function AgentTeamPanel({ workflow, base, cost }: { workflow: ProjectView
+                   {STATUS[task.status] ?? task.status}
+                 </span>
+               </div>
++              {task.cost && (
++                <p className="mt-1 text-[11px] text-muted">
++                  {task.cost.metered > 0 && `هزینهٔ این مرحله: ${task.cost.estimatedToman.toLocaleString("fa-IR")} تومان `}
++                  {task.cost.pending > 0 && `· ${task.cost.pending.toLocaleString("fa-IR")} در انتظار ثبت مصرف `}
++                  {task.cost.unpriced > 0 && `· ${task.cost.unpriced.toLocaleString("fa-IR")} بدون تعرفه`}
++                </p>
++              )}
+               {task.model && (
+                 <span className="mt-1 block truncate text-[10px] text-muted" dir="ltr">
+                   {task.model}
+diff --git a/src/lib/agents/orchestrator.ts b/src/lib/agents/orchestrator.ts
+index b35606c..fb47f10 100644
+--- a/src/lib/agents/orchestrator.ts
++++ b/src/lib/agents/orchestrator.ts
+@@ -75,6 +75,7 @@ export async function runAgents(ctx: AgentContext): Promise<AgentResult> {
+         role,
+         provider,
+         purpose: input.kind,
++        taskKey: key,
+         system: system ?? ROLE_PROMPTS[role],
+         prompt,
+         schema: output,
+diff --git a/src/lib/ai/index.ts b/src/lib/ai/index.ts
+index 3a2cd55..55b4546 100644
+--- a/src/lib/ai/index.ts
++++ b/src/lib/ai/index.ts
+@@ -166,6 +166,7 @@ export interface StructuredCallOptions<T> {
+   maxOutputTokens: number;
+   runId?: string;
+   role?: AgentRole;
++  taskKey?: string;
+   signal?: AbortSignal;
+ }
+ 
+@@ -177,7 +178,10 @@ export async function generateStructured<T>(options: StructuredCallOptions<T>):
+   // A burst guard on top of the plan's token windows (which do not apply to users' own keys).
+   await enforce("ai", options.userId, 60, 3600, "درخواست هوش مصنوعی");
+   const key = await resolveKey(options.userId, options.provider);
+-  if (key.usedPlatformKey) await assertWithinPlan(options.userId);
++  if (key.usedPlatformKey) {
++    const { isDeveloper } = await activePlan(options.userId);
++    if (!isDeveloper) await assertWithinPlan(options.userId);
++  }
+   if (options.role) {
+     const { plan } = await activePlan(options.userId);
+     const suffix = key.usedPlatformKey && plan.modelTier === "economy" ? "ECONOMY_MODEL" : "MODEL";
+@@ -205,7 +209,7 @@ export async function generateStructured<T>(options: StructuredCallOptions<T>):
+     if (key.usedPlatformKey && (!maxCost || maxCost < 1))
+       throw new HttpError(503, "قیمت معتبر این مدل در دسترس نیست؛ بعداً تلاش کنید یا کلید شخصی وارد کنید.");
+     const reservation = await reserveUsage(options.userId, options.runId, reserved, key.usedPlatformKey,
+-      maxCost ? { projectId: options.projectId, amount: maxCost } : undefined);
++      maxCost || options.projectId ? { projectId: options.projectId, amount: maxCost ?? 0, model: key.model, taskKey: options.taskKey } : undefined);
+     // On an interrupted call, retain the hold: the remote provider may have billed it.
+     let result;
+     let truncated: CompletionTruncatedError | undefined;
+diff --git a/src/lib/billing/ai-quotas.ts b/src/lib/billing/ai-quotas.ts
+new file mode 100644
+index 0000000..85c7502
+--- /dev/null
++++ b/src/lib/billing/ai-quotas.ts
+@@ -0,0 +1,55 @@
++import { sql } from "drizzle-orm";
++import { z } from "zod";
++import type { User } from "../db/schema";
++import { env } from "../env";
++import { queryRows } from "../workflows/sql";
++
++export function isQuotaAdmin(user: Pick<User, "githubId">) {
++  return user.githubId !== null && env.developerGithubIds().includes(String(user.githubId));
++}
++
++const tokenLimit = z.number().int().min(0).max(2_000_000_000).nullable();
++export const quotaChange = z.discriminatedUnion("type", [
++  z.object({ type: z.literal("default"), model: z.string().trim().toLowerCase().regex(/^(\*|[a-z0-9][a-z0-9._:/-]{0,149})$/), limit: tokenLimit }),
++  z.object({ type: z.literal("user"), userId: z.uuid(), limit: tokenLimit }),
++]);
++
++export async function quotaSettings(search: string, page: number) {
++  const [defaults, users] = await Promise.all([
++    queryRows<{ model: string; limit: number }>(sql`select model,token_limit as limit from ai_quota_defaults order by model`),
++    queryRows<{ id: string; email: string; name: string | null; limit: number | null; used: string }>(sql`
++      with selected as (
++        select id,email,name from users where ${search}='' or strpos(lower(email),lower(${search}))>0
++          or strpos(lower(coalesce(name,'')),lower(${search}))>0 order by email,id limit 26 offset ${page * 25}
++      )
++      select s.id,s.email,s.name,q.token_limit as limit,
++        ((select coalesce(sum(input_tokens::bigint+output_tokens),0) from usage_records
++          where user_id=s.id and used_platform_key and created_at>=now()-interval '30 days')
++        +(select coalesce(sum(tokens),0) from usage_reservations
++          where user_id=s.id and used_platform_key and state='held' and created_at>=now()-interval '30 days'))::text as used
++      from selected s left join ai_user_quotas q on q.user_id=s.id order by s.email,s.id`),
++  ]);
++  return { defaults, users: users.slice(0, 25), more: users.length > 25 };
++}
++
++export async function saveQuota(change: z.infer<typeof quotaChange>) {
++  // Share the financial admission lock so a change and the next admission have a defined order.
++  const guard = sql`with guard as (select pg_advisory_xact_lock(19871205))`;
++  if (change.type === "user") {
++    if (change.limit === null) {
++      await queryRows(sql`${guard} delete from ai_user_quotas q using guard where q.user_id=${change.userId}::uuid returning q.user_id`);
++      return true;
++    }
++    const rows = await queryRows(sql`${guard} insert into ai_user_quotas(user_id,token_limit)
++      select u.id,${change.limit} from users u,guard where u.id=${change.userId}::uuid
++      on conflict(user_id) do update set token_limit=excluded.token_limit returning user_id`);
++    return rows.length > 0;
++  }
++  if (change.limit === null) {
++    await queryRows(sql`${guard} delete from ai_quota_defaults q using guard where q.model=${change.model} returning q.model`);
++  } else {
++    await queryRows(sql`${guard} insert into ai_quota_defaults(model,token_limit) select ${change.model},${change.limit} from guard
++      on conflict(model) do update set token_limit=excluded.token_limit returning model`);
++  }
++  return true;
++}
+diff --git a/src/lib/billing/subscription.ts b/src/lib/billing/subscription.ts
+index b1eff0d..ad63d1a 100644
+--- a/src/lib/billing/subscription.ts
++++ b/src/lib/billing/subscription.ts
+@@ -52,7 +52,7 @@ export async function grantPlan(userId: string, plan: PlanId) {
+ async function tokensSince(userId: string, since: Date) {
+   const [row] = await db()
+     .select({
+-      total: sql<number>`coalesce(sum(${schema.usageRecords.inputTokens} + ${schema.usageRecords.outputTokens}), 0)::int`,
++      total: sql<number>`coalesce(sum(${schema.usageRecords.inputTokens}::bigint + ${schema.usageRecords.outputTokens}), 0)::bigint`,
+     })
+     .from(schema.usageRecords)
+     .where(
+diff --git a/src/lib/db/schema.ts b/src/lib/db/schema.ts
+index 3586957..adac15f 100644
+--- a/src/lib/db/schema.ts
++++ b/src/lib/db/schema.ts
+@@ -338,6 +338,7 @@ export const workflowRuns = pgTable(
+     previousStatus: projectStatus("previous_status").notNull(),
+     baseGenerationId: uuid("base_generation_id"),
+     ownerToken: uuid("owner_token"),
++    retryAfter: timestamp("retry_after", { withTimezone: true }),
+     leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+     attempts: integer("attempts").notNull().default(0),
+     maxTokens: integer("max_tokens").notNull().default(250000),
+@@ -399,6 +400,8 @@ export const usageReservations = pgTable(
+     tokens: integer("tokens").notNull(),
+     projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+     reservedToman: bigint("reserved_toman", { mode: "number" }),
++    requestedModel: text("requested_model"),
++    taskKey: text("task_key"),
+     state: text("state").notNull().default("held"),
+     usedPlatformKey: boolean("used_platform_key").notNull(),
+     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+@@ -406,6 +409,16 @@ export const usageReservations = pgTable(
+   (t) => [index("usage_reservations_user_idx").on(t.userId, t.createdAt)],
+ );
+ 
++export const aiQuotaDefaults = pgTable("ai_quota_defaults", {
++  model: text("model").primaryKey(),
++  tokenLimit: integer("token_limit").notNull(),
++});
++
++export const aiUserQuotas = pgTable("ai_user_quotas", {
++  userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
++  tokenLimit: integer("token_limit").notNull(),
++});
++
+ export type User = typeof users.$inferSelect;
+ export type Project = typeof projects.$inferSelect;
+ export type GenerationJob = typeof generationJobs.$inferSelect;
+diff --git a/src/lib/http.ts b/src/lib/http.ts
+index f1e9bcc..f61ea20 100644
+--- a/src/lib/http.ts
++++ b/src/lib/http.ts
+@@ -22,7 +22,7 @@ export async function handleRoute(fn: () => Promise<Response>): Promise<Response
+       return NextResponse.json({ error: "ورودی نامعتبر است.", issues: error.issues }, { status: 400 });
+     }
+     console.error(error);
+-    const message = error instanceof Error ? error.message : "Unexpected error";
++    const message = "سرویس نتوانست این عملیات را کامل کند؛ کمی بعد دوباره تلاش کنید.";
+     return NextResponse.json({ error: message }, { status: 500 });
+   }
+ }
+diff --git a/src/lib/projects.ts b/src/lib/projects.ts
+index 7188f91..a3734e0 100644
+--- a/src/lib/projects.ts
++++ b/src/lib/projects.ts
+@@ -1,3 +1,4 @@
++import { describeWorkflowFailure } from "./workflows/failure";
+ import { and, desc, eq, sql } from "drizzle-orm";
+ import { attachmentSummary } from "./attachments";
+ import { projectCost } from "./billing/project-cost";
+@@ -122,7 +123,7 @@ export async function projectView(project: schema.Project) {
+     cost,
+     spec: project.spec,
+     specApprovedAt: project.specApprovedAt?.toISOString() ?? null,
+-    lastError: project.lastError,
++    lastError: project.lastError ? describeWorkflowFailure(project.lastError).message : null,
+     autoFix: { used: fixRounds, max: MAX_AUTO_FIX_ROUNDS },
+     repo:
+       project.githubOwner && project.githubRepo
+diff --git a/src/lib/workflows/budgets.ts b/src/lib/workflows/budgets.ts
+index 3d62a50..30165b1 100644
+--- a/src/lib/workflows/budgets.ts
++++ b/src/lib/workflows/budgets.ts
+@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
+ import { activePlan } from "../billing/subscription";
+ import { HttpError } from "../http";
+ import { queryRows } from "./sql";
++import { quotaFailureMessages } from "./failure";
+ 
+ export function tokenReservation(
+   system: string,
+@@ -14,7 +15,7 @@ export function tokenReservation(
+   // reserve 4096 per image and always settle with the provider's measured usage.
+   return Buffer.byteLength(system + prompt, "utf8") + maxOutputTokens + images.length * 4096;
+ }
+-type MoneyReservation = { projectId?: string; amount: number };
++type MoneyReservation = { projectId?: string; amount: number; model?: string; taskKey?: string };
+ const moneyKeys = ["platform_day", "platform_month", "user_day", "user_month", "project_day", "project_month", "run"] as const;
+ 
+ /** Limits are explicit administrator configuration; never infer financial limits from plan prices. */
+@@ -45,14 +46,26 @@ export async function reserveUsage(userId: string, runId: string | undefined, to
+   const { plan, isDeveloper } = await activePlan(userId);
+   if (platform && (!money || !Number.isSafeInteger(money.amount) || money.amount < 1))
+     throw new HttpError(503, "هزینهٔ این مدل قابل تأیید نیست؛ تنظیمات قیمت را بررسی کنید.");
+-  const limits = platform ? moneyLimits(process.env.AI_TOMAN_LIMITS_JSON, plan.id === "free", isDeveloper) : null;
+-  if (platform && !limits) throw new HttpError(503, "سقف هزینهٔ سرویس تنظیم نشده است؛ لطفاً بعداً تلاش کنید.");
+-  const rows = platform
+-    ? await queryRows<{ allowed: boolean }>(sql`select reserve_ai_money(${id}::uuid,${userId}::uuid,${money!.projectId ?? null}::uuid,${runId ?? null}::uuid,
+-        ${tokens},${plan.windowTokens}::bigint,${plan.weeklyTokens}::bigint,${money!.amount}::bigint,${JSON.stringify(limits)}::jsonb) as allowed`)
+-    : await queryRows<{ allowed: boolean }>(sql`select reserve_ai_usage(${id}::uuid,${userId}::uuid,${runId ?? null}::uuid,
+-        ${tokens},false,${plan.windowTokens}::bigint,${plan.weeklyTokens}::bigint) as allowed`);
+-  if (!rows[0]?.allowed) throw new HttpError(429, "بودجهٔ باقی‌مانده کافی نیست یا مصرف قبلی نیاز به بررسی دارد.");
++  const limits = platform && !isDeveloper ? moneyLimits(process.env.AI_TOMAN_LIMITS_JSON, plan.id === "free") : null;
++  if (platform && !isDeveloper && !limits) throw new HttpError(503, "سقف هزینهٔ سرویس تنظیم نشده است؛ لطفاً بعداً تلاش کنید.");
++  if (platform) {
++    const [row] = await queryRows<{ reason: string }>(sql`select admit_ai_request(
++      ${id}::uuid,${userId}::uuid,${money!.projectId ?? null}::uuid,${runId ?? null}::uuid,${tokens},
++      ${plan.windowTokens}::bigint,${plan.weeklyTokens}::bigint,${money!.amount}::bigint,
++      ${limits ? JSON.stringify(limits) : null}::jsonb,${money!.model?.toLowerCase() ?? null},
++      ${money!.taskKey ?? null},${isDeveloper}) as reason`);
++    if (row?.reason === "ownership") throw new HttpError(409, "اجرای این مرحله دیگر فعال نیست. وضعیت پروژه را تازه کنید.");
++    if (row && Object.hasOwn(quotaFailureMessages, row.reason)) throw new HttpError(429, quotaFailureMessages[row.reason]!);
++    if (row?.reason !== "allowed") throw new HttpError(503, "سقف هزینهٔ سرویس تنظیم نشده است؛ لطفاً بعداً تلاش کنید.");
++  } else {
++    const [row] = await queryRows<{ allowed: boolean }>(sql`select reserve_ai_usage(${id}::uuid,${userId}::uuid,${runId ?? null}::uuid,
++      ${tokens},false,${plan.windowTokens}::bigint,${plan.weeklyTokens}::bigint) as allowed`);
++    if (!row?.allowed) throw new HttpError(429, "سقف توکن این اجرا کافی نیست. تنظیمات اجرا را بررسی کنید.");
++    if (money?.projectId || money?.taskKey)
++      await queryRows(sql`update usage_reservations r set
++        project_id=(select id from projects where id=${money.projectId ?? null}::uuid and user_id=${userId}::uuid),
++        task_key=${money.taskKey ?? null} where r.id=${id}::uuid returning id`);
++  }
+   return id;
+ }
+ export async function settleUsage(
+@@ -79,11 +92,11 @@ export async function settleUsage(
+         when ${details.settlementBudgetToman ?? null}::bigint is not null and ${details.settlementBudgetToman ?? null}::bigint >= 1
+           then greatest(${details.settlementBudgetToman ?? null}::bigint, coalesce(${details.estimatedCostToman ?? null}::bigint,0))
+         else greatest(reserved_toman, coalesce(${details.estimatedCostToman ?? null}::bigint,0)) end
+-    from guard where id=${id}::uuid and state='held' returning user_id,used_platform_key
++    from guard where id=${id}::uuid and state='held' returning user_id,used_platform_key,project_id,run_id
+   ) insert into usage_records(user_id,project_id,provider,model,purpose,input_tokens,output_tokens,used_platform_key,
+       reservation_id,run_id,agent_role,gateway,estimated_cost_toman,tariff_snapshot)
+-    select user_id,${details.projectId ?? null}::uuid,${details.provider},${details.model},${details.purpose},
+-      ${details.inputTokens},${details.outputTokens},used_platform_key,${id}::uuid,${details.runId ?? null}::uuid,
++    select user_id,coalesce(project_id,(select id from projects where id=${details.projectId ?? null}::uuid and user_id=settled.user_id)),${details.provider},${details.model},${details.purpose},
++      ${details.inputTokens},${details.outputTokens},used_platform_key,${id}::uuid,run_id,
+       ${details.role ?? null},${details.gateway ?? null},${details.estimatedCostToman ?? null},
+       ${details.tariffSnapshot ? JSON.stringify(details.tariffSnapshot) : null}::jsonb from settled returning id`);
+ }
+diff --git a/src/lib/workflows/failure.ts b/src/lib/workflows/failure.ts
+new file mode 100644
+index 0000000..6b8f619
+--- /dev/null
++++ b/src/lib/workflows/failure.ts
+@@ -0,0 +1,46 @@
++import { CompletionTruncatedError } from "../ai/errors";
++
++export const quotaFailureMessages: Record<string, string> = {
++  user_tokens: "سقف توکن ۳۰ روزهٔ حساب پر شده است. پس از آزاد شدن سهمیه یا تغییر آن در پنل، همین مرحله را ادامه دهید.",
++  model_tokens: "سقف توکن ۳۰ روزهٔ این مدل پر شده است. پس از آزاد شدن سهمیه یا تغییر آن در پنل، همین مرحله را ادامه دهید.",
++  uncertain_usage: "مصرف بعضی درخواست‌های سابق هنوز قابل محاسبه نیست. پس از بررسی مصرف سرویس، ساخت را از همین مرحله ادامه دهید.",
++  platform_day: "بودجهٔ ۲۴ ساعتهٔ پلتفرم برای رزرو این مرحله کافی نیست. پس از آزاد شدن بودجه می‌توانید از همین مرحله ادامه دهید.",
++  platform_month: "بودجهٔ ۳۰ روزهٔ پلتفرم برای رزرو این مرحله کافی نیست. پس از آزاد شدن بودجه می‌توانید از همین مرحله ادامه دهید.",
++  user_day: "بودجهٔ ۲۴ ساعتهٔ حساب برای این مرحله کافی نیست.",
++  user_month: "بودجهٔ ۳۰ روزهٔ حساب برای این مرحله کافی نیست.",
++  project_day: "بودجهٔ ۲۴ ساعتهٔ پروژه برای این مرحله کافی نیست.",
++  project_month: "بودجهٔ ۳۰ روزهٔ پروژه برای این مرحله کافی نیست.",
++  run: "بودجهٔ مالی این اجرا برای رزرو مرحلهٔ بعدی کافی نیست.",
++  plan_tokens: "سقف توکن طرح یا این اجرا برای رزرو مرحلهٔ بعدی کافی نیست.",
++};
++
++
++export const workflowMessages = {
++  rate: "ارائه‌دهندهٔ هوش مصنوعی موقتاً تعداد درخواست‌ها را محدود کرده است. مرحله‌های کامل‌شده ذخیره‌اند؛ کمی بعد ادامه دهید.",
++  timeout: "پاسخ سرویس در زمان مقرر نرسید. مصرف این درخواست ممکن است هنوز در حال ثبت باشد؛ پس از بررسی مصرف می‌توانید از همین مرحله ادامه دهید.",
++  unavailable: "سرویس هوش مصنوعی یا ابزار ساخت موقتاً در دسترس نبود. وضعیت سرویس را بررسی کنید و از همین مرحله ادامه دهید.",
++  sandbox: "محیط بررسی و ساخت آماده نبود. پس از رفع مشکل محیط، ساخت را از همان مرحله ادامه دهید.",
++  invalidOutput: "خروجی مدل کامل یا قابل استفاده نبود. از همین مرحله ادامه دهید یا مدل را بررسی کنید.",
++  version: "نسخهٔ پروژه بعد از ثبت اجرا تغییر کرده است. ساخت را با نسخهٔ فعلی شروع کنید.",
++  generic: "این مرحله کامل نشد. نتیجهٔ مراحل موفق ذخیره شده است. از دکمهٔ ادامه استفاده کنید؛ اگر مشکل تکرار شد، شناسهٔ اجرا را برای پشتیبانی بفرستید.",
++} as const;
++
++export function describeWorkflowFailure(error: unknown) {
++  const message = error instanceof Error ? error.message : String(error ?? "");
++  if (/^AI provider error 429:/.test(message)) return { message: workflowMessages.rate, autoRetry: true };
++  if (error instanceof CompletionTruncatedError || /invalid JSON|JSON.*schema|JSON معتبر نبود|پاسخ.*کامل نشد/i.test(message))
++    return { message: workflowMessages.invalidOutput, autoRetry: false };
++  if (/timeout|timed out|زمان مقرر/i.test(message)) return { message: workflowMessages.timeout, autoRetry: false };
++  if (/^AI provider error 5\d\d:|fetch failed|ECONNRESET|^Model unavailable$/i.test(message))
++    return { message: workflowMessages.unavailable, autoRetry: false };
++  if (/^ابزار ارزیابی در دسترس نیست/.test(message)) return { message: workflowMessages.sandbox, autoRetry: false };
++  if (/^نسخه پروژه پس از ورود به صف تغییر کرده/.test(message)) return { message: workflowMessages.version, autoRetry: false };
++  // Only stable server-authored text is allowed here. Provider responses can contain arbitrary data.
++  if (/^(سقف مصرف (۵ ساعته|هفتگی) طرح|سقف توکن ۳۰ روزهٔ (حساب|این مدل) پر شده است\.|بودجهٔ پلتفرم یا سهمیهٔ این اجرا کافی نیست، یا مصرف قبلی نیاز به بررسی دارد\.|سقف توکن این اجرا کافی نیست\.|اعتبار سرویس هوش مصنوعی برای مدل انتخاب‌شده کافی نیست\.|قیمت معتبر این مدل در دسترس نیست؛|درگاه آروان به‌درستی تنظیم نشده است\.|سقف هزینهٔ سرویس تنظیم نشده است؛|بودجهٔ باقی‌مانده کافی نیست یا مصرف قبلی نیاز به بررسی دارد\.)/.test(message)) {
++    return { message: message.split(/\n/, 1)[0]!, autoRetry: false };
++  }
++  if (/^AI provider error (401|403):/.test(message))
++    return { message: "ارائه‌دهنده دسترسی این کلید یا مدل را رد کرد. تنظیمات اتصال را بررسی کنید و سپس همین مرحله را ادامه دهید.", autoRetry: false };
++  if ([...Object.values(workflowMessages), ...Object.values(quotaFailureMessages)].includes(message)) return { message, autoRetry: false };
++  return { message: workflowMessages.generic, autoRetry: false };
++}
+diff --git a/src/lib/workflows/queue.ts b/src/lib/workflows/queue.ts
+index f612d86..0ab17b2 100644
+--- a/src/lib/workflows/queue.ts
++++ b/src/lib/workflows/queue.ts
+@@ -7,6 +7,7 @@ import { isUnlimitedUser } from "../billing/subscription";
+ import { queryRows } from "./sql";
+ import type { AgentTaskInput } from "../agents/contracts";
+ import { WorkflowYield } from "./yield";
++import { describeWorkflowFailure, workflowMessages } from "./failure";
+ 
+ export interface ClaimedRun {
+   id: string;
+@@ -52,6 +53,28 @@ export async function enqueueWorkflow(user: schema.User, project: schema.Project
+   return runs[0].id;
+ }
+ 
++export async function resumeWorkflow(userId: string, projectId: string, runId: string) {
++  await enforce("workflow", userId, 20, 3600, "درخواست ادامهٔ ساخت");
++  const [resumed] = await queryRows<{ id: string }>(sql`
++    with project as (
++      select id,current_generation_id,spec_approved_at from projects
++      where id=${projectId}::uuid and user_id=${userId}::uuid for update
++    ), resumed as (
++      update workflow_runs r set status='queued', owner_token=null, lease_expires_at=null,
++        retry_after=null, attempts=0, error=null, finished_at=null, updated_at=now()
++      from project p where r.id=${runId}::uuid and r.project_id=p.id and r.user_id=${userId}::uuid
++        and r.status in ('failed','cancelled') and r.base_generation_id is not distinct from p.current_generation_id
++        and (p.spec_approved_at is null or p.spec_approved_at <= r.updated_at)
++        and r.id=(select id from workflow_runs where project_id=p.id order by updated_at desc,created_at desc,id desc limit 1)
++        and not exists(select 1 from workflow_runs where project_id=p.id and status in ('queued','running'))
++      returning r.id,r.project_id
++    )
++    update projects set last_error=null,updated_at=now() where id in(select project_id from resumed)
++    returning (select id from resumed) as id`);
++  if (!resumed) throw new HttpError(409, "این اجرا قابل ادامه نیست. وضعیت پروژه را تازه کنید؛ اگر نسخه تغییر کرده، برای نسخهٔ فعلی ساخت را آغاز کنید.");
++  return resumed.id;
++}
++
+ /** SKIP LOCKED supports several workers; owner tokens fence out a worker whose lease expired. */
+ export async function claimRun(runId?: string): Promise<ClaimedRun | null> {
+   const token = randomUUID();
+@@ -59,7 +82,7 @@ export async function claimRun(runId?: string): Promise<ClaimedRun | null> {
+     update workflow_runs set status='running',owner_token=${token}::uuid,
+       lease_expires_at=now()+make_interval(secs=>${LEASE_SECONDS}), attempts=attempts+1,updated_at=now()
+     where id=(select id from workflow_runs
+-      where (status='queued' or (status='running' and lease_expires_at<now()))
++      where ((status='queued' and (retry_after is null or retry_after<=now())) or (status='running' and lease_expires_at<now()))
+       and (${runId ?? null}::uuid is null or id=${runId ?? null}::uuid)
+       order by created_at for update skip locked limit 1) returning *`);
+   return runs[0] ?? null;
+@@ -82,6 +105,13 @@ export interface TaskStore {
+   step<T>(key: string, role: string, input: unknown, action: () => Promise<T>): Promise<T>;
+   evaluation(round: number, report: unknown, passed: boolean): Promise<void>;
+ }
++async function hasUnresolvedRequest(runId: string, taskKey: string) {
++  const [row] = await queryRows<{ held: boolean }>(sql`select exists(
++    select 1 from usage_reservations where run_id=${runId}::uuid and task_key=${taskKey} and state='held'
++  ) as held`);
++  return Boolean(row?.held);
++}
++
+ export function taskStore(run: ClaimedRun, signal: AbortSignal, slice = false): TaskStore {
+   let phase: string | undefined;
+   return {
+@@ -94,6 +124,8 @@ export function taskStore(run: ClaimedRun, signal: AbortSignal, slice = false):
+         output: T;
+       }>(sql`select status,input_hash,output from agent_tasks where run_id=${run.id} and key=${key}`);
+       if (existing[0]?.status === "succeeded" && existing[0].input_hash === hash) return existing[0].output;
++      if (existing[0]?.status === "running" && await hasUnresolvedRequest(run.id, key))
++        throw new Error(workflowMessages.timeout);
+       // Keep frontend/backend parallel, but move each subsequent phase to a new
+       // invocation. Completed checkpoints replay without another provider call.
+       const group = key === "frontend" || key === "backend" ? "implementation" : key;
+@@ -113,7 +145,7 @@ export function taskStore(run: ClaimedRun, signal: AbortSignal, slice = false):
+         return output;
+       } catch (error) {
+         await db()
+-          .execute(sql`update agent_tasks set status='failed',error=${String(error).slice(0, 2000)},updated_at=now()
++          .execute(sql`update agent_tasks set status='failed',error=${describeWorkflowFailure(error).message},updated_at=now()
+           where run_id=${run.id} and key=${key} and ${ownership(run)}`);
+         throw error;
+       }
+@@ -132,35 +164,50 @@ export async function workflowView(projectId: string) {
+     status: string;
+     input: AgentTaskInput;
+     error: string | null;
++    retry_after: Date | string | null;
+     created_at: Date | string;
+   }>(sql`
+-    select id,status,input,error,created_at from workflow_runs where project_id=${projectId} order by updated_at desc,created_at desc limit 1`);
++    select id,status,input,error,retry_after,created_at from workflow_runs where project_id=${projectId} order by updated_at desc,created_at desc,id desc limit 1`);
+   const run = runs[0];
+   if (!run) return null;
+   const tasks = await queryRows<{
+     id: string;
++    key: string;
+     role: string;
+     status: string;
+     error: string | null;
+     output: { model?: string; verification?: string; screenshots?: { name: string }[] } | null;
+   }>(sql`
+-    select id,role,status,error,jsonb_build_object('model',output->'model','verification',output->'status','screenshots',
++    select id,key,role,status,error,jsonb_build_object('model',output->'model','verification',output->'status','screenshots',
+       coalesce((select jsonb_agg(jsonb_build_object('name',s->>'name')) from jsonb_array_elements(output->'screenshots') s),'[]'::jsonb)) as output
+       from agent_tasks where run_id=${run.id} order by created_at,key`);
+   const evaluations = await queryRows<{ status: string; report: unknown }>(sql`
+     select status,report from evaluations where run_id=${run.id} order by round desc limit 1`);
++  const costs = await queryRows<{ task_key: string; total: string; metered: number; pending: number; unpriced: number }>(sql`
++    select r.task_key,coalesce(sum(u.estimated_cost_toman),0)::text as total,
++      count(u.estimated_cost_toman)::int as metered,
++      count(*) filter(where r.state='held')::int as pending,
++      count(u.id) filter(where u.estimated_cost_toman is null)::int as unpriced
++    from usage_reservations r left join usage_records u on u.reservation_id=r.id
++    where r.run_id=${run.id}::uuid and r.used_platform_key and r.state<>'released' and r.task_key is not null
++    group by r.task_key`);
++  const byTask = new Map(costs.map((row) => [row.task_key, {
++    estimatedToman: Number(row.total), metered: row.metered, pending: row.pending, unpriced: row.unpriced,
++  }]));
+   return {
+     id: run.id,
+     status: run.status,
+     kind: run.input.kind,
+-    error: run.error,
++    error: run.error ? describeWorkflowFailure(run.error).message : null,
++    retryAt: run.status === "queued" && run.retry_after ? new Date(run.retry_after).toISOString() : null,
+     createdAt: new Date(run.created_at).toISOString(),
+     tasks: tasks.map((t) => ({
+       id: t.id,
+       role: t.role,
+       status: t.role === "verifier" && t.status === "succeeded" && ["failed", "blocked"].includes(t.output?.verification ?? "") ? "failed" : t.status,
+-      error: t.error,
++      error: t.error ? describeWorkflowFailure(t.error.replace(/^(?:Error|HttpError): /, "")).message : null,
+       model: t.output?.model ?? null,
++      cost: byTask.get(t.key) ?? null,
+     })),
+     screenshots: tasks
+       .filter((t) => t.role === "verifier" && t.status === "succeeded")
+diff --git a/src/lib/workflows/worker.ts b/src/lib/workflows/worker.ts
+index 2c04d5a..67405ea 100644
+--- a/src/lib/workflows/worker.ts
++++ b/src/lib/workflows/worker.ts
+@@ -13,6 +13,7 @@ import { pushToGitHub, syncBuild } from "../pipeline";
+ import { claimRun, renewLease, taskStore, type ClaimedRun } from "./queue";
+ import { queryRows } from "./sql";
+ import { WorkflowYield } from "./yield";
++import { describeWorkflowFailure } from "./failure";
+ import { isUnlimitedUser } from "../billing/subscription";
+ 
+ async function finish(run: ClaimedRun, result: AgentResult) {
+@@ -42,12 +43,16 @@ async function finish(run: ClaimedRun, result: AgentResult) {
+ }
+ 
+ async function fail(run: ClaimedRun, error: unknown) {
+-  const message = (error instanceof Error ? error.message : String(error)).slice(0, 4000);
++  const { message, autoRetry } = describeWorkflowFailure(error);
++  // A provider 429 explicitly rejects inference. Uncertain failures keep their hold and need a manual decision.
++  const retry = autoRetry && run.attempts < 3;
+   await db().execute(sql`with failed as (
+-    update workflow_runs set status='failed',error=${message},finished_at=now(),updated_at=now(),lease_expires_at=null
++    update workflow_runs set status=case when ${retry} then 'queued' else 'failed' end,
++      error=${message},finished_at=case when ${retry} then null else now() end,updated_at=now(),
++      retry_after=case when ${retry} then now()+interval '45 seconds' else null end,owner_token=null,lease_expires_at=null
+     where id=${run.id} and owner_token=${run.owner_token}::uuid and status='running' and lease_expires_at>now() returning project_id
+   ), tasks as (
+-    update agent_tasks set status='failed',error=coalesce(error,${message}),updated_at=now()
++    update agent_tasks set status='failed',error=${message},updated_at=now()
+     where run_id=${run.id} and status='running' and exists(select 1 from failed)
+   ) update projects set last_error=${message},updated_at=now() where id in(select project_id from failed)`);
+ }
+@@ -160,7 +165,7 @@ export async function workOne(
+         where id=${run.id} and owner_token=${run.owner_token}::uuid and status='running' and lease_expires_at>now()`);
+     } else {
+       if (!signal.aborted) await fail(run, error);
+-      console.error("Workflow execution stopped", run.id, error instanceof Error ? error.message : String(error));
++      console.error("Workflow execution stopped", run.id, describeWorkflowFailure(error).message);
+     }
+   } finally {
+     clearInterval(timer);
