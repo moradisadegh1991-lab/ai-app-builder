@@ -1,0 +1,13 @@
+diff --git a/src/lib/workflows/queue.ts b/src/lib/workflows/queue.ts
+index efb33dc..aece5aa 100644
+--- a/src/lib/workflows/queue.ts
++++ b/src/lib/workflows/queue.ts
+@@ -132,7 +132,7 @@ export async function workflowView(projectId: string) {
+     error: string | null;
+     created_at: Date | string;
+   }>(sql`
+-    select id,status,input,error,created_at from workflow_runs where project_id=${projectId} order by created_at desc limit 1`);
++    select id,status,input,error,created_at from workflow_runs where project_id=${projectId} order by updated_at desc,created_at desc limit 1`);
+   const run = runs[0];
+   if (!run) return null;
+   const tasks = await queryRows<{
