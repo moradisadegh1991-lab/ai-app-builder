@@ -1,0 +1,16 @@
+diff --git a/src/lib/ai/index.ts b/src/lib/ai/index.ts
+index 789acbe..3a2cd55 100644
+--- a/src/lib/ai/index.ts
++++ b/src/lib/ai/index.ts
+@@ -247,7 +247,10 @@ export async function generateStructured<T>(options: StructuredCallOptions<T>):
+       inputTokens + outputTokens > 0
+     ) {
+       // Vision and unknown tariffs remain unknown instead of reporting a false zero.
+-      const tariff = !images?.length && result.model === key.model
++      // The verified Arvan gateway returns Kimi's canonical provider-prefixed
++      // identifier for this exact requested model. Other aliases stay unpriced.
++      const sameModel = result.model === key.model || (key.usedPlatformKey && arvanEnabled() && validArvanGateway(key.gatewayBaseUrl) && key.model === "Kimi-K2.6" && result.model === "moonshotai/kimi-k2.6");
++      const tariff = !images?.length && sameModel
+         ? gatewayPrice(key.gatewayBaseUrl, key.usedPlatformKey ? "platform" : "user", key.model)
+         : null;
+       const estimatedCostToman = estimateToman(tariff, inputTokens, outputTokens);
