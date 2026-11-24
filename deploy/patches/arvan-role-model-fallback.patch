@@ -1,0 +1,181 @@
+diff --git a/src/lib/ai/arvan-reference.ts b/src/lib/ai/arvan-reference.ts
+index e37ec63..dfba5dc 100644
+--- a/src/lib/ai/arvan-reference.ts
++++ b/src/lib/ai/arvan-reference.ts
+@@ -6,12 +6,19 @@ export const arvanReference = snapshot;
+ // IDs verified by the account owner in the Arvan gateway. Availability and
+ // output quality must still be checked in the target environment.
+ export const arvanDefaultModels: Record<AgentRole, string> = {
+-  architect: "Gemini-2.5-Pro", designer: "Gemini-2.5-Pro",
++  architect: "Gemini-2.5-Pro", designer: "Kimi-K2.6",
+   frontend: "Kimi-K2.6", backend: "Kimi-K2.6",
+   reviewer: "Gemini-2.5-Pro", debugger: "Kimi-K2.6",
+ };
+ export const arvanDefaultModel = "Gemini-2.5-Pro";
+ 
++/** Alternatives are limited to the two exact model IDs verified on the gateway. */
++export function arvanFallbackModel(model: string) {
++  if (model === "Gemini-2.5-Pro") return "Kimi-K2.6";
++  if (model === "Kimi-K2.6") return "Gemini-2.5-Pro";
++  return null;
++}
++
+ /** Only exact, verified IDs have snapshot prices. Unknown IDs must fail closed. */
+ export function arvanReferenceRate(model: string) {
+   const name = model === "Gemini-2.5-Pro" ? "Gemini 2.5 Pro" : model === "Kimi-K2.6" ? "Kimi K2.6" : null;
+@@ -21,7 +28,7 @@ export function arvanReferenceRate(model: string) {
+ 
+ export const arvanRoleRecommendations = [
+   { role: "معمار محصول", model: "Gemini 2.5 Pro" },
+-  { role: "طراح UI/UX", model: "Gemini 2.5 Pro" },
++  { role: "طراح UI/UX", model: "Kimi K2.6" },
+   { role: "توسعه‌دهنده رابط کاربری", model: "Kimi K2.6" },
+   { role: "توسعه‌دهنده سرور", model: "Kimi K2.6" },
+   { role: "ارزیاب کیفیت", model: "Gemini 2.5 Pro" },
+diff --git a/src/lib/ai/errors.ts b/src/lib/ai/errors.ts
+index 68f0f1b..e1418c7 100644
+--- a/src/lib/ai/errors.ts
++++ b/src/lib/ai/errors.ts
+@@ -1,3 +1,4 @@
++import { HttpError } from "../http";
+ import type { CompletionResult } from "./types";
+ 
+ /** Inference was billed, but the response must never be parsed as complete JSON. */
+@@ -7,3 +8,12 @@ export class CompletionTruncatedError extends Error {
+     this.name = "CompletionTruncatedError";
+   }
+ }
++
++export class InvalidModelOutputError extends HttpError {
++  constructor(public readonly usagePending = false) {
++    super(502, usagePending
++      ? "پاسخ مدل قابل استفاده نبود و مصرف درخواست هنوز مشخص نیست."
++      : "پاسخ مدل کامل یا قابل استفاده نبود.");
++    this.name = "InvalidModelOutputError";
++  }
++}
+diff --git a/src/lib/ai/index.ts b/src/lib/ai/index.ts
+index 55b4546..c4612f7 100644
+--- a/src/lib/ai/index.ts
++++ b/src/lib/ai/index.ts
+@@ -6,10 +6,10 @@ import { enforce } from "../rate-limit";
+ import { getIntegration } from "../integrations/store";
+ import { extractJsonObject } from "./json";
+ import { callProvider } from "./providers";
+-import { CompletionTruncatedError } from "./errors";
++import { CompletionTruncatedError, InvalidModelOutputError } from "./errors";
+ import { estimateToman } from "./cost-estimate";
+ import { isLiaraGateway, liaraCatalogPrice, liaraModelPrice } from "./liara-pricing";
+-import { arvanDefaultModel, arvanDefaultModels, arvanReferenceRate } from "./arvan-reference";
++import { arvanDefaultModel, arvanDefaultModels, arvanFallbackModel, arvanReferenceRate } from "./arvan-reference";
+ import { AI_PROVIDERS, AI_PROVIDER_LABELS, type AiProviderId, type CompletionImage } from "./types";
+ import { reserveUsage, settleUsage, tokenReservation, releaseUsage } from "../workflows/budgets";
+ import type { AgentRole } from "../agents/contracts";
+@@ -194,8 +194,10 @@ export async function generateStructured<T>(options: StructuredCallOptions<T>):
+   const images = visionOmitted ? undefined : options.images;
+   const prompt = visionOmitted ? `${options.prompt}\n\nNo screenshots were sent to you. Do not claim to have visually inspected them. Review the code and textual test evidence only.` : options.prompt;
+   let maxOutputTokens = options.maxOutputTokens;
+-  // One bounded retry, separately reserved and metered, leaves room for models
+-  // whose reasoning consumes part of the completion limit (e.g. Gemini Pro).
++  const arvanRoleCall = key.usedPlatformKey && arvanEnabled() && validArvanGateway(key.gatewayBaseUrl) && Boolean(options.role);
++  const alternate = arvanRoleCall ? arvanFallbackModel(key.model) : null;
++  // At most one extra attempt. Arvan changes models only after a priced response
++  // failed output validation. Other gateways keep their existing truncation retry.
+   for (let attempt = 0; ; attempt++) {
+     options.signal?.throwIfAborted();
+     const reserved = tokenReservation(options.system, prompt, maxOutputTokens, images);
+@@ -213,6 +215,7 @@ export async function generateStructured<T>(options: StructuredCallOptions<T>):
+     // On an interrupted call, retain the hold: the remote provider may have billed it.
+     let result;
+     let truncated: CompletionTruncatedError | undefined;
++    let pricedResponse = false;
+     try {
+       result = await callProvider(options.provider, {
+         apiKey: key.apiKey,
+@@ -258,6 +261,7 @@ export async function generateStructured<T>(options: StructuredCallOptions<T>):
+         ? gatewayPrice(key.gatewayBaseUrl, key.usedPlatformKey ? "platform" : "user", key.model)
+         : null;
+       const estimatedCostToman = estimateToman(tariff, inputTokens, outputTokens);
++      pricedResponse = estimatedCostToman !== null;
+       await settleUsage(reservation, {
+         projectId: options.projectId,
+         provider: key.usedPlatformKey && key.gatewayBaseUrl && arvanEnabled() ? "arvan" : options.provider,
+@@ -276,20 +280,34 @@ export async function generateStructured<T>(options: StructuredCallOptions<T>):
+       });
+     }
+ 
+-    if (truncated) {
++    if (truncated && !arvanRoleCall) {
+       const nextLimit = Math.min(maxOutputTokens * 2, 32768);
+       if (attempt >= 1 || nextLimit <= maxOutputTokens) throw truncated;
+       maxOutputTokens = nextLimit;
+       continue;
+     }
+-    const parsed = options.schema.safeParse(extractJsonObject(result.text));
+-    if (!parsed.success) {
+-      const issues = parsed.error.issues
+-        .slice(0, 5)
+-        .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+-        .join("; ");
+-      throw new HttpError(502, `خروجی مدل با ساختار مورد انتظار مطابقت نداشت (${issues}). دوباره تلاش کنید.`);
++
++    let parsed: ReturnType<z.ZodType<T>["safeParse"]> | undefined;
++    if (!truncated) {
++      let value: unknown;
++      try {
++        value = extractJsonObject(result.text);
++      } catch {
++        // Invalid JSON is handled together with a schema mismatch below.
++      }
++      if (value !== undefined) parsed = options.schema.safeParse(value);
++    }
++    if (parsed?.success) {
++      return { data: parsed.data, model: result.model, ...(visionOmitted ? { visionOmitted: true } : {}) };
++    }
++
++    if (arvanRoleCall && !pricedResponse) throw new InvalidModelOutputError(true);
++    if (attempt === 0 && alternate) {
++      options.signal?.throwIfAborted();
++      key.model = alternate;
++      if (truncated) maxOutputTokens = Math.min(maxOutputTokens * 2, 32768);
++      continue;
+     }
+-    return { data: parsed.data, model: result.model, ...(visionOmitted ? { visionOmitted: true } : {}) };
++    throw truncated ?? new InvalidModelOutputError();
+   }
+ }
+diff --git a/src/lib/workflows/failure.ts b/src/lib/workflows/failure.ts
+index fa7aff6..301210b 100644
+--- a/src/lib/workflows/failure.ts
++++ b/src/lib/workflows/failure.ts
+@@ -1,4 +1,4 @@
+-import { CompletionTruncatedError } from "../ai/errors";
++import { CompletionTruncatedError, InvalidModelOutputError } from "../ai/errors";
+ import {
+   VerificationBlockedError, classifyVerificationBlocker, verificationFailures, verificationMessage, type VerificationBlocker,
+ } from "../agents/verification-failure";
+@@ -25,7 +25,8 @@ export const workflowMessages = {
+   timeout: "پاسخ سرویس در زمان مقرر نرسید. مصرف این درخواست ممکن است هنوز در حال ثبت باشد؛ پس از بررسی مصرف می‌توانید از همین مرحله ادامه دهید.",
+   unavailable: "سرویس هوش مصنوعی یا ابزار ساخت موقتاً در دسترس نبود. وضعیت سرویس را بررسی کنید و از همین مرحله ادامه دهید.",
+   sandbox: verificationMessage("unknown"),
+-  invalidOutput: "خروجی مدل کامل یا قابل استفاده نبود. از همین مرحله ادامه دهید یا مدل را بررسی کنید.",
++  invalidOutput: "خروجی مدل کامل یا قابل استفاده نبود. مرحله‌های موفق ذخیره شده‌اند و می‌توانید از همین مرحله ادامه دهید.",
++  pendingModelOutput: "پاسخ قابل استفاده نبود و مصرف درخواست هنوز مشخص نیست. برای جلوگیری از مصرف تکراری، مدل خودکار عوض نشد. شناسهٔ اجرا را به پشتیبانی بدهید.",
+   version: "نسخهٔ پروژه بعد از ثبت اجرا تغییر کرده است. ساخت را با نسخهٔ فعلی شروع کنید.",
+   generic: "این مرحله کامل نشد. نتیجهٔ مراحل موفق ذخیره شده است. از دکمهٔ ادامه استفاده کنید؛ اگر مشکل تکرار شد، شناسهٔ اجرا را برای پشتیبانی بفرستید.",
+ } as const;
+@@ -36,10 +37,14 @@ export function describeWorkflowFailure(error: unknown) {
+   const message = error instanceof Error ? error.message : String(error ?? "");
+   const verificationMessageSaved = (Object.keys(verificationFailures) as VerificationBlocker[]).some((blocker) => message === verificationMessage(blocker));
+   if (verificationMessageSaved) return { message, autoRetry: false };
++  if (message === "خروجی مدل کامل یا قابل استفاده نبود. از همین مرحله ادامه دهید یا مدل را بررسی کنید.")
++    return { message: workflowMessages.invalidOutput, autoRetry: false };
+   if (message === legacySandboxMessage) return { message: workflowMessages.sandbox, autoRetry: false };
+   if (/^ابزار ارزیابی در دسترس نیست/.test(message))
+     return { message: verificationMessage(classifyVerificationBlocker(message)), autoRetry: false };
+   if (/^AI provider error 429:/.test(message)) return { message: workflowMessages.rate, autoRetry: true };
++  if (error instanceof InvalidModelOutputError)
++    return { message: error.usagePending ? workflowMessages.pendingModelOutput : workflowMessages.invalidOutput, autoRetry: false };
+   if (error instanceof CompletionTruncatedError || /invalid JSON|JSON.*schema|JSON معتبر نبود|پاسخ.*کامل نشد/i.test(message))
+     return { message: workflowMessages.invalidOutput, autoRetry: false };
+   if (/timeout|timed out|زمان مقرر/i.test(message)) return { message: workflowMessages.timeout, autoRetry: false };
