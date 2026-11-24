@@ -1,0 +1,465 @@
+diff --git a/drizzle/0014_arvan_model_catalog.sql b/drizzle/0014_arvan_model_catalog.sql
+new file mode 100644
+index 0000000..c7393a3
+--- /dev/null
++++ b/drizzle/0014_arvan_model_catalog.sql
+@@ -0,0 +1,4 @@
++CREATE TABLE arvan_catalog_settings (
++  key text PRIMARY KEY,
++  value jsonb NOT NULL
++);
+diff --git a/src/app/admin/ai-quotas/page.tsx b/src/app/admin/ai-quotas/page.tsx
+index edce9ed..0f29853 100644
+--- a/src/app/admin/ai-quotas/page.tsx
++++ b/src/app/admin/ai-quotas/page.tsx
+@@ -1,3 +1,4 @@
++import Link from "next/link";
+ import { arvanDefaultModels } from "@/lib/ai/arvan-reference";
+ import { notFound } from "next/navigation";
+ import { Header } from "@/components/Header";
+@@ -14,6 +15,7 @@ export default async function AiQuotasPage() {
+       <Header user={user} />
+       <main className="page-container space-y-5 py-8">
+         <h1 className="text-2xl font-bold">مدیریت سهمیهٔ هوش مصنوعی</h1>
++        <Link href="/admin/arvan-models" className="btn-secondary btn-sm">مدیریت مدل‌ها و تعرفهٔ آروان</Link>
+         <AiQuotaPanel initial={data} models={[...new Set(Object.values(arvanDefaultModels).map((model) => model.toLowerCase()))]} />
+       </main>
+     </>
+diff --git a/src/app/admin/arvan-models/page.tsx b/src/app/admin/arvan-models/page.tsx
+new file mode 100644
+index 0000000..8692ad9
+--- /dev/null
++++ b/src/app/admin/arvan-models/page.tsx
+@@ -0,0 +1,21 @@
++import { notFound } from "next/navigation";
++import { Header } from "@/components/Header";
++import { ArvanCatalogPanel } from "@/components/ArvanCatalogPanel";
++import { arvanRoles, getArvanCatalog } from "@/lib/ai/arvan-catalog";
++import { arvanDefaultModels, arvanReference } from "@/lib/ai/arvan-reference";
++import { isQuotaAdmin } from "@/lib/billing/ai-quotas";
++import { requirePageUser } from "@/lib/session";
++
++export default async function ArvanModelsPage() {
++  const user = await requirePageUser();
++  if (!isQuotaAdmin(user)) notFound();
++  const { models, routes } = await getArvanCatalog();
++  return <>
++    <Header user={user} />
++    <main className="page-container space-y-5 py-8">
++      <h1 className="text-2xl font-bold">مدل‌های آروان</h1>
++      <ArvanCatalogPanel initial={{ models: [...models.values()], routes: [...routes.values()] }}
++        roles={arvanRoles} defaults={arvanDefaultModels} reference={arvanReference.models} />
++    </main>
++  </>;
++}
+diff --git a/src/app/api/admin/arvan-models/route.ts b/src/app/api/admin/arvan-models/route.ts
+new file mode 100644
+index 0000000..194a669
+--- /dev/null
++++ b/src/app/api/admin/arvan-models/route.ts
+@@ -0,0 +1,26 @@
++import { arvanCatalogChange, discoverArvanModels, getArvanCatalog, saveArvanCatalog } from "@/lib/ai/arvan-catalog";
++import { isQuotaAdmin } from "@/lib/billing/ai-quotas";
++import { handleRoute, HttpError, readJson } from "@/lib/http";
++import { requireApiUser } from "@/lib/session";
++
++async function authorize() {
++  if (!isQuotaAdmin(await requireApiUser())) throw new HttpError(403, "دسترسی مدیریت مدل برای این حساب فعال نیست.");
++}
++
++export async function GET(request: Request) {
++  return handleRoute(async () => {
++    await authorize();
++    const data = new URL(request.url).searchParams.has("discover")
++      ? await discoverArvanModels()
++      : await getArvanCatalog().then(({ models, routes }) => ({ models: [...models.values()], routes: [...routes.values()] }));
++    return Response.json(data, { headers: { "Cache-Control": "private, no-store" } });
++  });
++}
++
++export async function PATCH(request: Request) {
++  return handleRoute(async () => {
++    await authorize();
++    await saveArvanCatalog(await readJson(request, arvanCatalogChange.parse));
++    return Response.json({ ok: true });
++  });
++}
+diff --git a/src/components/ArvanCatalogPanel.tsx b/src/components/ArvanCatalogPanel.tsx
+new file mode 100644
+index 0000000..f718e14
+--- /dev/null
++++ b/src/components/ArvanCatalogPanel.tsx
+@@ -0,0 +1,119 @@
++"use client";
++
++import { useState } from "react";
++import type { ArvanCatalogChange, ArvanModel, ArvanRoute } from "@/lib/ai/arvan-catalog";
++import { AGENT_LABELS } from "@/lib/agents/contracts";
++import { api } from "./api";
++
++type Catalog = { models: ArvanModel[]; routes: ArvanRoute[] };
++type Reference = Pick<ArvanModel, "inputTomanPerMillion" | "outputTomanPerMillion"> & { name: string };
++const endpoint = "/api/admin/arvan-models";
++
++export function ArvanCatalogPanel({ initial, roles, defaults, reference }: {
++  initial: Catalog; roles: readonly ArvanRoute["role"][]; defaults: Record<ArvanRoute["role"], string>; reference: Reference[];
++}) {
++  const [catalog, setCatalog] = useState(initial);
++  const [discovered, setDiscovered] = useState<string[]>([]);
++  const [query, setQuery] = useState("");
++  const [selection, setSelection] = useState("");
++  const [tier, setTier] = useState<ArvanRoute["tier"]>("economy");
++  const [notice, setNotice] = useState("");
++  const [pending, setPending] = useState(false);
++  const selected = catalog.models.find(({ id }) => id === selection);
++  const choices = catalog.models.filter(({ enabled, updatedAt }) => enabled && Date.now() - Date.parse(updatedAt) <= 30 * 86400000);
++  const visible = reference.filter(({ name }) => name.toLowerCase().includes(query.trim().toLowerCase()));
++
++  async function discover() {
++    setPending(true);
++    try {
++      const result = await api<{ status: string; ids: string[] }>(endpoint + "?discover=1");
++      setDiscovered(result.ids);
++      setNotice(result.status === "ok"
++        ? `${result.ids.length.toLocaleString("fa-IR")} شناسه از درگاه دریافت شد.`
++        : "درگاه فهرست مدل‌ها را برنگرداند. شناسهٔ دقیق مدلی را که در پنل آروان فعال است وارد کنید.");
++    } catch (error) { setNotice((error as Error).message); }
++    finally { setPending(false); }
++  }
++
++  async function save(change: ArvanCatalogChange) {
++    setPending(true);
++    try {
++      await api(endpoint, { method: "PATCH", body: JSON.stringify(change) });
++      setCatalog(await api<Catalog>(endpoint));
++      setNotice("تنظیمات مدل ذخیره شد.");
++    } catch (error) { setNotice((error as Error).message); }
++    finally { setPending(false); }
++  }
++
++  return <div className="space-y-4">
++    <section className="panel space-y-3 p-4">
++      <h2 className="font-bold">مدل‌های درگاه و تعرفه</h2>
++      <p className="text-sm text-muted">برای استفاده در تیم، شناسهٔ مدل متنی را با تعرفهٔ ورودی و خروجی ثبت کنید. قیمت‌ها به تومان برای هر میلیون توکن‌اند.</p>
++      <button type="button" className="btn-secondary btn-sm" disabled={pending} onClick={() => void discover()}>گرفتن فهرست مدل‌ها از آروان</button>
++      <label className="block text-sm">انتخاب شناسهٔ دریافت‌شده یا ثبت‌شده
++        <select className="input" value={selection} onChange={(event) => setSelection(event.target.value)}>
++          <option value="">ورود شناسهٔ جدید</option>
++          {[...new Set([...catalog.models.map(({ id }) => id), ...discovered])].map((id) => <option key={id} value={id}>{id}</option>)}
++        </select>
++      </label>
++      <form key={selection + (selected?.updatedAt ?? "")} className="grid gap-3 sm:grid-cols-2" onSubmit={(event) => {
++        event.preventDefault();
++        const fields = new FormData(event.currentTarget);
++        const ref = reference.find(({ name }) => name === fields.get("reference"));
++        const id = String(fields.get("id")).trim();
++        void save({
++          type: "model", id, label: String(fields.get("label")).trim() || ref?.name || id,
++          inputTomanPerMillion: Number(fields.get("input") || ref?.inputTomanPerMillion),
++          outputTomanPerMillion: Number(fields.get("output") || ref?.outputTomanPerMillion),
++          responseId: String(fields.get("responseId")).trim() || null, enabled: fields.get("enabled") === "on",
++        });
++      }}>
++        <label>شناسهٔ دقیق API<input dir="ltr" className="input" name="id" required maxLength={150} defaultValue={selection} /></label>
++        <label>نام نمایشی<input className="input" name="label" maxLength={120} defaultValue={selected?.label} /></label>
++        <label>تعرفهٔ ورودی<input dir="ltr" className="input" name="input" type="number" min={1} max={1000000000000} defaultValue={selected?.inputTomanPerMillion} /></label>
++        <label>تعرفهٔ خروجی<input dir="ltr" className="input" name="output" type="number" min={1} max={1000000000000} defaultValue={selected?.outputTomanPerMillion} /></label>
++        <label>یا تعرفهٔ مرجع همان مدل
++          <select className="input" name="reference"><option value="">انتخاب تعرفهٔ مرجع</option>{reference.map(({ name }) => <option key={name}>{name}</option>)}</select>
++        </label>
++        <label>شناسهٔ بازگشتیِ تأییدشده، اختیاری<input dir="ltr" className="input" name="responseId" maxLength={150} defaultValue={selected?.responseId ?? ""} /></label>
++        <label className="flex items-center gap-2"><input name="enabled" type="checkbox" defaultChecked={selected?.enabled} /> برای درخواست متنی این درگاه فعال است</label>
++        <button className="btn-primary btn-sm justify-self-start" disabled={pending}>ذخیرهٔ مدل و تعرفه</button>
++      </form>
++      <details>
++        <summary className="cursor-pointer">تعرفهٔ مرجع {reference.length.toLocaleString("fa-IR")} مدل متنی</summary>
++        <input className="input my-2" aria-label="جست‌وجوی مدل مرجع" value={query} onChange={(event) => setQuery(event.target.value)} />
++        <div className="max-h-64 overflow-auto">
++          {visible.map((item) => <p key={item.name} className="border-b border-line py-1 text-sm">
++            {item.name} · ورودی {item.inputTomanPerMillion.toLocaleString("fa-IR")} · خروجی {item.outputTomanPerMillion.toLocaleString("fa-IR")}
++          </p>)}
++        </div>
++      </details>
++    </section>
++    <section className="panel space-y-3 p-4">
++      <h2 className="font-bold">مدل اصلی و جایگزین هر نقش</h2>
++      <label>گروه کاربران
++        <select className="input" value={tier} onChange={(event) => setTier(event.target.value as ArvanRoute["tier"])}>
++          <option value="economy">اقتصادی</option><option value="standard">استاندارد</option>
++        </select>
++      </label>
++      {roles.map((role) => {
++        const route = catalog.routes.find((item) => item.role === role && item.tier === tier);
++        return <form key={`${role}:${tier}:${route?.primary}:${route?.fallback}`} className="flex flex-wrap items-end gap-2 border-t border-line pt-3" onSubmit={(event) => {
++          event.preventDefault();
++          const fields = new FormData(event.currentTarget);
++          void save({ type: "route", role, tier, primary: String(fields.get("primary")), fallback: String(fields.get("fallback")) || null });
++        }}>
++          <span className="min-w-32">{AGENT_LABELS[role]}</span>
++          <label>اصلی<select className="input" name="primary" defaultValue={route?.primary ?? defaults[role]} required>
++            <option value="">انتخاب مدل</option>{choices.map(({ id }) => <option key={id}>{id}</option>)}
++          </select></label>
++          <label>جایگزین<select className="input" name="fallback" defaultValue={route ? route.fallback ?? "" : choices.find(({ id }) => id !== defaults[role])?.id ?? ""}>
++            <option value="">بدون جایگزین</option>{choices.map(({ id }) => <option key={id}>{id}</option>)}
++          </select></label>
++          <button className="btn-secondary btn-sm" disabled={pending || !choices.length}>ذخیره</button>
++        </form>;
++      })}
++    </section>
++    <p role="status" className="text-sm">{notice}</p>
++  </div>;
++}
+diff --git a/src/components/friendly-error.ts b/src/components/friendly-error.ts
+index 0fadf33..4fbbca4 100644
+--- a/src/components/friendly-error.ts
++++ b/src/components/friendly-error.ts
+@@ -8,6 +8,7 @@ export function friendlyError(value: unknown): string {
+   if ([...Object.values(workflowMessages), ...Object.values(quotaFailureMessages)].includes(message)) return message;
+   if (/^(سقف مصرف (۵ ساعته|هفتگی) طرح|سقف توکن ۳۰ روزهٔ (حساب|این مدل) پر شده است\.|بودجهٔ پلتفرم یا سهمیهٔ این اجرا کافی نیست، یا مصرف قبلی نیاز به بررسی دارد\.|این اجرا قابل ادامه نیست\.|برای حذف پروژه، ابتدا اجرای فعال را متوقف کنید\.|دسترسی مدیریت سهمیه برای این حساب فعال نیست\.|کاربر پیدا نشد\.|ارائه‌دهنده دسترسی این کلید یا مدل را رد کرد\.|قیمت معتبر این مدل در دسترس نیست؛|درگاه آروان به‌درستی تنظیم نشده است\.|سقف هزینهٔ سرویس تنظیم نشده است؛)/.test(message))
+     return message.split(/\n/, 1)[0]!;
++  if (message === "برای مدل اصلی و جایگزین، مدل‌های فعال و متفاوت با تعرفهٔ معتبر انتخاب کنید.") return message;
+   if (/402|اعتبار سرویس هوش مصنوعی|balance must be higher/i.test(message))
+     return "اعتبار سرویس هوش مصنوعی کافی نیست. موجودی سرویس یا کلید شخصی را در بخش اتصال‌ها بررسی کنید و دوباره تلاش کنید.";
+   if (/429|سقف مصرف|بودجهٔ باقی|سهمیه/i.test(message))
+diff --git a/src/lib/ai/arvan-catalog.ts b/src/lib/ai/arvan-catalog.ts
+new file mode 100644
+index 0000000..0762db9
+--- /dev/null
++++ b/src/lib/ai/arvan-catalog.ts
+@@ -0,0 +1,97 @@
++import { sql } from "drizzle-orm";
++import { z } from "zod";
++import { env } from "../env";
++import { HttpError } from "../http";
++import { queryRows } from "../workflows/sql";
++import { arvanReferenceRate, arvanDefaultModels } from "./arvan-reference";
++import { estimateToman } from "./cost-estimate";
++
++export const arvanRoles = ["architect", "designer", "frontend", "backend", "reviewer", "debugger"] as const;
++export const arvanTiers = ["economy", "standard"] as const;
++const modelId = z.string().trim().regex(/^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,149}$/);
++const rate = z.number().int().positive().max(1e12);
++const modelFields = z.object({
++  id: modelId,
++  label: z.string().trim().min(1).max(120),
++  inputTomanPerMillion: rate,
++  outputTomanPerMillion: rate,
++  responseId: modelId.nullable(),
++  enabled: z.boolean(),
++});
++const storedModel = modelFields.extend({ updatedAt: z.iso.datetime({ offset: true }) });
++const routeFields = z.object({
++  role: z.enum(arvanRoles), tier: z.enum(arvanTiers), primary: modelId, fallback: modelId.nullable(),
++});
++export const arvanCatalogChange = z.discriminatedUnion("type", [
++  modelFields.extend({ type: z.literal("model") }),
++  routeFields.extend({ type: z.literal("route") }),
++]);
++export type ArvanCatalogChange = z.infer<typeof arvanCatalogChange>;
++export type ArvanModel = z.infer<typeof storedModel> & { source: "public-reference" | "administrator" };
++export type ArvanRoute = z.infer<typeof routeFields>;
++
++export function arvanCatalog(rows: { key: string; value: unknown }[]) {
++  const models = new Map<string, ArvanModel>();
++  const routes = new Map<string, ArvanRoute>();
++  for (const id of new Set(Object.values(arvanDefaultModels))) {
++    const tariff = arvanReferenceRate(id)!;
++    models.set(id, { id, label: id, enabled: true, responseId: id === "Kimi-K2.6" ? "moonshotai/kimi-k2.6" : null, ...tariff });
++  }
++  for (const row of rows) {
++    if (row.key.startsWith("model:")) {
++      const id = row.key.slice(6);
++      const parsed = storedModel.safeParse(row.value);
++      if (parsed.success && parsed.data.id === id) models.set(id, { ...parsed.data, source: "administrator" });
++      else models.delete(id);
++    } else {
++      const parsed = routeFields.safeParse(row.value);
++      if (parsed.success && row.key === `route:${parsed.data.role}:${parsed.data.tier}`)
++        routes.set(`${parsed.data.role}:${parsed.data.tier}`, parsed.data);
++    }
++  }
++  return { models, routes };
++}
++
++export async function getArvanCatalog() {
++  return arvanCatalog(await queryRows<{ key: string; value: unknown }>(sql`select key,value from arvan_catalog_settings`));
++}
++
++export function activeArvanModel(catalog: ReturnType<typeof arvanCatalog>, id: string) {
++  const model = catalog.models.get(id);
++  return model?.enabled && estimateToman(model, 1, 1) !== null ? model : null;
++}
++
++export async function saveArvanCatalog(change: ArvanCatalogChange) {
++  const { type, ...data } = change;
++  const key = change.type === "model" ? `model:${change.id}` : `route:${change.role}:${change.tier}`;
++  if (change.type === "route") {
++    const catalog = await getArvanCatalog();
++    if (change.primary === change.fallback || !activeArvanModel(catalog, change.primary) ||
++      (change.fallback && !activeArvanModel(catalog, change.fallback))) {
++      throw new HttpError(400, "برای مدل اصلی و جایگزین، مدل‌های فعال و متفاوت با تعرفهٔ معتبر انتخاب کنید.");
++    }
++  }
++  const value = type === "model" ? { ...data, updatedAt: new Date().toISOString() } : data;
++  await queryRows(sql`insert into arvan_catalog_settings (key,value) values(${key},${JSON.stringify(value)}::jsonb)
++    on conflict(key) do update set value=excluded.value returning key`);
++}
++
++export async function discoverArvanModels(): Promise<{ status: "ok" | "unavailable"; ids: string[] }> {
++  const key = env.aiGatewayKey();
++  if (!key || process.env.AI_GATEWAY_KIND !== "arvan" || env.aiGatewayBaseUrl() !== "https://api.arvancloudai.ir/v1")
++    return { status: "unavailable", ids: [] };
++  try {
++    const response = await fetch("https://api.arvancloudai.ir/v1/models", {
++      headers: { Authorization: `apikey ${key.replace(/^apikey\s+/i, "")}` },
++      signal: AbortSignal.timeout(8000), cache: "no-store", redirect: "error",
++    });
++    if (!response.ok) return { status: "unavailable", ids: [] };
++    const text = await response.text();
++    if (text.length > 1_000_000) return { status: "unavailable", ids: [] };
++    const body = z.object({ data: z.array(z.object({ id: modelId })).max(3000) }).safeParse(JSON.parse(text));
++    if (!body.success) return { status: "unavailable", ids: [] };
++    return { status: "ok", ids: [...new Set(body.data.data.map(({ id }) => id))].sort() };
++  } catch {
++    return { status: "unavailable", ids: [] };
++  }
++}
+diff --git a/src/lib/ai/index.ts b/src/lib/ai/index.ts
+index c4612f7..f0462cd 100644
+--- a/src/lib/ai/index.ts
++++ b/src/lib/ai/index.ts
+@@ -9,7 +9,8 @@ import { callProvider } from "./providers";
+ import { CompletionTruncatedError, InvalidModelOutputError } from "./errors";
+ import { estimateToman } from "./cost-estimate";
+ import { isLiaraGateway, liaraCatalogPrice, liaraModelPrice } from "./liara-pricing";
+-import { arvanDefaultModel, arvanDefaultModels, arvanFallbackModel, arvanReferenceRate } from "./arvan-reference";
++import { arvanDefaultModel, arvanDefaultModels, arvanFallbackModel } from "./arvan-reference";
++import { activeArvanModel, getArvanCatalog } from "./arvan-catalog";
+ import { AI_PROVIDERS, AI_PROVIDER_LABELS, type AiProviderId, type CompletionImage } from "./types";
+ import { reserveUsage, settleUsage, tokenReservation, releaseUsage } from "../workflows/budgets";
+ import type { AgentRole } from "../agents/contracts";
+@@ -48,7 +49,7 @@ function validArvanGateway(gateway: string | undefined) {
+   try { const u = new URL(gateway ?? ""); return u.protocol === "https:" && u.hostname === "api.arvancloudai.ir" && u.pathname === "/v1" && !u.username && !u.password && !u.search && !u.hash; } catch { return false; }
+ }
+ function gatewayPrice(gateway: string | undefined, source: string | null, model: string) {
+-  if (arvanEnabled()) return source === "platform" && validArvanGateway(gateway) ? arvanReferenceRate(model) : null;
++  if (arvanEnabled()) return null;
+   return liaraModelPrice(process.env.LIARA_MODEL_PRICING_JSON, gateway, source, model);
+ }
+ 
+@@ -126,6 +127,7 @@ async function assertWithinPlan(userId: string) {
+ /** Lists providers with where their key would come from, for the UI. */
+ export async function providerAvailability(userId: string) {
+   const { plan } = await activePlan(userId);
++  const arvanCatalog = arvanEnabled() && validArvanGateway(gatewayBaseUrl()) ? await getArvanCatalog() : null;
+   return Promise.all(
+     AI_PROVIDERS.map(async (id) => {
+       const own = await getIntegration(userId, id);
+@@ -137,9 +139,10 @@ export async function providerAvailability(userId: string) {
+       const baseModel = plan.modelTier === "economy" ? economyModels[id]() : defaultModels[id]();
+       const platformModel = gatewayBaseUrl() && arvanEnabled() ? arvanDefaultModel : gatewayBaseUrl() ? gatewayModel(id, baseModel) : baseModel;
+       const model = own ? own.metadata.model || defaultModels[id]() : platformModel;
+-      const configured = gatewayPrice(gatewayBaseUrl(), source, model);
++      const arvan = arvanCatalog && source === "platform" ? activeArvanModel(arvanCatalog, model) : null;
++      const configured = arvan ?? gatewayPrice(gatewayBaseUrl(), source, model);
+       const price = configured
+-        ? { inputPerMillion: configured.inputTomanPerMillion, outputPerMillion: configured.outputTomanPerMillion, currency: "IRT" as const, updatedAt: configured.updatedAt, source: arvanEnabled() ? "public-reference" as const : "administrator" as const }
++        ? { inputPerMillion: configured.inputTomanPerMillion, outputPerMillion: configured.outputTomanPerMillion, currency: "IRT" as const, updatedAt: configured.updatedAt, source: arvan?.source ?? "administrator" as const }
+         : isLiaraGateway(gatewayBaseUrl(), source) ? await liaraCatalogPrice(model) : null;
+       return {
+         id,
+@@ -178,32 +181,40 @@ export async function generateStructured<T>(options: StructuredCallOptions<T>):
+   // A burst guard on top of the plan's token windows (which do not apply to users' own keys).
+   await enforce("ai", options.userId, 60, 3600, "درخواست هوش مصنوعی");
+   const key = await resolveKey(options.userId, options.provider);
+-  if (key.usedPlatformKey) {
+-    const { isDeveloper } = await activePlan(options.userId);
+-    if (!isDeveloper) await assertWithinPlan(options.userId);
+-  }
++  const isPlatformArvan = key.usedPlatformKey && arvanEnabled() && validArvanGateway(key.gatewayBaseUrl);
++  const arvanCatalog = isPlatformArvan ? await getArvanCatalog() : null;
++  const account = key.usedPlatformKey || options.role ? await activePlan(options.userId) : null;
++  if (key.usedPlatformKey && !account?.isDeveloper) await assertWithinPlan(options.userId);
++  const tier = key.usedPlatformKey && account?.plan.modelTier === "economy" ? "economy" : "standard";
++  const route = options.role ? arvanCatalog?.routes.get(`${options.role}:${tier}`) : null;
+   if (options.role) {
+-    const { plan } = await activePlan(options.userId);
+-    const suffix = key.usedPlatformKey && plan.modelTier === "economy" ? "ECONOMY_MODEL" : "MODEL";
+-    const model = key.usedPlatformKey && key.gatewayBaseUrl && arvanEnabled()
+-      ? (process.env[`ARVAN_AGENT_${options.role.toUpperCase()}_${suffix}`] ?? arvanDefaultModels[options.role])
++    const suffix = tier === "economy" ? "ECONOMY_MODEL" : "MODEL";
++    const configuredPrimary = route && arvanCatalog
++      ? activeArvanModel(arvanCatalog, route.primary)?.id ??
++        (route.fallback ? activeArvanModel(arvanCatalog, route.fallback)?.id : null) ?? route.primary
++      : null;
++    const model = arvanCatalog
++      ? (configuredPrimary ?? process.env[`ARVAN_AGENT_${options.role.toUpperCase()}_${suffix}`] ?? arvanDefaultModels[options.role])
+       : process.env[`AGENT_${options.role.toUpperCase()}_${suffix}`];
+     if (model) key.model = key.gatewayBaseUrl ? gatewayModel(options.provider, model) : model;
+   }
+-  const visionOmitted = Boolean(key.usedPlatformKey && key.gatewayBaseUrl && arvanEnabled() && options.role === "reviewer" && options.images?.length);
++  const visionOmitted = Boolean(isPlatformArvan && options.role === "reviewer" && options.images?.length);
+   const images = visionOmitted ? undefined : options.images;
+   const prompt = visionOmitted ? `${options.prompt}\n\nNo screenshots were sent to you. Do not claim to have visually inspected them. Review the code and textual test evidence only.` : options.prompt;
+   let maxOutputTokens = options.maxOutputTokens;
+-  const arvanRoleCall = key.usedPlatformKey && arvanEnabled() && validArvanGateway(key.gatewayBaseUrl) && Boolean(options.role);
+-  const alternate = arvanRoleCall ? arvanFallbackModel(key.model) : null;
++  const arvanRoleCall = isPlatformArvan && Boolean(options.role);
++  const alternateId = arvanRoleCall ? (route ? route.fallback : arvanFallbackModel(key.model)) : null;
++  const alternate = arvanCatalog && alternateId && alternateId !== key.model
++    ? activeArvanModel(arvanCatalog, alternateId)?.id ?? null : null;
+   // At most one extra attempt. Arvan changes models only after a priced response
+   // failed output validation. Other gateways keep their existing truncation retry.
+   for (let attempt = 0; ; attempt++) {
+     options.signal?.throwIfAborted();
+     const reserved = tokenReservation(options.system, prompt, maxOutputTokens, images);
+     // Refuse platform-funded calls when model pricing or vision billing is unknown.
++    const arvanModel = arvanCatalog ? activeArvanModel(arvanCatalog, key.model) : null;
+     const quote = key.usedPlatformKey && !images?.length
+-      ? gatewayPrice(key.gatewayBaseUrl, "platform", key.model) : null;
++      ? arvanModel ?? gatewayPrice(key.gatewayBaseUrl, "platform", key.model) : null;
+     const margin = arvanEnabled() ? 2 : 1;
+     const maxRateQuote = quote ? { ...quote, inputTomanPerMillion: margin * Math.max(quote.inputTomanPerMillion, quote.outputTomanPerMillion), outputTomanPerMillion: margin * Math.max(quote.inputTomanPerMillion, quote.outputTomanPerMillion) } : null;
+     // Include a fixed allowance for protocol overhead; unknown image charges are not estimated.
+@@ -253,13 +264,9 @@ export async function generateStructured<T>(options: StructuredCallOptions<T>):
+       outputTokens >= 0 &&
+       inputTokens + outputTokens > 0
+     ) {
+-      // Vision and unknown tariffs remain unknown instead of reporting a false zero.
+-      // The verified Arvan gateway returns Kimi's canonical provider-prefixed
+-      // identifier for this exact requested model. Other aliases stay unpriced.
+-      const sameModel = result.model === key.model || (key.usedPlatformKey && arvanEnabled() && validArvanGateway(key.gatewayBaseUrl) && key.model === "Kimi-K2.6" && result.model === "moonshotai/kimi-k2.6");
+-      const tariff = !images?.length && sameModel
+-        ? gatewayPrice(key.gatewayBaseUrl, key.usedPlatformKey ? "platform" : "user", key.model)
+-        : null;
++      // Settle using the same tariff snapshot reserved for this exact request.
++      const sameModel = result.model === key.model || result.model === arvanModel?.responseId;
++      const tariff = sameModel ? quote : null;
+       const estimatedCostToman = estimateToman(tariff, inputTokens, outputTokens);
+       pricedResponse = estimatedCostToman !== null;
+       await settleUsage(reservation, {
+@@ -276,7 +283,7 @@ export async function generateStructured<T>(options: StructuredCallOptions<T>):
+         // Retain twice the dated public estimate after measured text usage;
+         // unknown usage, vision and uncertain network failures keep the full hold.
+         settlementBudgetToman: key.usedPlatformKey && key.gatewayBaseUrl && arvanEnabled() && estimatedCostToman !== null && Number.isSafeInteger(estimatedCostToman * 2) ? estimatedCostToman * 2 : null,
+-        tariffSnapshot: tariff && estimatedCostToman !== null ? { ...tariff, source: arvanEnabled() ? "public-reference" : "administrator" } : null,
++        tariffSnapshot: tariff && estimatedCostToman !== null ? { inputTomanPerMillion: tariff.inputTomanPerMillion, outputTomanPerMillion: tariff.outputTomanPerMillion, updatedAt: tariff.updatedAt, source: arvanModel?.source ?? "administrator" } : null,
+       });
+     }
+ 
+diff --git a/src/lib/db/schema.ts b/src/lib/db/schema.ts
+index adac15f..ac987c3 100644
+--- a/src/lib/db/schema.ts
++++ b/src/lib/db/schema.ts
+@@ -409,6 +409,11 @@ export const usageReservations = pgTable(
+   (t) => [index("usage_reservations_user_idx").on(t.userId, t.createdAt)],
+ );
+ 
++export const arvanCatalogSettings = pgTable("arvan_catalog_settings", {
++  key: text("key").primaryKey(),
++  value: jsonb("value").notNull(),
++});
++
+ export const aiQuotaDefaults = pgTable("ai_quota_defaults", {
+   model: text("model").primaryKey(),
+   tokenLimit: integer("token_limit").notNull(),
