@@ -1,0 +1,236 @@
+diff --git a/src/components/ArvanCatalogPanel.tsx b/src/components/ArvanCatalogPanel.tsx
+index f718e14..aa84240 100644
+--- a/src/components/ArvanCatalogPanel.tsx
++++ b/src/components/ArvanCatalogPanel.tsx
+@@ -4,30 +4,62 @@ import { useState } from "react";
+ import type { ArvanCatalogChange, ArvanModel, ArvanRoute } from "@/lib/ai/arvan-catalog";
+ import { AGENT_LABELS } from "@/lib/agents/contracts";
+ import { api } from "./api";
++import {
++  catalogOptions, groupArvanOptions, modelDraft, referenceOption, type ArvanModelOption, type ArvanReferenceModel,
++} from "./arvan-catalog-form";
+ 
+ type Catalog = { models: ArvanModel[]; routes: ArvanRoute[] };
+-type Reference = Pick<ArvanModel, "inputTomanPerMillion" | "outputTomanPerMillion"> & { name: string };
+ const endpoint = "/api/admin/arvan-models";
+ 
+ export function ArvanCatalogPanel({ initial, roles, defaults, reference }: {
+-  initial: Catalog; roles: readonly ArvanRoute["role"][]; defaults: Record<ArvanRoute["role"], string>; reference: Reference[];
++  initial: Catalog; roles: readonly ArvanRoute["role"][]; defaults: Record<ArvanRoute["role"], string>; reference: ArvanReferenceModel[];
+ }) {
+   const [catalog, setCatalog] = useState(initial);
+   const [discovered, setDiscovered] = useState<string[]>([]);
+   const [query, setQuery] = useState("");
+   const [selection, setSelection] = useState("");
++  const [draft, setDraft] = useState(() => modelDraft());
+   const [tier, setTier] = useState<ArvanRoute["tier"]>("economy");
+   const [notice, setNotice] = useState("");
+   const [pending, setPending] = useState(false);
+-  const selected = catalog.models.find(({ id }) => id === selection);
++  const gatewayOptions = catalogOptions(catalog.models, discovered, reference);
++  const referenceRows = reference.map((item) => ({
++    ...item, label: item.name, rates: item, option: referenceOption(item, gatewayOptions),
++  }));
++  const groups = groupArvanOptions([...gatewayOptions, ...referenceRows.map(({ option }) => option).filter(({ id }) => !id)]);
+   const choices = catalog.models.filter(({ enabled, updatedAt }) => enabled && Date.now() - Date.parse(updatedAt) <= 30 * 86400000);
+-  const visible = reference.filter(({ name }) => name.toLowerCase().includes(query.trim().toLowerCase()));
++  const roleGroups = groupArvanOptions(choices.map((item) => ({ ...item, rates: item })));
++  const visible = groupArvanOptions(referenceRows.filter(({ name }) => name.toLowerCase().includes(query.trim().toLowerCase())));
++
++  function selectModel(option?: ArvanModelOption) {
++    setSelection(option?.key ?? "");
++    setDraft(modelDraft(option));
++    setNotice(option && !option.id ? "تعرفه‌ها پر شدند. شناسهٔ دقیق را از درگاه انتخاب کنید یا از پنل آروان وارد کنید." : "");
++  }
++
++  function editField(field: "id" | "label" | "input" | "output" | "responseId", value: string) {
++    setDraft((current) => ({ ...current, [field]: value }));
++  }
++
++  function roleOptions() {
++    return roleGroups.map(({ key, label, items }) => <optgroup key={key} label={label}>
++      {items.map(({ id, label }) => <option key={id} value={id}>{label}</option>)}
++    </optgroup>);
++  }
+ 
+   async function discover() {
+     setPending(true);
+     try {
+       const result = await api<{ status: string; ids: string[] }>(endpoint + "?discover=1");
+       setDiscovered(result.ids);
++      const chosenReference = reference.find(({ name }) => `ref:${name}` === selection);
++      if (chosenReference && !draft.id) {
++        const option = referenceOption(chosenReference, catalogOptions(catalog.models, result.ids, reference));
++        if (option.id) {
++          setSelection(option.key);
++          setDraft((current) => ({ ...current, id: option.id!, responseId: option.responseId ?? "" }));
++        }
++      }
+       setNotice(result.status === "ok"
+         ? `${result.ids.length.toLocaleString("fa-IR")} شناسه از درگاه دریافت شد.`
+         : "درگاه فهرست مدل‌ها را برنگرداند. شناسهٔ دقیق مدلی را که در پنل آروان فعال است وارد کنید.");
+@@ -39,7 +71,9 @@ export function ArvanCatalogPanel({ initial, roles, defaults, reference }: {
+     setPending(true);
+     try {
+       await api(endpoint, { method: "PATCH", body: JSON.stringify(change) });
+-      setCatalog(await api<Catalog>(endpoint));
++      const refreshed = await api<Catalog>(endpoint);
++      setCatalog(refreshed);
++      if (change.type === "model") setSelection(`id:${change.id}`);
+       setNotice("تنظیمات مدل ذخیره شد.");
+     } catch (error) { setNotice((error as Error).message); }
+     finally { setPending(false); }
+@@ -50,42 +84,49 @@ export function ArvanCatalogPanel({ initial, roles, defaults, reference }: {
+       <h2 className="font-bold">مدل‌های درگاه و تعرفه</h2>
+       <p className="text-sm text-muted">برای استفاده در تیم، شناسهٔ مدل متنی را با تعرفهٔ ورودی و خروجی ثبت کنید. قیمت‌ها به تومان برای هر میلیون توکن‌اند.</p>
+       <button type="button" className="btn-secondary btn-sm" disabled={pending} onClick={() => void discover()}>گرفتن فهرست مدل‌ها از آروان</button>
+-      <label className="block text-sm">انتخاب شناسهٔ دریافت‌شده یا ثبت‌شده
+-        <select className="input" value={selection} onChange={(event) => setSelection(event.target.value)}>
++      <label className="block text-sm">انتخاب مدل
++        <select className="input" disabled={pending} value={selection} onChange={(event) => {
++          selectModel(groups.flatMap(({ items }) => items).find(({ key }) => key === event.target.value));
++        }}>
+           <option value="">ورود شناسهٔ جدید</option>
+-          {[...new Set([...catalog.models.map(({ id }) => id), ...discovered])].map((id) => <option key={id} value={id}>{id}</option>)}
++          {groups.map(({ key, label, items }) => <optgroup key={key} label={label}>
++            {items.map((item) => <option key={item.key} value={item.key}>
++              {item.label}{!item.id ? " (تعرفهٔ مرجع)" : item.id !== item.label ? ` · ${item.id}` : ""}
++            </option>)}
++          </optgroup>)}
+         </select>
+       </label>
+-      <form key={selection + (selected?.updatedAt ?? "")} className="grid gap-3 sm:grid-cols-2" onSubmit={(event) => {
++      <p className="text-xs text-muted">گروه‌بندی بر پایهٔ جمع تعرفهٔ یک میلیون توکن ورودی و یک میلیون توکن خروجی است. اقتصادی تا ۱ میلیون، میان‌رده تا ۴ میلیون تومان.</p>
++      <form className="grid gap-3 sm:grid-cols-2" onSubmit={(event) => {
+         event.preventDefault();
+-        const fields = new FormData(event.currentTarget);
+-        const ref = reference.find(({ name }) => name === fields.get("reference"));
+-        const id = String(fields.get("id")).trim();
+         void save({
+-          type: "model", id, label: String(fields.get("label")).trim() || ref?.name || id,
+-          inputTomanPerMillion: Number(fields.get("input") || ref?.inputTomanPerMillion),
+-          outputTomanPerMillion: Number(fields.get("output") || ref?.outputTomanPerMillion),
+-          responseId: String(fields.get("responseId")).trim() || null, enabled: fields.get("enabled") === "on",
++          type: "model", id: draft.id.trim(), label: draft.label.trim() || draft.id.trim(),
++          inputTomanPerMillion: Number(draft.input), outputTomanPerMillion: Number(draft.output),
++          responseId: draft.responseId.trim() || null, enabled: draft.enabled,
+         });
+       }}>
+-        <label>شناسهٔ دقیق API<input dir="ltr" className="input" name="id" required maxLength={150} defaultValue={selection} /></label>
+-        <label>نام نمایشی<input className="input" name="label" maxLength={120} defaultValue={selected?.label} /></label>
+-        <label>تعرفهٔ ورودی<input dir="ltr" className="input" name="input" type="number" min={1} max={1000000000000} defaultValue={selected?.inputTomanPerMillion} /></label>
+-        <label>تعرفهٔ خروجی<input dir="ltr" className="input" name="output" type="number" min={1} max={1000000000000} defaultValue={selected?.outputTomanPerMillion} /></label>
+-        <label>یا تعرفهٔ مرجع همان مدل
+-          <select className="input" name="reference"><option value="">انتخاب تعرفهٔ مرجع</option>{reference.map(({ name }) => <option key={name}>{name}</option>)}</select>
+-        </label>
+-        <label>شناسهٔ بازگشتیِ تأییدشده، اختیاری<input dir="ltr" className="input" name="responseId" maxLength={150} defaultValue={selected?.responseId ?? ""} /></label>
+-        <label className="flex items-center gap-2"><input name="enabled" type="checkbox" defaultChecked={selected?.enabled} /> برای درخواست متنی این درگاه فعال است</label>
++        <label>شناسهٔ دقیق API<input dir="ltr" className="input" name="id" disabled={pending} required maxLength={150} value={draft.id} onChange={(event) => editField("id", event.target.value)} /></label>
++        <label>نام نمایشی<input className="input" name="label" disabled={pending} maxLength={120} value={draft.label} onChange={(event) => editField("label", event.target.value)} /></label>
++        <label>تعرفهٔ ورودی<input dir="ltr" className="input" name="input" disabled={pending} required type="number" min={1} max={1000000000000} value={draft.input} onChange={(event) => editField("input", event.target.value)} /></label>
++        <label>تعرفهٔ خروجی<input dir="ltr" className="input" name="output" disabled={pending} required type="number" min={1} max={1000000000000} value={draft.output} onChange={(event) => editField("output", event.target.value)} /></label>
++        <label>شناسهٔ بازگشتیِ تأییدشده، اختیاری<input dir="ltr" className="input" name="responseId" disabled={pending} maxLength={150} value={draft.responseId} onChange={(event) => editField("responseId", event.target.value)} /></label>
++        <label className="flex items-center gap-2"><input name="enabled" disabled={pending} type="checkbox" checked={draft.enabled}
++          onChange={(event) => setDraft((current) => ({ ...current, enabled: event.target.checked }))} /> برای درخواست متنی این درگاه فعال است</label>
+         <button className="btn-primary btn-sm justify-self-start" disabled={pending}>ذخیرهٔ مدل و تعرفه</button>
+       </form>
+       <details>
+         <summary className="cursor-pointer">تعرفهٔ مرجع {reference.length.toLocaleString("fa-IR")} مدل متنی</summary>
+-        <input className="input my-2" aria-label="جست‌وجوی مدل مرجع" value={query} onChange={(event) => setQuery(event.target.value)} />
++        <input className="input my-2" placeholder="جست‌وجوی مدل" aria-label="جست‌وجوی مدل مرجع" value={query} onChange={(event) => setQuery(event.target.value)} />
++        {visible.length === 0 && <p className="text-sm text-muted">مدلی با این نام پیدا نشد.</p>}
+         <div className="max-h-64 overflow-auto">
+-          {visible.map((item) => <p key={item.name} className="border-b border-line py-1 text-sm">
+-            {item.name} · ورودی {item.inputTomanPerMillion.toLocaleString("fa-IR")} · خروجی {item.outputTomanPerMillion.toLocaleString("fa-IR")}
+-          </p>)}
++          {visible.map(({ key, label, items }) => <div key={key} className="pb-2">
++            <h3 className="bg-surface-2 px-2 py-1 text-sm font-bold">{label}</h3>
++            {items.map((item) => <button key={item.name} type="button" disabled={pending} onClick={() => selectModel(item.option)}
++              className="block w-full rounded border-b border-line px-2 py-2 text-start text-sm hover:bg-surface-2">
++              <span className="font-medium">{item.name}</span>
++              <span className="ms-2 text-muted">ورودی {item.inputTomanPerMillion.toLocaleString("fa-IR")} · خروجی {item.outputTomanPerMillion.toLocaleString("fa-IR")}</span>
++            </button>)}
++          </div>)}
+         </div>
+       </details>
+     </section>
+@@ -105,10 +146,10 @@ export function ArvanCatalogPanel({ initial, roles, defaults, reference }: {
+         }}>
+           <span className="min-w-32">{AGENT_LABELS[role]}</span>
+           <label>اصلی<select className="input" name="primary" defaultValue={route?.primary ?? defaults[role]} required>
+-            <option value="">انتخاب مدل</option>{choices.map(({ id }) => <option key={id}>{id}</option>)}
++            <option value="">انتخاب مدل</option>{roleOptions()}
+           </select></label>
+           <label>جایگزین<select className="input" name="fallback" defaultValue={route ? route.fallback ?? "" : choices.find(({ id }) => id !== defaults[role])?.id ?? ""}>
+-            <option value="">بدون جایگزین</option>{choices.map(({ id }) => <option key={id}>{id}</option>)}
++            <option value="">بدون جایگزین</option>{roleOptions()}
+           </select></label>
+           <button className="btn-secondary btn-sm" disabled={pending || !choices.length}>ذخیره</button>
+         </form>;
+diff --git a/src/components/arvan-catalog-form.ts b/src/components/arvan-catalog-form.ts
+new file mode 100644
+index 0000000..841766c
+--- /dev/null
++++ b/src/components/arvan-catalog-form.ts
+@@ -0,0 +1,61 @@
++import type { ArvanModel } from "@/lib/ai/arvan-catalog";
++
++type Rates = Pick<ArvanModel, "inputTomanPerMillion" | "outputTomanPerMillion">;
++export type ArvanReferenceModel = Rates & { name: string };
++export type ArvanModelOption = {
++  key: string;
++  id: string | null;
++  label: string;
++  rates: Rates | null;
++  responseId: string | null;
++  enabled: boolean;
++};
++export const priceGroups = [
++  { key: "economy", label: "اقتصادی", limit: 1_000_000 },
++  { key: "mid", label: "میان‌رده", limit: 4_000_000 },
++  { key: "premium", label: "گران‌تر", limit: Infinity },
++  { key: "unknown", label: "بدون تعرفهٔ ثبت‌شده", limit: Infinity },
++] as const;
++
++export function groupArvanOptions<T extends { label: string; rates: Rates | null }>(options: readonly T[]) {
++  const total = (item: T) => item.rates
++    ? item.rates.inputTomanPerMillion + item.rates.outputTomanPerMillion : Infinity;
++  return priceGroups.map(({ key, label, limit }, index) => ({
++    key, label,
++    items: options.filter((item) => item.rates
++      ? key !== "unknown" && total(item) <= limit && (index === 0 || total(item) > priceGroups[index - 1]!.limit)
++      : key === "unknown")
++      .sort((a, b) => total(a) - total(b) || a.label.localeCompare(b.label)),
++  })).filter(({ items }) => items.length > 0);
++}
++
++const normalized = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, "");
++
++export function catalogOptions(models: readonly ArvanModel[], discovered: readonly string[], reference: readonly ArvanReferenceModel[]) {
++  const registered = new Map(models.map((model) => [model.id, model]));
++  return [...new Set([...registered.keys(), ...discovered])].map((id): ArvanModelOption => {
++    const saved = registered.get(id);
++    const matched = reference.filter(({ name }) => normalized(name) === normalized(id.split("/").at(-1) ?? id));
++    const preset = matched.length === 1 ? matched[0] : undefined;
++    return {
++      key: `id:${id}`, id, label: saved?.label ?? preset?.name ?? id, rates: saved ?? preset ?? null,
++      responseId: saved?.responseId ?? null, enabled: saved?.enabled ?? false,
++    };
++  });
++}
++
++export function referenceOption(reference: ArvanReferenceModel, options: readonly ArvanModelOption[]): ArvanModelOption {
++  const matched = options.filter(({ id, label }) => id && [id.split("/").at(-1) ?? id, label]
++    .some((value) => normalized(value) === normalized(reference.name)));
++  if (matched.length === 1) return matched[0]!;
++  return { key: `ref:${reference.name}`, id: null, label: reference.name, rates: reference, responseId: null, enabled: false };
++}
++
++export function modelDraft(option?: ArvanModelOption) {
++  return {
++    id: option?.id ?? "", label: option?.label ?? "", responseId: option?.responseId ?? "",
++    input: option?.rates ? String(option.rates.inputTomanPerMillion) : "",
++    output: option?.rates ? String(option.rates.outputTomanPerMillion) : "",
++    enabled: option?.enabled ?? false,
++  };
++}
